@@ -13,12 +13,12 @@ SEED = 42
 torch.manual_seed(SEED)
 
 ARITY = 3
-BUCKET_SIZE = 20_000
+BUCKET_SIZE = 200
 DIMENSIONALITY = 768
 BUCKET_SHAPE = (BUCKET_SIZE, DIMENSIONALITY)
 METRIC = METRIC_L2
 KEEP_MAX = False  # Related to METRIC
-DATASET_SIZE = 300_000
+DATASET_SIZE = 3_000
 # N_QUERIES = 100
 
 # Load the dataset
@@ -32,36 +32,33 @@ GT = torch.from_numpy(
 assert X.shape[1] == DIMENSIONALITY
 
 # Create the framework
-# framework = Framework(
-#     BLISSIndex,
-#     # DummyIndex,
-#     # LMIIndex,
-#     ARITY,
-#     BUCKET_SHAPE,
-#     METRIC,
-#     KEEP_MAX,
-# )
+framework = Framework(
+    BLISSIndex,
+    # DummyIndex,
+    # LMIIndex,
+    ARITY,
+    BUCKET_SHAPE,
+    METRIC,
+    KEEP_MAX,
+)
 
-# # Insert the dataset one object at a time
-# for i in range(len(X)):
-#     framework.insert(X[i], i)
+# Insert the dataset one object at a time
+for i in range(len(X)):
+    framework.insert(X[i], i)
 
-#     if (i + 1) % (len(X) // 10) == 0:
-#         print(f'Inserted {i+1} objects')
+    if (i + 1) % (len(X) // 10) == 0:
+        print(f'Inserted {i+1} objects')
 
-#     assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
+    assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
 
 # torch.save(framework, 'framework.pt')
-
-
-framework = torch.load('framework.pt')
-
+# framework = torch.load('framework.pt')
 framework.print_stats()
 
 # Search
 k = 10
 
-import faiss
+# import faiss
 
 # D, I = faiss.knn(Q, X, k, metric=METRIC)
 

@@ -23,17 +23,21 @@ class Framework:
         metric: int,
         keep_max: bool,
     ) -> None:
-        self.index_class: type[Index] = index_class
+        # Fundamental properties
+        self.top_level_bucket: Bucket = Bucket(bucket_shape, metric)  # TODO: rename to (mutable?) buffer
+        self.levels: list[Index] = []
+        # Tree properties
         self.arity = arity
+        # Data properties
         self.dimensionality: int = bucket_shape[1]
-        self.bucket_shape: tuple[int, int] = bucket_shape
-        self.top_level_bucket: Bucket = Bucket(bucket_shape, metric)
         self.metric = metric
         self.keep_max = keep_max
-
-        self.levels: list[Index] = []
+        # Python/implementation-specific properties
+        self.index_class: type[Index] = index_class
+        self.bucket_shape: tuple[int, int] = bucket_shape
 
     def insert(self, X: Tensor, I: int) -> None:
+        """Insert a single vector into the index."""
         assert X.shape == (self.dimensionality,)
 
         # Add the vector to the top level bucket
@@ -41,9 +45,14 @@ class Framework:
 
         # If the top level bucket is full, we need to merge it with the first level
         if self.top_level_bucket.is_full():
-            self.accommodate(current_level=1)
+            self.compact(current_level=1)
 
-    def accommodate(self, current_level: int) -> None:
+    def compact(self, current_level: int) -> None:  # TODO: implement other compaction strategies
+        """Compact the data from the top level into the index.
+
+        Compact the data from the top level bucket by either creating a new level
+        or merging it with an existing one. The top level bucket will be emptied by this method.
+        """
         # Take all data above this level and either create a new index or merge the data into an existing one
 
         # Option 1 -- We have descended beyond the existing levels, there is no index, we must create one
@@ -81,8 +90,8 @@ class Framework:
                 if not is_successfully_inserted:  # The level is not able to absorb the data = overflow detected
                     # Option 2.2.2.1 -- retrain(level) = if the total number of objects is less than BUCKET_SIZE -> we can retrain the model and reorganize the data
                     # TODO: implement
-                    # Option 2.2.2.2 -- accommodate(level + 1) = if the total number of objects is equal to BUCKET_SIZE -> we have no other choice
-                    self.accommodate(current_level + 1)
+                    # Option 2.2.2.2 -- comact(level + 1) = if the total number of objects is equal to BUCKET_SIZE -> we have no other choice
+                    self.compact(current_level + 1)
                     # Option 2.2.2.3 -- train for a bit using BLISS training procedure = use BLISS to reorganize the existing and new data
                     # TODO: implement
 
@@ -98,11 +107,14 @@ class Framework:
             self.levels[i].empty()
 
     def search(self, query: Tensor, k: int) -> tuple[np.ndarray, np.ndarray]:
+        """Search the index for the k nearest neighbors of a single query vector."""
         assert query.shape == (self.dimensionality,)
 
         query = query.reshape((1, self.dimensionality))
 
+        # Search the top level if it is not empty
         searchable_levels = [self.top_level_bucket] if not self.top_level_bucket.is_empty() else []
+        # Add all levels that exist
         searchable_levels += [l for l in self.levels if l.exists()]
 
         n_partial_results = len(searchable_levels)
@@ -118,6 +130,7 @@ class Framework:
         return merge_knn_results(D_all, I_all, keep_max=self.keep_max)
 
     def get_n_objects(self) -> int:
+        """Return the total number of objects in the index."""
         return self.top_level_bucket.get_n_objects() + sum(map(self.index_class.get_n_objects, self.levels))
 
     def get_buckets(self, till_layer: int) -> list[Bucket]:
@@ -128,7 +141,7 @@ class Framework:
         ]
 
     def _get_index(self, level: int) -> Index:
-        # Converts 1-based indexing to 0-based indexing
+        """Return the index at the specified level. Converts 1-based indexing to 0-based indexing."""
         return self.levels[level - 1]
 
     def print_stats(self) -> None:
