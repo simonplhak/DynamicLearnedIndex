@@ -47,7 +47,9 @@ class Framework:
         if self.top_level_bucket.is_full():
             self.compact(current_level=1)
 
-    def compact(self, current_level: int) -> None:  # TODO: implement other compaction strategies
+    def compact(self, current_level: int) -> None:
+        # TODO: implement other compaction strategies
+        # TODO: implement my own algorithm for situations where the clustering does not conform to maximal bucket sizes - essentially `train` method (is this framework or index specific?)
         """Compact the data from the top level into the index.
 
         Compact the data from the top level bucket by either creating a new level
