@@ -26,12 +26,15 @@ class Framework:
         # Fundamental properties
         self.top_level_bucket: Bucket = Bucket(bucket_shape, metric)  # TODO: rename to (mutable?) buffer
         self.levels: list[Index] = []
+
         # Tree properties
         self.arity = arity
+
         # Data properties
         self.dimensionality: int = bucket_shape[1]
         self.metric = metric
         self.keep_max = keep_max
+
         # Python/implementation-specific properties
         self.index_class: type[Index] = index_class
         self.bucket_shape: tuple[int, int] = bucket_shape
@@ -49,6 +52,9 @@ class Framework:
 
     def compact(self, current_level: int) -> None:
         # TODO: implement other compaction strategies
+        self.compact_bentley_saxe(current_level)
+
+    def compact_bentley_saxe(self, current_level: int) -> None:
         # TODO: implement my own algorithm for situations where the clustering does not conform to maximal bucket sizes - essentially `train` method (is this framework or index specific?)
         """Compact the data from the top level into the index.
 
