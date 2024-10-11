@@ -37,7 +37,7 @@ def take_sample(buckets: list[Bucket], sample_size: int, dimensionality: int) ->
     sample_indexes = torch.randint(total_n_objects, (sample_size,))
 
     start, stop, result_offset = 0, 0, 0
-    result = torch.empty((sample_size, dimensionality), dtype=torch.float16)
+    result = torch.empty((sample_size, dimensionality), dtype=torch.float32)
 
     for bucket in buckets:
         stop += bucket.get_n_objects()

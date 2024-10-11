@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from bucket import Bucket
 from index import Index
 from labeled_dataset import LabeledDataset
+from utils import take_sample
 
 
 class LMIIndex(Index):
@@ -40,10 +41,8 @@ class LMIIndex(Index):
         self.optimizer = Adam(params=self.model.parameters(), lr=self.lr)
 
     def train(self, buckets: list[Bucket]) -> None:
-        # TODO: get rid of torch.concatenate
-        X, I = torch.concatenate([b.get_data() for b in buckets]), np.concatenate([b.get_ids() for b in buckets])
-
-        # TODO: train only on a sample
+        sample_size = sum(b.get_n_objects() for b in buckets)  # TODO: change
+        X_sample = take_sample(buckets, sample_size, self.dimensionality)
 
         # Run k-means to obtain training labels
         kmeans = Kmeans(
@@ -52,11 +51,11 @@ class LMIIndex(Index):
             verbose=False,
             seed=42,
         )
-        kmeans.train(X)
-        y = torch.from_numpy(kmeans.index.search(X, 1)[1].T[0])  # type: ignore
+        kmeans.train(X_sample)
+        y = torch.from_numpy(kmeans.index.search(X_sample, 1)[1].T[0])  # type: ignore
 
         # Prepare the data loader for training
-        train_loader = DataLoader(dataset=LabeledDataset(X, y), batch_size=256, shuffle=True)
+        train_loader = DataLoader(dataset=LabeledDataset(X_sample, y), batch_size=256, shuffle=True)
 
         # Train the model
         self.model.train()
@@ -70,13 +69,17 @@ class LMIIndex(Index):
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
-        # Predict to which bucket each vector belongs
-        classes = self._predict(X, 1)[1].reshape(-1)
+        # Add the vectors to the new buckets
+        for existing_bucket in buckets:
+            bucket_data = existing_bucket.get_data()
+            bucket_indexes = existing_bucket.get_ids()
 
-        # Add the vectors to the buckets
-        for i, child_bucket in self.buckets.items():
-            # ! This insert overflows as k-means produces unbalanced clusters
-            child_bucket.insert(X[classes == i], I[classes == i])
+            # Each vector belongs to a new bucket
+            classes = self._predict(bucket_data, 1)[1].reshape(-1)
+
+            for i, new_child_bucket in self.buckets.items():
+                # ! This insert overflows as k-means produces unbalanced clusters
+                new_child_bucket.insert(bucket_data[classes == i], bucket_indexes[classes == i])
 
         self.is_trained = True
 
