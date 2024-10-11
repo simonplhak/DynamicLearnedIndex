@@ -16,6 +16,9 @@ pip install h5py
 # BLISS
 pip install scikit-learn
 
+# Evaluation
+pip install tqdm
+
 # Download the datasets
 wget 'https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=300K.h5'
 wget 'http://ingeotec.mx/~sadit/sisap2024-data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5'

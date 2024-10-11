@@ -3,6 +3,7 @@ from __future__ import annotations
 import h5py
 import torch
 from faiss import METRIC_L2
+from tqdm import tqdm
 
 from bliss import BLISSIndex
 from dummy import DummyIndex
@@ -72,7 +73,7 @@ k = 10
 
 def perform_search() -> float:
     recall = 0
-    for i in range(len(Q)):
+    for i in tqdm(range(len(Q))):
         _, I = framework.search(Q[i], k)
         # _, I = faiss.knn(Q[i : i + 1], X, k, metric=METRIC)
         # I[i]
