@@ -69,19 +69,24 @@ k = 10
 # print(GT[:, :k])
 # _, I = faiss.knn(Q, X, k, metric=METRIC)
 
-recall = 0
-for i in range(len(Q)):
-    _, I = framework.search(Q[i], k)
-    # _, I = faiss.knn(Q[i : i + 1], X, k, metric=METRIC)
-    # I[i]
-    # I = I[0]
-    # print(torch.from_numpy(I + 1), GT[i, :k])
-    # print((I + 1).tolist())
-    recall += len(set((I[0] + 1).tolist()).intersection(set(GT[i, :k].tolist()))) / k
-    # recall += (torch.from_numpy(I + 1) == GT[i, :k]).sum().item() / len(GT)
-    # print(recall)
-    # exit(0)
-print(recall / len(Q))  # 0.058560000000003706
+
+def perform_search() -> float:
+    recall = 0
+    for i in range(len(Q)):
+        _, I = framework.search(Q[i], k)
+        # _, I = faiss.knn(Q[i : i + 1], X, k, metric=METRIC)
+        # I[i]
+        # I = I[0]
+        # print(torch.from_numpy(I + 1), GT[i, :k])
+        # print((I + 1).tolist())
+        recall += len(set((I[0] + 1).tolist()).intersection(set(GT[i, :k].tolist()))) / k
+        # recall += (torch.from_numpy(I + 1) == GT[i, :k]).sum().item() / len(GT)
+        # print(recall)
+        # exit(0)
+    return recall / len(Q)  # 0.058560000000003706
+
+
+# print(perform_search())
 
 # recall = (torch.from_numpy((I + 1)[:, :k]) == GT[:, :k]).sum() / len(GT)
 # print(recall)
