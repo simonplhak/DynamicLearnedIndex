@@ -87,6 +87,9 @@ class BLISSIndex(Index):
             n_shifts = self._redistribute(bucket_assignment, bucket_predictions, len(X))
             # print(f'{n_shifts=}')
 
+        # TODO: What if the number of objects in a bucket is larger than the bucket size?
+        # bucket_assignment = self._fix_bucket_assignment(bucket_assignment)
+
         # Add the vectors to the buckets
         for i, child_bucket in self.buckets.items():
             child_bucket.insert(X[bucket_assignment == i], I[bucket_assignment == i])
@@ -94,6 +97,13 @@ class BLISSIndex(Index):
         self.is_trained = True
 
         # TODO: what if all objects were inserted into the same bucket? = unbalanced partitioning
+
+    # def _fix_bucket_assignment(self, bucket_assignment: Tensor) -> Tensor:
+    #     # TODO: move objects that are above the capacity limit into
+    #     # ??? either (BLISS-like style) the least populated bucket or to the second most probable bucket (???-style)
+    #     # BLISS-style
+    #     # ???-style
+    #     pass
 
     @measure_runtime
     def insert(self, buckets: list[Bucket]) -> bool:
@@ -134,11 +144,15 @@ class BLISSIndex(Index):
         return int(top_k_bucket_ids[np.argmin(bucket_population[top_k_bucket_ids])])
 
     @measure_runtime
-    # Redistribute objects across buckets (put each object the least populated bucket among the top K in an incremental manner)
     def _redistribute(self, bucket_assignment: np.ndarray, top_k_predicted_buckets: Tensor, dataset_size: int) -> int:
+        """Redistribute objects across buckets (put each object the least populated bucket among the top K in an incremental manner).
+
+        TODO: Different from BLISS, as this function does respect the bucket capacity limit.
+        """
         n_shifts = 0
 
         # Reassign each object to the least populated bucket among the top K predicted buckets
+        # However, (different from BLISS) respect the bucket capacity limit
         for i in range(dataset_size):
             # Select the least populated bucket among the top K
             # TODO: compute this outside the loop for all objects
@@ -151,6 +165,8 @@ class BLISSIndex(Index):
                 continue
 
             if bucket_assignment[i] != least_populated_bucket:
+                # TODO: I want to move object to the least populated bucket that is not yet full
+                # TODO: iterate over from most probable to least put into the first non-full bucket
                 # Put the object into the least populated bucket
                 n_shifts += 1
                 bucket_assignment[i] = least_populated_bucket
