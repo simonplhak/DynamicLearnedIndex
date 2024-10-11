@@ -69,17 +69,7 @@ class LMIIndex(Index):
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
-        # Add the vectors to the new buckets
-        for existing_bucket in buckets:
-            bucket_data = existing_bucket.get_data()
-            bucket_indexes = existing_bucket.get_ids()
-
-            # Each vector belongs to a new bucket
-            classes = self._predict(bucket_data, 1)[1].reshape(-1)
-
-            for i, new_child_bucket in self.buckets.items():
-                # ! This insert overflows as k-means produces unbalanced clusters
-                new_child_bucket.insert(bucket_data[classes == i], bucket_indexes[classes == i])
+        self._assign_objects_to_new_buckets(buckets)
 
         self.is_trained = True
 
@@ -104,6 +94,19 @@ class LMIIndex(Index):
             child_bucket.insert(X[bucket_ids == i], I[bucket_ids == i])
 
         return True
+
+    def _assign_objects_to_new_buckets(self, buckets: list[Bucket]) -> None:
+        # Add the vectors to the new buckets
+        for existing_bucket in buckets:
+            bucket_data = existing_bucket.get_data()
+            bucket_indexes = existing_bucket.get_ids()
+
+            # Each vector belongs to a new bucket
+            classes = self._predict(bucket_data, 1)[1].reshape(-1)
+
+            for i, new_child_bucket in self.buckets.items():
+                # ! This insert overflows as k-means produces unbalanced clusters
+                new_child_bucket.insert(bucket_data[classes == i], bucket_indexes[classes == i])
 
     def _predict(self, X: Tensor, top_k: int) -> tuple[Tensor, Tensor]:
         assert self.model is not None, 'Model is not trained yet.'

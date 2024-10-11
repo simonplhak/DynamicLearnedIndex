@@ -99,20 +99,7 @@ class BLISSIndex(Index):
         # TODO: What if the number of objects in a bucket is larger than the bucket size?
         # bucket_assignment = self._fix_bucket_assignment(bucket_assignment)
 
-        # Add the vectors to the new buckets
-        offset = 0
-        for existing_bucket in buckets:
-            bucket_data = existing_bucket.get_data()
-            bucket_indexes = existing_bucket.get_ids()
-            relevant_bucket_assignment = bucket_assignment[offset : offset + existing_bucket.get_n_objects()]
-
-            for i, new_child_bucket in self.buckets.items():
-                new_child_bucket.insert(
-                    bucket_data[relevant_bucket_assignment == i],
-                    bucket_indexes[relevant_bucket_assignment == i],
-                )
-
-            offset += existing_bucket.get_n_objects()
+        self._assign_objects_to_new_buckets(bucket_assignment, buckets)
 
         self.is_trained = True
 
@@ -147,6 +134,23 @@ class BLISSIndex(Index):
     def search(self, query: Tensor, k: int) -> tuple[np.ndarray, np.ndarray]:
         bucket_id = int(self._predict(query, 1)[1].item())
         return self.buckets[bucket_id].search(query, k)
+
+    def _assign_objects_to_new_buckets(self, bucket_assignment: np.ndarray, buckets: list[Bucket]) -> None:
+        # Add the vectors to the new buckets
+        offset = 0
+
+        for existing_bucket in buckets:
+            bucket_data = existing_bucket.get_data()
+            bucket_indexes = existing_bucket.get_ids()
+            relevant_bucket_assignment = bucket_assignment[offset : offset + existing_bucket.get_n_objects()]
+
+            for i, new_child_bucket in self.buckets.items():
+                new_child_bucket.insert(
+                    bucket_data[relevant_bucket_assignment == i],
+                    bucket_indexes[relevant_bucket_assignment == i],
+                )
+
+            offset += existing_bucket.get_n_objects()
 
     @measure_runtime
     def _prepare_ground_truth(self, sample: Tensor, k: int) -> np.ndarray:

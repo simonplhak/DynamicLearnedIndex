@@ -55,6 +55,11 @@ class DummyIndex(Index):
             if n_objects_in_bucket + self.buckets[i].get_n_objects() > self.bucket_size:
                 return False  # Overflow detected
 
+        self._assign_objects_to_new_buckets(bucket_ids, buckets)
+
+        return True  # Insertion successful
+
+    def _assign_objects_to_new_buckets(self, bucket_ids: Tensor, buckets: list[Bucket]) -> None:
         # Add the vectors to the new buckets
         offset = 0
 
@@ -70,8 +75,6 @@ class DummyIndex(Index):
                 )
 
             offset += existing_bucket.get_n_objects()
-
-        return True  # Insertion successful
 
     def search(self, query: Tensor, k: int) -> tuple[np.ndarray, np.ndarray]:
         bucket_id = int(torch.randint(self.n_buckets, (1,)))
