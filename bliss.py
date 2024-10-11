@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 
 from index import Index
 from labeled_dataset import LabeledDataset
-from utils import measure_runtime, np_rng, torch_rng
+from utils import measure_runtime, np_rng, take_sample
 
 if TYPE_CHECKING:
     from bucket import Bucket
@@ -57,42 +57,62 @@ class BLISSIndex(Index):
 
     @measure_runtime
     def train(self, buckets: list[Bucket]) -> None:
-        # TODO: get rid of torch.concatenate
-        X, I = torch.concatenate([b.get_data() for b in buckets]), np.concatenate([b.get_ids() for b in buckets])
+        sample_size = sum(b.get_n_objects() for b in buckets)  # TODO: change
+        X_sample, I_sample = take_sample(buckets, sample_size, self.dimensionality)
 
-        # Take a sample from the dataset
-        sample_indices = torch.randperm(len(X), generator=torch_rng)[: self.sample_size]
-        sample = X[sample_indices]
+        total_n_objects = sum(b.get_n_objects() for b in buckets)
 
         # Randomly distribute the dataset into buckets
-        bucket_assignment = np_rng.choice(self.n_buckets, len(X))
+        bucket_assignment = np_rng.choice(self.n_buckets, total_n_objects)
 
         # Calculate kNN ground truth for the sample on the sample
-        ground_truth = self._prepare_ground_truth(sample, self.k_training)
+        ground_truth = self._prepare_ground_truth(X_sample, self.k_training)
 
         for _ in range(self.n_redistributions):
             # Select the bucket assignment of the sample for training
-            bucket_assignment_for_sample = bucket_assignment[sample_indices]
+            bucket_assignment_for_sample = bucket_assignment[I_sample]
 
             # Calculate the labels for the training
             labels = self._calculate_training_labels(bucket_assignment_for_sample, ground_truth)
 
             # Train the model
-            self._train_model(sample, labels)
+            self._train_model(X_sample, labels)
 
-            # Predict to which bucket each vector belongs
-            bucket_predictions = self._predict(X, self.top_k_buckets_to_load_balance_between)[1]
+            offset = 0
+            bucket_predictions = torch.empty(
+                (total_n_objects, self.top_k_buckets_to_load_balance_between),
+                dtype=torch.int32,
+            )
+            for existing_bucket in buckets:
+                # Predict to which bucket each vector belongs
+                bucket_predictions[offset : offset + existing_bucket.get_n_objects(), :] = self._predict(
+                    existing_bucket.get_data(),
+                    self.top_k_buckets_to_load_balance_between,
+                )[1]
+
+                offset += existing_bucket.get_n_objects()
 
             # Redistribute the objects
-            n_shifts = self._redistribute(bucket_assignment, bucket_predictions, len(X))
+            n_shifts = self._redistribute(bucket_assignment, bucket_predictions, total_n_objects)
             # print(f'{n_shifts=}')
 
         # TODO: What if the number of objects in a bucket is larger than the bucket size?
         # bucket_assignment = self._fix_bucket_assignment(bucket_assignment)
 
-        # Add the vectors to the buckets
-        for i, child_bucket in self.buckets.items():
-            child_bucket.insert(X[bucket_assignment == i], I[bucket_assignment == i])
+        # Add the vectors to the new buckets
+        offset = 0
+        for existing_bucket in buckets:
+            bucket_data = existing_bucket.get_data()
+            bucket_indexes = existing_bucket.get_ids()
+            relevant_bucket_assignment = bucket_assignment[offset : offset + existing_bucket.get_n_objects()]
+
+            for i, new_child_bucket in self.buckets.items():
+                new_child_bucket.insert(
+                    bucket_data[relevant_bucket_assignment == i],
+                    bucket_indexes[relevant_bucket_assignment == i],
+                )
+
+            offset += existing_bucket.get_n_objects()
 
         self.is_trained = True
 

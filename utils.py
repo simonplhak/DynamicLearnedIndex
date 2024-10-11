@@ -31,7 +31,7 @@ def measure_runtime(func: Callable) -> Callable:
     return wrapper_measure_runtime
 
 
-def take_sample(buckets: list[Bucket], sample_size: int, dimensionality: int) -> torch.Tensor:
+def take_sample(buckets: list[Bucket], sample_size: int, dimensionality: int) -> tuple[torch.Tensor, torch.Tensor]:
     """Return a tensor of size (sample_size, dimensionality) with the sample of objects from the given buckets."""
     total_n_objects = sum(b.get_n_objects() for b in buckets)
     sample_indexes = torch.randint(total_n_objects, (sample_size,))
@@ -49,4 +49,4 @@ def take_sample(buckets: list[Bucket], sample_size: int, dimensionality: int) ->
         result_offset += len(bucket_sample_indexes)
         start += bucket.get_n_objects()
 
-    return result
+    return result, sample_indexes
