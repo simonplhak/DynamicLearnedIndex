@@ -24,7 +24,7 @@ class DynamicBucket(Bucket):
 
         super().insert_single(X, I)
 
-    def insert(self, X: Tensor, I: np.ndarray) -> None:
+    def insert_bulk(self, X: Tensor, I: np.ndarray) -> None:
         if len(X) == 0:
             return
 
@@ -33,7 +33,7 @@ class DynamicBucket(Bucket):
         if self.n_objects + len(X) > self.bucket_size:
             self._resize()
 
-        super().insert(X, I)
+        super().insert_bulk(X, I)
 
     def _resize(self) -> None:
         self.data = torch.cat((self.data, torch.zeros((self.bucket_size, self.dimensionality))))

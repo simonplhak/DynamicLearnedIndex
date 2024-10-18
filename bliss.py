@@ -127,7 +127,7 @@ class BLISSIndex(Index):
 
         # Add the vectors to the buckets
         for i, child_bucket in self.buckets.items():
-            child_bucket.insert(X[bucket_ids == i], I[bucket_ids == i])
+            child_bucket.insert_bulk(X[bucket_ids == i], I[bucket_ids == i])
 
         return True  # Insertion successful
 
@@ -145,7 +145,7 @@ class BLISSIndex(Index):
             relevant_bucket_assignment = bucket_assignment[offset : offset + existing_bucket.get_n_objects()]
 
             for i, new_child_bucket in self.buckets.items():
-                new_child_bucket.insert(
+                new_child_bucket.insert_bulk(
                     bucket_data[relevant_bucket_assignment == i],
                     bucket_indexes[relevant_bucket_assignment == i],
                 )

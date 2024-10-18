@@ -31,7 +31,7 @@ class Bucket:
         self.ids[self.n_objects] = I
         self.n_objects += 1
 
-    def insert(self, X: Tensor, I: np.ndarray) -> None:
+    def insert_bulk(self, X: Tensor, I: np.ndarray) -> None:
         if len(X) == 0:
             return
 
