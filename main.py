@@ -5,9 +5,10 @@ import torch
 from faiss import METRIC_L2
 from tqdm import tqdm
 
+from bentley_saxe import BentleySaxe
 from bliss import BLISSIndex
 from dummy import DummyIndex
-from framework import Framework
+from leveling import Leveling
 from lmi import LMIIndex
 
 SEED = 42
@@ -33,7 +34,8 @@ GT = torch.from_numpy(
 assert X.shape[1] == DIMENSIONALITY
 
 # Create the framework
-framework = Framework(
+# framework = BentleySaxe(
+framework = Leveling(
     # BLISSIndex,
     DummyIndex,
     # LMIIndex,
@@ -87,7 +89,7 @@ def perform_search() -> float:
     return recall / len(Q)  # 0.058560000000003706
 
 
-# print(perform_search())
+print(perform_search())
 
 # recall = (torch.from_numpy((I + 1)[:, :k]) == GT[:, :k]).sum() / len(GT)
 # print(recall)
