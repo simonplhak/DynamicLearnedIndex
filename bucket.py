@@ -10,6 +10,8 @@ torch.manual_seed(SEED)
 
 
 class Bucket:
+    """A bucket with a fixed capacity."""
+
     def __init__(self, bucket_shape: tuple[int, int], metric: int) -> None:
         self.bucket_size, self.dimensionality = bucket_shape
         self.metric = metric
