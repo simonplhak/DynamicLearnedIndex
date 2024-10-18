@@ -158,7 +158,7 @@ class Framework:
         print('Index stats:')
         print(f' Top level: {self.top_level_bucket.get_n_objects()} | {bucket_size}')
         for i, level in enumerate(self.levels):
-            print(f' Level {i + 1}: {level.get_n_objects()} | {bucket_size * (self.arity ** (i+1))}')
+            print(f' Level {i}: {level.get_n_objects()} | {bucket_size * (self.arity ** (i+1))}')
             for j, bucket in enumerate(level.get_buckets()):
                 print(f'  Bucket {j}: {bucket.get_n_objects()} | {bucket_size}')
         print(f' Total: {self.get_n_objects()} objects')
