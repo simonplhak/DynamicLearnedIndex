@@ -62,6 +62,12 @@ class Bucket:
     def get_n_objects(self) -> int:
         return self.n_objects
 
+    def get_capacity(self) -> int:
+        return self.bucket_size
+
+    def get_free_space(self) -> int:
+        return self.bucket_size - self.n_objects
+
     def get_data(self) -> Tensor:
         return self.data[: self.n_objects]
 

@@ -17,6 +17,8 @@ class Index(ABC):
         metric: int,
         bucket_shape: tuple[int, int],
     ) -> None:
+        self.bucket_size = bucket_shape[0]
+        """Size of each bucket."""
         self.dimensionality: int = bucket_shape[1]
         """Dimensionality of the data."""
         self.n_buckets: int = n_buckets
@@ -58,6 +60,12 @@ class Index(ABC):
 
     def get_n_objects(self) -> int:
         return sum(map(Bucket.get_n_objects, self.buckets.values()))
+
+    def get_total_capacity(self) -> int:
+        return self.n_buckets * self.bucket_size
+
+    def get_free_space(self) -> int:
+        return self.get_total_capacity() - self.get_n_objects()
 
     def get_buckets(self) -> list[Bucket]:
         return list(self.buckets.values())

@@ -53,6 +53,16 @@ class DummyIndex(Index):
         # Check that buckets do not overflow
         for i, n_objects_in_bucket in enumerate(torch.bincount(bucket_ids, minlength=self.n_buckets)):
             if n_objects_in_bucket + self.buckets[i].get_n_objects() > self.bucket_size:
+                # Overflow detected, try to fix it
+                offset = 0
+                for j, bucket in self.buckets.items():
+                    bucket_ids[offset : offset + bucket.get_free_space()] = j
+                    offset += bucket.get_free_space()
+                break
+
+        # Check that buckets do not overflow
+        for i, n_objects_in_bucket in enumerate(torch.bincount(bucket_ids, minlength=self.n_buckets)):
+            if n_objects_in_bucket + self.buckets[i].get_n_objects() > self.bucket_size:
                 return False  # Overflow detected
 
         self._assign_objects_to_new_buckets(bucket_ids, buckets)

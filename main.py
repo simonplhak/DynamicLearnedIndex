@@ -19,7 +19,7 @@ DIMENSIONALITY = 768
 BUCKET_SHAPE = (BUCKET_SIZE, DIMENSIONALITY)
 METRIC = METRIC_L2
 KEEP_MAX = False  # Related to METRIC
-DATASET_SIZE = 3_000
+DATASET_SIZE = 10_000
 # N_QUERIES = 100
 
 # Load the dataset
@@ -34,8 +34,8 @@ assert X.shape[1] == DIMENSIONALITY
 
 # Create the framework
 framework = Framework(
-    BLISSIndex,
-    # DummyIndex,
+    # BLISSIndex,
+    DummyIndex,
     # LMIIndex,
     ARITY,
     BUCKET_SHAPE,
@@ -47,8 +47,8 @@ framework = Framework(
 for i in range(len(X)):
     framework.insert(X[i], i)
 
-    if (i + 1) % (len(X) // 10) == 0:
-        print(f'Inserted {i+1} objects')
+    # if (i + 1) % (len(X) // 10) == 0:
+    print(f'Inserted {i+1} objects')
 
     assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
 
