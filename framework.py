@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from itertools import chain
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 from faiss import merge_knn_results
@@ -24,7 +24,7 @@ class Framework:
         keep_max: bool,
     ) -> None:
         # Fundamental properties
-        self.top_level_bucket: Bucket = Bucket(bucket_shape, metric)  # TODO: rename to (mutable?) buffer
+        self.top_level_bucket: Bucket = Bucket(bucket_shape, metric)  # TODO: ! rename to mutable buffer
         self.levels: list[Index] = []
 
         # Tree properties
@@ -43,16 +43,86 @@ class Framework:
         """Insert a single vector into the index."""
         assert X.shape == (self.dimensionality,)
 
-        # Add the vector to the top level bucket
+        self.compact(X, I, current_level=1)
+
+    def compact(
+        self,
+        X: Tensor,
+        I: int,
+        current_level: int,
+        # strategy: Literal['bentley_saxe'] | Literal['leveling'] = 'bentley_saxe',
+        strategy: Literal['bentley_saxe'] | Literal['leveling'] = 'leveling',
+    ) -> None:
+        # TODO: use design pattern
+
+        match strategy:
+            case 'bentley_saxe':
+                self.top_level_bucket.insert_single(X, I)
+
+                # If the top level bucket is full, we need to merge it with the first level
+                if self.top_level_bucket.is_full():
+                    self.compact_bentley_saxe(current_level)
+                return
+            case 'leveling':
+                if not self.top_level_bucket.is_full():
+                    self.top_level_bucket.insert_single(X, I)
+                    return
+
+                self.compact_leveling(X, I)
+                return
+
+            # TODO: implement other compaction strategies
+        assert False
+
+    def compact_leveling(self, X: Tensor, I: int) -> None:
+        if len(self.levels) == 0:
+            index = self.index_class(
+                n_buckets=pow(self.arity, 1),
+                metric=self.metric,
+                bucket_shape=self.bucket_shape,
+            )
+            index.train([self.top_level_bucket])
+            self._create_new_level(index)
+            self.top_level_bucket.empty()
+
+            # Add the new vector into the buffer
+            self.top_level_bucket.insert_single(X, I)
+            return
+
+        # Set to len(self.levels), so that we allocate a new level if no level with enough space is found
+        idx = len(self.levels)  # idx in [0, len(self.levels))]
+
+        for i in range(1, len(self.levels)):
+            if self.levels[i].get_free_space() >= self.levels[i - 1].get_n_objects():
+                idx = i  # Found a level with enough space
+                break
+
+        # idx == len(self.levels) -> Allocate a new level
+        # idx != len(self.levels) -> We do the merging of the existing levels and then accommodate the data
+
+        for i in range(idx, 0, -1):
+            if i == len(self.levels):  # We need to allocate a new level
+                # TODO: reset the model's weights first?
+                index = self.index_class(
+                    n_buckets=pow(self.arity, i + 1),
+                    metric=self.metric,
+                    bucket_shape=self.bucket_shape,
+                )
+                index.train(self.levels[i - 1].get_buckets())
+                self._create_new_level(index)
+            else:
+                assert self.levels[i].insert(self.levels[i - 1].get_buckets())
+
+            self.levels[i - 1].empty()
+
+        # Accommodate the buffer data into the 0th level
+        assert self.levels[0].insert([self.top_level_bucket])
+
+        # Empty the buffer
+        self.top_level_bucket.empty()
+
+        # Add the new vector into the buffer
         self.top_level_bucket.insert_single(X, I)
-
-        # If the top level bucket is full, we need to merge it with the first level
-        if self.top_level_bucket.is_full():
-            self.compact(current_level=1)
-
-    def compact(self, current_level: int) -> None:
-        # TODO: implement other compaction strategies
-        self.compact_bentley_saxe(current_level)
 
     def compact_bentley_saxe(self, current_level: int) -> None:
         # TODO: implement my own algorithm for situations where the clustering does not conform to maximal bucket sizes - essentially `train` method (is this framework or index specific?)
@@ -99,7 +169,7 @@ class Framework:
                     # Option 2.2.2.1 -- retrain(level) = if the total number of objects is less than BUCKET_SIZE -> we can retrain the model and reorganize the data
                     # TODO: implement
                     # Option 2.2.2.2 -- comact(level + 1) = if the total number of objects is equal to BUCKET_SIZE -> we have no other choice
-                    self.compact(current_level + 1)
+                    self.compact_bentley_saxe(current_level + 1)
                     # Option 2.2.2.3 -- train for a bit using BLISS training procedure = use BLISS to reorganize the existing and new data
                     # TODO: implement
 
@@ -142,7 +212,7 @@ class Framework:
         return self.top_level_bucket.get_n_objects() + sum(map(self.index_class.get_n_objects, self.levels))
 
     def get_buckets(self, till_layer: int) -> list[Bucket]:
-        """Return a list of buckets from the top level to the specified level."""
+        """Return a list of buckets from the top level to the specified level, including the top level."""
         return [
             self.top_level_bucket,
             *list(chain.from_iterable(map(self.index_class.get_buckets, self.levels[:till_layer]))),
