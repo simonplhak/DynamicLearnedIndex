@@ -24,7 +24,7 @@ class Framework:
         keep_max: bool,
     ) -> None:
         # Fundamental properties
-        self.top_level_bucket: Bucket = Bucket(bucket_shape, metric)  # TODO: ! rename to mutable buffer
+        self.buffer: Bucket = Bucket(bucket_shape, metric)
         self.levels: list[Index] = []
 
         # Tree properties
@@ -57,15 +57,15 @@ class Framework:
 
         match strategy:
             case 'bentley_saxe':
-                self.top_level_bucket.insert_single(X, I)
+                self.buffer.insert_single(X, I)
 
-                # If the top level bucket is full, we need to merge it with the first level
-                if self.top_level_bucket.is_full():
+                # If the buffer is full, we need to merge it with the first level
+                if self.buffer.is_full():
                     self.compact_bentley_saxe(current_level)
                 return
             case 'leveling':
-                if not self.top_level_bucket.is_full():
-                    self.top_level_bucket.insert_single(X, I)
+                if not self.buffer.is_full():
+                    self.buffer.insert_single(X, I)
                     return
 
                 self.compact_leveling(X, I)
@@ -81,12 +81,12 @@ class Framework:
                 metric=self.metric,
                 bucket_shape=self.bucket_shape,
             )
-            index.train([self.top_level_bucket])
+            index.train([self.buffer])
             self._create_new_level(index)
-            self.top_level_bucket.empty()
+            self.buffer.empty()
 
             # Add the new vector into the buffer
-            self.top_level_bucket.insert_single(X, I)
+            self.buffer.insert_single(X, I)
             return
 
         # Set to len(self.levels), so that we allocate a new level if no level with enough space is found
@@ -116,20 +116,20 @@ class Framework:
             self.levels[i - 1].empty()
 
         # Accommodate the buffer data into the 0th level
-        assert self.levels[0].insert([self.top_level_bucket])
+        assert self.levels[0].insert([self.buffer])
 
         # Empty the buffer
-        self.top_level_bucket.empty()
+        self.buffer.empty()
 
         # Add the new vector into the buffer
-        self.top_level_bucket.insert_single(X, I)
+        self.buffer.insert_single(X, I)
 
     def compact_bentley_saxe(self, current_level: int) -> None:
         # TODO: implement my own algorithm for situations where the clustering does not conform to maximal bucket sizes - essentially `train` method (is this framework or index specific?)
-        """Compact the data from the top level into the index.
+        """Compact the data from the buffer into the index.
 
-        Compact the data from the top level bucket by either creating a new level
-        or merging it with an existing one. The top level bucket will be emptied by this method.
+        Compact the data from the buffer by either creating a new level
+        or merging it with an existing one. The buffer will be emptied by this method.
         """
         # Take all data above this level and either create a new index or merge the data into an existing one
 
@@ -180,7 +180,7 @@ class Framework:
 
     def _empty_upper_levels(self, current_level: int) -> None:
         # Empty all levels above the current level as the bucket objects are now in the new index and should be empty
-        self.top_level_bucket.empty()
+        self.buffer.empty()
         for i in range(current_level - 1):
             self.levels[i].empty()
 
@@ -190,8 +190,8 @@ class Framework:
 
         query = query.reshape((1, self.dimensionality))
 
-        # Search the top level if it is not empty
-        searchable_levels = [self.top_level_bucket] if not self.top_level_bucket.is_empty() else []
+        # Search the buffer if it is not empty
+        searchable_levels = [self.buffer] if not self.buffer.is_empty() else []
         # Add all levels that exist
         searchable_levels += [l for l in self.levels if l.exists()]
 
@@ -209,12 +209,12 @@ class Framework:
 
     def get_n_objects(self) -> int:
         """Return the total number of objects in the index."""
-        return self.top_level_bucket.get_n_objects() + sum(map(self.index_class.get_n_objects, self.levels))
+        return self.buffer.get_n_objects() + sum(map(self.index_class.get_n_objects, self.levels))
 
     def get_buckets(self, till_layer: int) -> list[Bucket]:
-        """Return a list of buckets from the top level to the specified level, including the top level."""
+        """Return a list of buckets from the top level to the specified level, including the buffer."""
         return [
-            self.top_level_bucket,
+            self.buffer,
             *list(chain.from_iterable(map(self.index_class.get_buckets, self.levels[:till_layer]))),
         ]
 
@@ -226,7 +226,7 @@ class Framework:
         bucket_size = self.bucket_shape[0]
 
         print('Index stats:')
-        print(f' Top level: {self.top_level_bucket.get_n_objects()} | {bucket_size}')
+        print(f' Buffer: {self.buffer.get_n_objects()} | {bucket_size}')
         for i, level in enumerate(self.levels):
             print(f' Level {i}: {level.get_n_objects()} | {bucket_size * (self.arity ** (i+1))}')
             for j, bucket in enumerate(level.get_buckets()):
