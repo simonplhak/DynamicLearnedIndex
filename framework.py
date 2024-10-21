@@ -97,9 +97,12 @@ class Framework:
         bucket_size = self.bucket_shape[0]
 
         print('Index stats:')
-        print(f' Buffer: {self.buffer.get_n_objects()} | {bucket_size}')
+        print(f' Buffer: {self.buffer.get_n_objects()} | {self.buffer.get_capacity()}')
         for i, level in enumerate(self.levels):
-            print(f' Level {i}: {level.get_n_objects()} | {bucket_size * (self.arity ** (i+1))}')
+            hard_capacity_limit = bucket_size * (self.arity ** (i + 1))
+            print(
+                f' Level {i}: {level.get_n_objects()} | {hard_capacity_limit} ({level.get_total_capacity_with_bucket_expansion()})',
+            )
             for j, bucket in enumerate(level.get_buckets()):
-                print(f'  Bucket {j}: {bucket.get_n_objects()} | {bucket_size}')
+                print(f'  Bucket {j}: {bucket.get_n_objects()} | {bucket.get_capacity()}')
         print(f' Total: {self.get_n_objects()} objects')

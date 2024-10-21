@@ -60,7 +60,11 @@ class Index(ABC):
     def get_n_objects(self) -> int:
         return sum(map(Bucket.get_n_objects, self.buckets.values()))
 
+    def get_total_capacity_with_bucket_expansion(self) -> int:
+        return sum(map(Bucket.get_capacity, self.buckets.values()))
+
     def get_total_capacity(self) -> int:
+        """Return the expected total capacity of the index. Does NOT include bucket enlargements."""
         return self.n_buckets * self.bucket_size
 
     def get_free_space(self) -> int:
