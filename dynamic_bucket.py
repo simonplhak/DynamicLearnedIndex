@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from math import ceil
+
 import numpy as np
 import torch
 from torch import Tensor
@@ -20,7 +22,8 @@ class DynamicBucket(Bucket):
         assert X.shape == (self.dimensionality,), 'X must be a 1D tensor'
 
         if self.n_objects + 1 > self.bucket_size:
-            self._resize()
+            factor = self._calculate_resizing_factor(len(X))
+            self._resize(factor)
 
         super().insert_single(X, I)
 
@@ -31,11 +34,18 @@ class DynamicBucket(Bucket):
         assert len(X) == len(I), 'X and I must have the same length'
 
         if self.n_objects + len(X) > self.bucket_size:
-            self._resize()
+            factor = self._calculate_resizing_factor(len(X))
+            self._resize(factor)
 
         super().insert_bulk(X, I)
 
-    def _resize(self) -> None:
-        self.data = torch.cat((self.data, torch.zeros((self.bucket_size, self.dimensionality))))
-        self.ids = np.concatenate((self.ids, np.zeros(self.bucket_size, dtype=np.int64)))
-        self.bucket_size *= 2
+    def _resize(self, factor: int) -> None:
+        """Resize the bucket to the given factor."""
+        self.data = torch.cat((self.data, torch.zeros((self.bucket_size * (factor - 1), self.dimensionality))))
+        self.ids = np.concatenate((self.ids, np.zeros(self.bucket_size * (factor - 1), dtype=np.int64)))
+        self.bucket_size *= factor
+
+    def _calculate_resizing_factor(self, new_n_objects: int) -> int:
+        # We need to resize the bucket so that the existing objects (up to the self.bucket_size)
+        # + the new objects (new_n_objects) will fit to the new bucket
+        return ceil((new_n_objects + self.bucket_size) / self.bucket_size)
