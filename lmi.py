@@ -106,7 +106,7 @@ class LMIIndex(Index):
 
             for i, new_child_bucket in self.buckets.items():
                 # ! This insert overflows as k-means produces unbalanced clusters
-                new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[classes == i])
+                new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[np.where(classes == i)])
 
     def _predict(self, X: Tensor, top_k: int) -> tuple[Tensor, Tensor]:
         assert self.model is not None, 'Model is not trained yet.'

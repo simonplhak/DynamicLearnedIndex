@@ -2,14 +2,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import numpy as np
 import torch
 from torch import Tensor
 
 from index import Index
 
 if TYPE_CHECKING:
-    import numpy as np
-
     from bucket import Bucket
 
 
@@ -40,7 +39,7 @@ class DummyIndex(Index):
             classes = torch.randint(self.n_buckets, (existing_bucket.get_n_objects(),))
 
             for i, new_child_bucket in self.buckets.items():
-                new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[classes == i])
+                new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[np.where(classes == i)])
 
         self.is_trained = True
 

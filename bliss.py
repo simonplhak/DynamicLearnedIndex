@@ -147,7 +147,7 @@ class BLISSIndex(Index):
             for i, new_child_bucket in self.buckets.items():
                 new_child_bucket.insert_bulk(
                     bucket_data[relevant_bucket_assignment == i],
-                    bucket_indexes[relevant_bucket_assignment == i],
+                    bucket_indexes[np.where(relevant_bucket_assignment == i)],
                 )
 
             offset += existing_bucket.get_n_objects()
