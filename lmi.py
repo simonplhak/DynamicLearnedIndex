@@ -95,10 +95,7 @@ class LMIIndex(Index):
         # Predict to which bucket each vector belongs
         bucket_ids = self._predict(X, 1)[1].reshape(-1)
 
-        # Check that buckets do not overflow
-        for i, n_objects_in_bucket in enumerate(torch.bincount(bucket_ids, minlength=self.n_buckets)):
-            if n_objects_in_bucket + self.buckets[i].get_n_objects() > self.bucket_size:
-                return False  # Overflow detected
+        # Because we use dynamic bucket size, we do not check for overflowing buckets.
 
         # Add the vectors to the buckets
         for i, child_bucket in self.buckets.items():
