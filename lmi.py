@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import numpy as np
 import torch
 from faiss import Kmeans
@@ -9,19 +11,28 @@ from torch.nn.functional import softmax
 from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 
-from bucket import Bucket
+from dynamic_bucket import DynamicBucket
 from index import Index
 from labeled_dataset import LabeledDataset
 from utils import take_sample
 
+if TYPE_CHECKING:
+    from bucket import Bucket
+
 
 class LMIIndex(Index):
+    """Learned Metric Index (LMI) implementation with dynamic buckets."""
+
     def __init__(self, n_buckets: int, metric: int, bucket_shape: tuple[int, int]) -> None:
+        super().__init__(
+            n_buckets,
+            bucket_shape,
+        )
         self.dimensionality: int = bucket_shape[1]
         """Dimensionality of the data."""
         self.n_buckets: int = n_buckets
         """Number of buckets."""
-        self.buckets: dict[int, Bucket] = {i: Bucket(bucket_shape, metric) for i in range(n_buckets)}
+        self.buckets = {i: DynamicBucket(bucket_shape, metric) for i in range(n_buckets)}
 
         self.bucket_size = bucket_shape[0]
 

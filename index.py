@@ -14,7 +14,6 @@ class Index(ABC):
     def __init__(
         self,
         n_buckets: int,
-        metric: int,
         bucket_shape: tuple[int, int],
     ) -> None:
         self.bucket_size = bucket_shape[0]
@@ -23,7 +22,7 @@ class Index(ABC):
         """Dimensionality of the data."""
         self.n_buckets: int = n_buckets
         """Number of buckets."""
-        self.buckets: dict[int, Bucket] = {i: Bucket(bucket_shape, metric) for i in range(n_buckets)}
+        self.buckets: dict[int, Bucket]
 
         self.is_trained: bool = False
 

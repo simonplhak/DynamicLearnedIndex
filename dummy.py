@@ -6,10 +6,8 @@ import numpy as np
 import torch
 from torch import Tensor
 
+from bucket import Bucket
 from index import Index
-
-if TYPE_CHECKING:
-    from bucket import Bucket
 
 
 class DummyIndex(Index):
@@ -23,9 +21,10 @@ class DummyIndex(Index):
     ) -> None:
         super().__init__(
             n_buckets,
-            metric,
             bucket_shape,
         )
+        """Number of buckets."""
+        self.buckets = {i: Bucket(bucket_shape, metric) for i in range(n_buckets)}
 
         self.bucket_size = bucket_shape[0]
 
