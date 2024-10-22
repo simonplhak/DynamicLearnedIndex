@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import h5py
 import torch
 from faiss import METRIC_L2
@@ -48,6 +50,8 @@ framework = Leveling(
 )
 
 # Insert the dataset one object at a time
+s = time.time()
+
 for i in range(len(X)):
     framework.insert(X[i], i)
 
@@ -55,6 +59,8 @@ for i in range(len(X)):
         logger.info(f'Inserted {i+1} objects')
 
     assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
+
+logger.info(f'Inserted {len(X)} objects in {time.time() - s:.5}s')
 
 # torch.save(framework, 'framework.pt')
 # framework = torch.load('framework.pt')
