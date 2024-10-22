@@ -123,6 +123,8 @@ class BLISSIndex(Index):
         return True  # Insertion successful
 
     def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+        nprobe = min(nprobe, self.n_buckets)
+
         bucket_ids = self._predict(query, nprobe)[1][0]
 
         D_all, I_all = (

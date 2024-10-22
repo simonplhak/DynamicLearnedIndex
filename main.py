@@ -4,11 +4,10 @@ import time
 
 import h5py
 import torch
-from faiss import METRIC_L2
+from faiss import METRIC_INNER_PRODUCT
 from loguru import logger
 from tqdm import tqdm
 
-from bentley_saxe import BentleySaxe
 from bliss import BLISSIndex
 from dummy import DummyIndex
 from leveling import Leveling
@@ -22,8 +21,8 @@ ARITY = 3
 BUCKET_SIZE = 200
 DIMENSIONALITY = 768
 BUCKET_SHAPE = (BUCKET_SIZE, DIMENSIONALITY)
-METRIC = METRIC_L2
-KEEP_MAX = False  # Related to METRIC
+METRIC = METRIC_INNER_PRODUCT
+KEEP_MAX = True  # Related to METRIC
 DATASET_SIZE = 10_000
 # N_QUERIES = 100
 
@@ -40,9 +39,9 @@ assert X.shape[1] == DIMENSIONALITY
 # Create the framework
 # framework = BentleySaxe(
 framework = Leveling(
-    BLISSIndex,
+    # BLISSIndex,
     # DummyIndex,
-    # LMIIndex,
+    LMIIndex,
     ARITY,
     BUCKET_SHAPE,
     METRIC,
