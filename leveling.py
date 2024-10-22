@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from framework import Framework
-from utils import measure_runtime
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -69,6 +68,8 @@ class Leveling(Framework):
                 index.train(self.levels[i - 1].get_buckets())
                 self._create_new_level(index)
             else:
+                # ? when to retrain and when to keep the existing model?
+                # ? self.levels[i].train([*self.levels[i].get_buckets(), *self.levels[i - 1].get_buckets()])
                 assert self.levels[i].insert(self.levels[i - 1].get_buckets())
 
             self.levels[i - 1].empty()

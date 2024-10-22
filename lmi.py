@@ -81,8 +81,6 @@ class LMIIndex(Index):
 
         self._assign_objects_to_new_buckets(buckets)
 
-        self.is_trained = True
-
     def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
         bucket_ids = self._predict(query, nprobe)[1][0]
 

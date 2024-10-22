@@ -33,8 +33,6 @@ class DummyIndex(Index):
             for i, new_child_bucket in self.buckets.items():
                 new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[np.where(classes == i)])
 
-        self.is_trained = True
-
     def insert(self, buckets: list[Bucket]) -> bool:
         total_n_objects = sum(b.get_n_objects() for b in buckets)
 

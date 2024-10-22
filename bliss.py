@@ -97,8 +97,6 @@ class BLISSIndex(Index):
 
         self._assign_objects_to_new_buckets(bucket_assignment, buckets)
 
-        self.is_trained = True
-
         # TODO: what if all objects were inserted into the same bucket? = unbalanced partitioning
 
     # def _fix_bucket_assignment(self, bucket_assignment: Tensor) -> Tensor:

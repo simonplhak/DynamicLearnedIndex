@@ -30,14 +30,9 @@ class Index(ABC):
         """Whether to keep the maximal or minimal values when computing the distance."""
         self.keep_max: bool = keep_max
 
-        self.is_trained: bool = False
-
     @abstractmethod
     def train(self, buckets: list[Bucket]) -> None:
-        """Train the index on the objects in the given buckets.
-
-        The method must set self.is_trained to True.
-        """
+        """Train the index on the objects in the given buckets."""
         raise NotImplementedError
 
     @abstractmethod
@@ -53,13 +48,7 @@ class Index(ABC):
         """Search for the k nearest neighbors of the given query in the index."""
         raise NotImplementedError
 
-    def exists(self) -> bool:
-        """Check if the index exists / is trained."""
-        return self.is_trained
-
     def empty(self) -> None:
-        self.is_trained = False
-
         for bucket in self.buckets.values():
             bucket.empty()
 

@@ -72,8 +72,8 @@ class Framework:
 
         # Search the buffer if it is not empty
         searchable_levels = [self.buffer] if not self.buffer.is_empty() else []
-        # Add all levels that exist
-        searchable_levels += [l for l in self.levels if l.exists()]
+        # Add all levels
+        searchable_levels += self.levels
 
         n_partial_results = len(searchable_levels)
 
