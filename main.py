@@ -3,6 +3,7 @@ from __future__ import annotations
 import h5py
 import torch
 from faiss import METRIC_L2
+from loguru import logger
 from tqdm import tqdm
 
 from bentley_saxe import BentleySaxe
@@ -50,7 +51,7 @@ for i in range(len(X)):
     framework.insert(X[i], i)
 
     # if (i + 1) % (len(X) // 10) == 0:
-    print(f'Inserted {i+1} objects')
+    logger.info(f'Inserted {i+1} objects')
 
     assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
 
@@ -65,11 +66,11 @@ k = 10
 
 # D, I = faiss.knn(Q, X, k, metric=METRIC)
 
-# print(Q.shape)
-# print(GT.shape)
+# logger.info(Q.shape)
+# logger.info(GT.shape)
 
-# print(torch.from_numpy((I + 1)[:, :k]))
-# print(GT[:, :k])
+# logger.info(torch.from_numpy((I + 1)[:, :k]))
+# logger.info(GT[:, :k])
 # _, I = faiss.knn(Q, X, k, metric=METRIC)
 
 
@@ -80,22 +81,22 @@ def perform_search() -> float:
         # _, I = faiss.knn(Q[i : i + 1], X, k, metric=METRIC)
         # I[i]
         # I = I[0]
-        # print(torch.from_numpy(I + 1), GT[i, :k])
-        # print((I + 1).tolist())
+        # logger.info(torch.from_numpy(I + 1), GT[i, :k])
+        # logger.info((I + 1).tolist())
         recall += len(set((I[0] + 1).tolist()).intersection(set(GT[i, :k].tolist()))) / k
         # recall += (torch.from_numpy(I + 1) == GT[i, :k]).sum().item() / len(GT)
-        # print(recall)
+        # logger.info(recall)
         # exit(0)
     return recall / len(Q)  # 0.058560000000003706
 
 
-print(perform_search())
+logger.info(perform_search())
 
 # recall = (torch.from_numpy((I + 1)[:, :k]) == GT[:, :k]).sum() / len(GT)
-# print(recall)
-# print(framework.levels[0].buckets[0].ids)
-# print(framework.levels[0].buckets[1].ids)
-# print(framework.levels[0].buckets[2].ids)
+# logger.info(recall)
+# logger.info(framework.levels[0].buckets[0].ids)
+# logger.info(framework.levels[0].buckets[1].ids)
+# logger.info(framework.levels[0].buckets[2].ids)
 
 # index.get_n_objects()
 # index.top_level_bucket.get_n_objects()
@@ -105,7 +106,7 @@ print(perform_search())
 # index.levels[0].buckets[2].get_n_objects()
 # index.levels[1].get_n_objects()
 # for i in range(ARITY**2):
-#     print(i, index.levels[1].buckets[i].get_n_objects())
+#     logger.info(i, index.levels[1].buckets[i].get_n_objects())
 
 
 # # Obtain a query from the user -- here we sample a random query from the dataset
@@ -125,7 +126,7 @@ print(perform_search())
 #     len(set(nearest_neighbors.tolist()).intersection(set(ground_truth.tolist())))
 #     / k
 # )
-# print(f"Recall: {recall}")
+# logger.info(f"Recall: {recall}")
 
 ############################
 
@@ -140,4 +141,4 @@ print(perform_search())
 # bliss.train([b])
 
 # for i, b in bliss.buckets.items():
-#     print(i, b.get_n_objects())
+#     logger.info(i, b.get_n_objects())

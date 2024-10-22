@@ -96,7 +96,7 @@ class BLISSIndex(Index):
 
             # Redistribute the objects
             n_shifts = self._redistribute(bucket_assignment, bucket_predictions, total_n_objects)
-            # print(f'{n_shifts=}')
+            # logger.info(f'{n_shifts=}')
 
         # TODO: What if the number of objects in a bucket is larger than the bucket size?
         # bucket_assignment = self._fix_bucket_assignment(bucket_assignment)

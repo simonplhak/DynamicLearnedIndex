@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from faiss import merge_knn_results
+from loguru import logger
 
 from bucket import Bucket
 
@@ -96,13 +97,13 @@ class Framework:
     def print_stats(self) -> None:
         bucket_size = self.bucket_shape[0]
 
-        print('Index stats:')
-        print(f' Buffer: {self.buffer.get_n_objects()} | {self.buffer.get_capacity()}')
+        logger.info('Index stats:')
+        logger.info(f' Buffer: {self.buffer.get_n_objects()} | {self.buffer.get_capacity()}')
         for i, level in enumerate(self.levels):
             hard_capacity_limit = bucket_size * (self.arity ** (i + 1))
-            print(
+            logger.info(
                 f' Level {i}: {level.get_n_objects()} | {hard_capacity_limit} ({level.get_total_capacity_with_bucket_expansion()})',
             )
             for j, bucket in enumerate(level.get_buckets()):
-                print(f'  Bucket {j}: {bucket.get_n_objects()} | {bucket.get_capacity()}')
-        print(f' Total: {self.get_n_objects()} objects')
+                logger.info(f'  Bucket {j}: {bucket.get_n_objects()} | {bucket.get_capacity()}')
+        logger.info(f' Total: {self.get_n_objects()} objects')

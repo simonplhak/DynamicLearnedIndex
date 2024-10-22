@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 import numpy as np
 import torch
+from loguru import logger
 
 if TYPE_CHECKING:
     from bucket import Bucket
@@ -24,7 +25,7 @@ def measure_runtime(func: Callable) -> Callable:
         result = func(*args, **kwargs)
         stop = time.time()
 
-        print(f'Execution of {func.__name__} took {stop - start:.5}s.')
+        logger.info(f'Execution of {func.__name__} took {stop - start:.5}s.')
 
         return result
 
