@@ -6,7 +6,7 @@
 # Setup the environment and install the dependencies
 conda create -y -n DynamicLearnedIndex python=3.12
 conda activate DynamicLearnedIndex
-conda install -y -c pytorch faiss-cpu=1.8.0
+conda install -y -c pytorch faiss-cpu=1.9.0
 pip install torch --index-url https://download.pytorch.org/whl/cpu
 pip install numpy loguru
 
