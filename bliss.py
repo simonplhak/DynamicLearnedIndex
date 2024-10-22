@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import faiss
 import numpy as np
 import torch
+from faiss import merge_knn_results
 from sklearn.preprocessing import MultiLabelBinarizer
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss, Linear, ReLU, Sequential
@@ -22,16 +23,9 @@ if TYPE_CHECKING:
 
 
 class BLISSIndex(Index):
-    def __init__(
-        self,
-        n_buckets: int,
-        metric: int,
-        bucket_shape: tuple[int, int],
-    ) -> None:
-        super().__init__(
-            n_buckets,
-            bucket_shape,
-        )
+    def __init__(self, n_buckets: int, metric: int, bucket_shape: tuple[int, int], keep_max: bool) -> None:
+        super().__init__(n_buckets, metric, bucket_shape, keep_max)
+
         self.bucket_size = bucket_shape[0]
         self.sample_size: int = self.bucket_size  # TODO: think about sample_size
         self.k_training: int = 100
@@ -130,9 +124,19 @@ class BLISSIndex(Index):
 
         return True  # Insertion successful
 
-    def search(self, query: Tensor, k: int) -> tuple[np.ndarray, np.ndarray]:
-        bucket_id = int(self._predict(query, 1)[1].item())
-        return self.buckets[bucket_id].search(query, k)
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+        bucket_ids = self._predict(query, nprobe)[1][0]
+
+        D_all, I_all = (
+            np.zeros((nprobe, 1, k), dtype=np.float32),
+            np.zeros((nprobe, 1, k), dtype=np.int64),
+        )
+
+        for i in range(len(bucket_ids)):
+            bucket_id = int(bucket_ids[i].item())
+            D_all[i, :, :], I_all[i, :, :] = self.buckets[bucket_id].search(query, k, nprobe)
+
+        return merge_knn_results(D_all, I_all, keep_max=self.keep_max)
 
     def _assign_objects_to_new_buckets(self, bucket_assignment: np.ndarray, buckets: list[Bucket]) -> None:
         # Add the vectors to the new buckets

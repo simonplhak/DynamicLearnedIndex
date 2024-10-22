@@ -13,16 +13,9 @@ from index import Index
 class DummyIndex(Index):
     """A dummy index implementation that randomly stores the objects in the buckets."""
 
-    def __init__(
-        self,
-        n_buckets: int,
-        metric: int,
-        bucket_shape: tuple[int, int],
-    ) -> None:
-        super().__init__(
-            n_buckets,
-            bucket_shape,
-        )
+    def __init__(self, n_buckets: int, metric: int, bucket_shape: tuple[int, int], keep_max: bool) -> None:
+        super().__init__(n_buckets, metric, bucket_shape, keep_max)
+
         """Number of buckets."""
         self.buckets = {i: Bucket(bucket_shape, metric) for i in range(n_buckets)}
 
@@ -84,6 +77,7 @@ class DummyIndex(Index):
 
             offset += existing_bucket.get_n_objects()
 
-    def search(self, query: Tensor, k: int) -> tuple[np.ndarray, np.ndarray]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+        _ = nprobe  # We do not use nprobe
         bucket_id = int(torch.randint(self.n_buckets, (1,)))
-        return self.buckets[bucket_id].search(query, k)
+        return self.buckets[bucket_id].search(query, k, nprobe)

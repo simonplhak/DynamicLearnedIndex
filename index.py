@@ -14,7 +14,9 @@ class Index(ABC):
     def __init__(
         self,
         n_buckets: int,
+        metric: int,
         bucket_shape: tuple[int, int],
+        keep_max: bool,
     ) -> None:
         self.bucket_size = bucket_shape[0]
         """Size of each bucket."""
@@ -23,6 +25,10 @@ class Index(ABC):
         self.n_buckets: int = n_buckets
         """Number of buckets."""
         self.buckets: dict[int, Bucket]
+        """Which metric to use to compute the distance between objects."""
+        self.metric: int = metric
+        """Whether to keep the maximal or minimal values when computing the distance."""
+        self.keep_max: bool = keep_max
 
         self.is_trained: bool = False
 
@@ -43,7 +49,7 @@ class Index(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def search(self, query: Tensor, k: int) -> tuple[np.ndarray, np.ndarray]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
         """Search for the k nearest neighbors of the given query in the index."""
         raise NotImplementedError
 

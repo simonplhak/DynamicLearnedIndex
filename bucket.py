@@ -45,7 +45,9 @@ class Bucket:
         self.ids[start:stop] = I
         self.n_objects += len(X)
 
-    def search(self, query: Tensor, k: int) -> tuple[np.ndarray, np.ndarray]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+        _ = nprobe  # We do not use nprobe for a single bucket
+
         assert query.shape == (1, self.dimensionality)
 
         D, I = knn(query, self.data[: self.n_objects], k, metric=self.metric)

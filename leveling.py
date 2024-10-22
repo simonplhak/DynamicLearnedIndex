@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from framework import Framework
+from utils import measure_runtime
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -35,6 +36,7 @@ class Leveling(Framework):
                 n_buckets=pow(self.arity, 1),
                 metric=self.metric,
                 bucket_shape=self.bucket_shape,
+                keep_max=self.keep_max,
             )
             index.train([self.buffer])
             self._create_new_level(index)
@@ -62,6 +64,7 @@ class Leveling(Framework):
                     n_buckets=pow(self.arity, i + 1),
                     metric=self.metric,
                     bucket_shape=self.bucket_shape,
+                    keep_max=self.keep_max,
                 )
                 index.train(self.levels[i - 1].get_buckets())
                 self._create_new_level(index)

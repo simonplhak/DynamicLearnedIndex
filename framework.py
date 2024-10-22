@@ -60,8 +60,12 @@ class Framework:
         for i in range(current_level - 1):
             self.levels[i].empty()
 
-    def search(self, query: Tensor, k: int) -> tuple[np.ndarray, np.ndarray]:
-        """Search the index for the k nearest neighbors of a single query vector."""
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+        """Search the index for k nearest neighbors.
+
+        Search the index for the k nearest neighbors of a single query vector
+        while probing nprobe buckets at each level.
+        """
         assert query.shape == (self.dimensionality,)
 
         query = query.reshape((1, self.dimensionality))
@@ -79,7 +83,7 @@ class Framework:
         )
 
         for i, level in enumerate(searchable_levels):
-            D_all[i, :, :], I_all[i, :, :] = level.search(query, k)
+            D_all[i, :, :], I_all[i, :, :] = level.search(query, k, nprobe)
 
         return merge_knn_results(D_all, I_all, keep_max=self.keep_max)
 

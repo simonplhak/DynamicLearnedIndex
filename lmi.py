@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
-from faiss import Kmeans
+from faiss import Kmeans, merge_knn_results
 from torch import Tensor
 from torch.nn import CrossEntropyLoss, Linear, ReLU, Sequential
 from torch.nn.functional import softmax
@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from dynamic_bucket import DynamicBucket
 from index import Index
 from labeled_dataset import LabeledDataset
-from utils import take_sample
+from utils import measure_runtime, take_sample
 
 if TYPE_CHECKING:
     from bucket import Bucket
@@ -23,11 +23,9 @@ if TYPE_CHECKING:
 class LMIIndex(Index):
     """Learned Metric Index (LMI) implementation with dynamic buckets."""
 
-    def __init__(self, n_buckets: int, metric: int, bucket_shape: tuple[int, int]) -> None:
-        super().__init__(
-            n_buckets,
-            bucket_shape,
-        )
+    def __init__(self, n_buckets: int, metric: int, bucket_shape: tuple[int, int], keep_max: bool) -> None:
+        super().__init__(n_buckets, metric, bucket_shape, keep_max)
+
         self.dimensionality: int = bucket_shape[1]
         """Dimensionality of the data."""
         self.n_buckets: int = n_buckets
@@ -51,6 +49,7 @@ class LMIIndex(Index):
         self.loss_fn = CrossEntropyLoss()
         self.optimizer = Adam(params=self.model.parameters(), lr=self.lr)
 
+    @measure_runtime
     def train(self, buckets: list[Bucket]) -> None:
         sample_size = sum(b.get_n_objects() for b in buckets)  # TODO: change
         X_sample, _ = take_sample(buckets, sample_size, self.dimensionality)
@@ -84,9 +83,19 @@ class LMIIndex(Index):
 
         self.is_trained = True
 
-    def search(self, query: Tensor, k: int) -> tuple[np.ndarray, np.ndarray]:
-        bucket_id = int(self._predict(query, 1)[1].item())
-        return self.buckets[bucket_id].search(query, k)
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+        bucket_ids = self._predict(query, nprobe)[1][0]
+
+        D_all, I_all = (
+            np.zeros((nprobe, 1, k), dtype=np.float32),
+            np.zeros((nprobe, 1, k), dtype=np.int64),
+        )
+
+        for i in range(len(bucket_ids)):
+            bucket_id = int(bucket_ids[i].item())
+            D_all[i, :, :], I_all[i, :, :] = self.buckets[bucket_id].search(query, k, nprobe)
+
+        return merge_knn_results(D_all, I_all, keep_max=self.keep_max)
 
     def insert(self, buckets: list[Bucket]) -> bool:
         # TODO: get rid of torch.concatenate

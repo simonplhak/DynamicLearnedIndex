@@ -11,6 +11,7 @@ from bliss import BLISSIndex
 from dummy import DummyIndex
 from leveling import Leveling
 from lmi import LMIIndex
+from utils import measure_runtime
 
 SEED = 42
 torch.manual_seed(SEED)
@@ -37,8 +38,8 @@ assert X.shape[1] == DIMENSIONALITY
 # Create the framework
 # framework = BentleySaxe(
 framework = Leveling(
-    # BLISSIndex,
-    DummyIndex,
+    BLISSIndex,
+    # DummyIndex,
     # LMIIndex,
     ARITY,
     BUCKET_SHAPE,
@@ -50,8 +51,8 @@ framework = Leveling(
 for i in range(len(X)):
     framework.insert(X[i], i)
 
-    # if (i + 1) % (len(X) // 10) == 0:
-    logger.info(f'Inserted {i+1} objects')
+    if (i + 1) % (len(X) // 10) == 0:
+        logger.info(f'Inserted {i+1} objects')
 
     assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
 
@@ -59,25 +60,12 @@ for i in range(len(X)):
 # framework = torch.load('framework.pt')
 framework.print_stats()
 
-# Search
-k = 10
 
-# import faiss
-
-# D, I = faiss.knn(Q, X, k, metric=METRIC)
-
-# logger.info(Q.shape)
-# logger.info(GT.shape)
-
-# logger.info(torch.from_numpy((I + 1)[:, :k]))
-# logger.info(GT[:, :k])
-# _, I = faiss.knn(Q, X, k, metric=METRIC)
-
-
-def perform_search() -> float:
+@measure_runtime
+def perform_search(k: int, nprobe: int) -> float:
     recall = 0
     for i in tqdm(range(len(Q))):
-        _, I = framework.search(Q[i], k)
+        _, I = framework.search(Q[i], k, nprobe)
         # _, I = faiss.knn(Q[i : i + 1], X, k, metric=METRIC)
         # I[i]
         # I = I[0]
@@ -90,7 +78,24 @@ def perform_search() -> float:
     return recall / len(Q)  # 0.058560000000003706
 
 
-logger.info(perform_search())
+# Search
+k = 10
+logger.info(f'{k=}')
+for nprobe in range(1, 20 + 1):
+    logger.info(f'{nprobe=}')
+    logger.info(perform_search(k, nprobe))
+
+# import faiss
+
+# D, I = faiss.knn(Q, X, k, metric=METRIC)
+
+# logger.info(Q.shape)
+# logger.info(GT.shape)
+
+# logger.info(torch.from_numpy((I + 1)[:, :k]))
+# logger.info(GT[:, :k])
+# _, I = faiss.knn(Q, X, k, metric=METRIC)
+
 
 # recall = (torch.from_numpy((I + 1)[:, :k]) == GT[:, :k]).sum() / len(GT)
 # logger.info(recall)
