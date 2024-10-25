@@ -9,26 +9,14 @@ if TYPE_CHECKING:
     import numpy as np
     from torch import Tensor
 
+    from configuration import IndexConfig
+
 
 class Index(ABC):
-    def __init__(
-        self,
-        n_buckets: int,
-        metric: int,
-        bucket_shape: tuple[int, int],
-        keep_max: bool,
-    ) -> None:
-        self.bucket_size = bucket_shape[0]
-        """Size of each bucket."""
-        self.dimensionality: int = bucket_shape[1]
-        """Dimensionality of the data."""
-        self.n_buckets: int = n_buckets
-        """Number of buckets."""
+    def __init__(self, config: IndexConfig) -> None:
+        self.config = config
+
         self.buckets: dict[int, Bucket]
-        """Which metric to use to compute the distance between objects."""
-        self.metric: int = metric
-        """Whether to keep the maximal or minimal values when computing the distance."""
-        self.keep_max: bool = keep_max
 
     @abstractmethod
     def train(self, buckets: list[Bucket]) -> None:
@@ -60,7 +48,7 @@ class Index(ABC):
 
     def get_total_capacity(self) -> int:
         """Return the expected total capacity of the index. Does NOT include bucket enlargements."""
-        return self.n_buckets * self.bucket_size
+        return self.config.n_buckets * self.config.bucket_shape[0]
 
     def get_free_space(self) -> int:
         return self.get_total_capacity() - self.get_n_objects()

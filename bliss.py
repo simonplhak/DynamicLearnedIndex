@@ -20,26 +20,27 @@ from utils import measure_runtime, np_rng, take_sample
 
 if TYPE_CHECKING:
     from bucket import Bucket
+    from configuration import IndexConfig
 
 
 class BLISSIndex(Index):
-    def __init__(self, n_buckets: int, metric: int, bucket_shape: tuple[int, int], keep_max: bool) -> None:
-        super().__init__(n_buckets, metric, bucket_shape, keep_max)
+    def __init__(self, config: IndexConfig) -> None:
+        super().__init__(config)
 
-        self.bucket_size = bucket_shape[0]
+        self.bucket_size = config.bucket_shape[0]
         self.sample_size: int = self.bucket_size  # TODO: think about sample_size
         self.k_training: int = 100
         self.top_k_buckets_to_load_balance_between: int = (
-            n_buckets  # ? Tied to the number of buckets? In the paper it is rather a small number...
+            config.n_buckets  # ? Tied to the number of buckets? In the paper it is rather a small number...
         )
         self.n_redistributions: int = 2
         """Number of buckets."""
-        self.buckets = {i: DynamicBucket(bucket_shape, metric) for i in range(n_buckets)}
+        self.buckets = {i: DynamicBucket(config.bucket_shape, config.distance.metric) for i in range(config.n_buckets)}
 
         self.model = Sequential(
-            Linear(bucket_shape[1], 512),
+            Linear(config.bucket_shape[1], 512),
             ReLU(),
-            Linear(512, n_buckets),
+            Linear(512, config.n_buckets),
         )
         # Model's hyperparameters
         self.epochs = 5
@@ -54,12 +55,12 @@ class BLISSIndex(Index):
     @measure_runtime
     def train(self, buckets: list[Bucket]) -> None:
         sample_size = sum(b.get_n_objects() for b in buckets)  # TODO: change
-        X_sample, I_sample = take_sample(buckets, sample_size, self.dimensionality)
+        X_sample, I_sample = take_sample(buckets, sample_size, self.config.bucket_shape[1])
 
         total_n_objects = sum(b.get_n_objects() for b in buckets)
 
         # Randomly distribute the dataset into buckets
-        bucket_assignment = np_rng.choice(self.n_buckets, total_n_objects)
+        bucket_assignment = np_rng.choice(self.config.n_buckets, total_n_objects)
 
         # Calculate kNN ground truth for the sample on the sample
         ground_truth = self._prepare_ground_truth(X_sample, self.k_training)
@@ -123,7 +124,7 @@ class BLISSIndex(Index):
         return True  # Insertion successful
 
     def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
-        nprobe = min(nprobe, self.n_buckets)
+        nprobe = min(nprobe, self.config.n_buckets)
 
         bucket_ids = self._predict(query, nprobe)[1][0]
 
@@ -136,7 +137,7 @@ class BLISSIndex(Index):
             bucket_id = int(bucket_ids[i].item())
             D_all[i, :, :], I_all[i, :, :] = self.buckets[bucket_id].search(query, k, nprobe)
 
-        return merge_knn_results(D_all, I_all, keep_max=self.keep_max)
+        return merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max)
 
     def _assign_objects_to_new_buckets(self, bucket_assignment: np.ndarray, buckets: list[Bucket]) -> None:
         # Add the vectors to the new buckets
@@ -166,7 +167,7 @@ class BLISSIndex(Index):
 
     def _get_least_populated_bucket(self, labels: np.ndarray, top_k_bucket_ids: Tensor) -> int:
         # Histogram of the number of objects in each bucket
-        bucket_population = np.bincount(labels, minlength=self.n_buckets)
+        bucket_population = np.bincount(labels, minlength=self.config.n_buckets)
         # The least populated bucket among the top K
         return int(top_k_bucket_ids[np.argmin(bucket_population[top_k_bucket_ids])])
 

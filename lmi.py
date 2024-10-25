@@ -18,29 +18,24 @@ from utils import measure_runtime, take_sample
 
 if TYPE_CHECKING:
     from bucket import Bucket
+    from configuration import IndexConfig
 
 
 class LMIIndex(Index):
     """Learned Metric Index (LMI) implementation with dynamic buckets."""
 
-    def __init__(self, n_buckets: int, metric: int, bucket_shape: tuple[int, int], keep_max: bool) -> None:
-        super().__init__(n_buckets, metric, bucket_shape, keep_max)
+    def __init__(self, config: IndexConfig) -> None:
+        super().__init__(config)
 
-        self.dimensionality: int = bucket_shape[1]
-        """Dimensionality of the data."""
-        self.n_buckets: int = n_buckets
-        """Number of buckets."""
-        self.buckets = {i: DynamicBucket(bucket_shape, metric) for i in range(n_buckets)}
-
-        self.bucket_size = bucket_shape[0]
+        self.buckets = {i: DynamicBucket(config.bucket_shape, config.distance.metric) for i in range(config.n_buckets)}
 
         # Create a model
         self.model = Sequential(
-            Linear(self.dimensionality, 512),
+            Linear(self.config.bucket_shape[1], 512),
             ReLU(),
             Linear(512, 384),
             ReLU(),
-            Linear(384, n_buckets),
+            Linear(384, config.n_buckets),
         )
 
         # Model's hyperparameters
@@ -52,12 +47,12 @@ class LMIIndex(Index):
     @measure_runtime
     def train(self, buckets: list[Bucket]) -> None:
         sample_size = sum(b.get_n_objects() for b in buckets)  # TODO: change
-        X_sample, _ = take_sample(buckets, sample_size, self.dimensionality)
+        X_sample, _ = take_sample(buckets, sample_size, self.config.bucket_shape[1])
 
         # Run k-means to obtain training labels
         kmeans = Kmeans(
-            d=self.dimensionality,
-            k=self.n_buckets,
+            d=self.config.bucket_shape[1],
+            k=self.config.n_buckets,
             verbose=False,
             seed=42,
         )
@@ -82,7 +77,7 @@ class LMIIndex(Index):
         self._assign_objects_to_new_buckets(buckets)
 
     def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
-        nprobe = min(nprobe, self.n_buckets)
+        nprobe = min(nprobe, self.config.n_buckets)
 
         bucket_ids = self._predict(query, nprobe)[1][0]
 
@@ -95,7 +90,7 @@ class LMIIndex(Index):
             bucket_id = int(bucket_ids[i].item())
             D_all[i, :, :], I_all[i, :, :] = self.buckets[bucket_id].search(query, k, nprobe)
 
-        return merge_knn_results(D_all, I_all, keep_max=self.keep_max)
+        return merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max)
 
     def insert(self, buckets: list[Bucket]) -> bool:
         # TODO: get rid of torch.concatenate

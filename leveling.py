@@ -2,24 +2,18 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from configuration import IndexConfig
 from framework import Framework
 
 if TYPE_CHECKING:
     from torch import Tensor
 
-    from index import Index
+    from configuration import FrameworkConfig
 
 
 class Leveling(Framework):
-    def __init__(
-        self,
-        index_class: type[Index],
-        arity: int,
-        bucket_shape: tuple[int, int],
-        metric: int,
-        keep_max: bool,
-    ) -> None:
-        super().__init__(index_class, arity, bucket_shape, metric, keep_max)
+    def __init__(self, config: FrameworkConfig) -> None:
+        super().__init__(config)
 
     def compact(
         self,
@@ -31,11 +25,12 @@ class Leveling(Framework):
             return
 
         if len(self.levels) == 0:
-            index = self.index_class(
-                n_buckets=pow(self.arity, 1),
-                metric=self.metric,
-                bucket_shape=self.bucket_shape,
-                keep_max=self.keep_max,
+            index = self.config.index_class(
+                IndexConfig(
+                    n_buckets=pow(self.config.arity, 1),
+                    distance=self.config.distance,
+                    bucket_shape=self.config.bucket_shape,
+                ),
             )
             index.train([self.buffer])
             self._create_new_level(index)
@@ -59,11 +54,12 @@ class Leveling(Framework):
         for i in range(idx, 0, -1):
             if i == len(self.levels):  # We need to allocate a new level
                 # TODO: reset the model's weights first?
-                index = self.index_class(
-                    n_buckets=pow(self.arity, i + 1),
-                    metric=self.metric,
-                    bucket_shape=self.bucket_shape,
-                    keep_max=self.keep_max,
+                index = self.config.index_class(
+                    IndexConfig(
+                        n_buckets=pow(self.config.arity, i + 1),
+                        distance=self.config.distance,
+                        bucket_shape=self.config.bucket_shape,
+                    ),
                 )
                 index.train(self.levels[i - 1].get_buckets())
                 self._create_new_level(index)

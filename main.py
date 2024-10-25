@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-import time
-
 import h5py
 import torch
 from faiss import METRIC_INNER_PRODUCT
 from loguru import logger
 from tqdm import tqdm
 
-from bliss import BLISSIndex
-from dummy import DummyIndex
+from configuration import DistanceConfig, ExperimentConfig, FrameworkConfig, SearchConfig
 from leveling import Leveling
 from lmi import LMIIndex
 from utils import measure_runtime
@@ -17,16 +14,24 @@ from utils import measure_runtime
 SEED = 42
 torch.manual_seed(SEED)
 
-ARITY = 3
-BUCKET_SIZE = 200
-DIMENSIONALITY = 768
-BUCKET_SHAPE = (BUCKET_SIZE, DIMENSIONALITY)
-METRIC = METRIC_INNER_PRODUCT
-KEEP_MAX = True  # Related to METRIC
-DATASET_SIZE = 10_000
-# N_QUERIES = 100
+
+experiment_config = ExperimentConfig(
+    FrameworkConfig(
+        LMIIndex,
+        arity=3,
+        bucket_shape=(200, 768),
+        distance=DistanceConfig(
+            METRIC_INNER_PRODUCT,
+            keep_max=True,
+        ),
+    ),
+    SearchConfig(k=10, nprobe=10),
+)
+
+logger.info(experiment_config)
 
 # Load the dataset
+DATASET_SIZE = 10_000
 X = torch.from_numpy(h5py.File('laion2B-en-clip768v2-n=300K.h5', 'r')['emb'][:DATASET_SIZE]).to(torch.float32)  # type: ignore
 Q = torch.from_numpy(h5py.File('public-queries-2024-laion2B-en-clip768v2-n=10k.h5', 'r')['emb'][:]).to(  # type: ignore
     torch.float32,
@@ -34,32 +39,26 @@ Q = torch.from_numpy(h5py.File('public-queries-2024-laion2B-en-clip768v2-n=10k.h
 GT = torch.from_numpy(
     h5py.File('gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5', 'r')['knns'][:],  # type: ignore
 )
-assert X.shape[1] == DIMENSIONALITY
 
 # Create the framework
-# framework = BentleySaxe(
-framework = Leveling(
-    # BLISSIndex,
-    # DummyIndex,
-    LMIIndex,
-    ARITY,
-    BUCKET_SHAPE,
-    METRIC,
-    KEEP_MAX,
-)
+framework = Leveling(experiment_config.framework_config)
+
 
 # Insert the dataset one object at a time
-s = time.time()
+@measure_runtime
+def insert_objects(X: torch.Tensor) -> None:
+    for i in range(len(X)):
+        framework.insert(X[i], i)
 
-for i in range(len(X)):
-    framework.insert(X[i], i)
+        if (i + 1) % (len(X) // 10) == 0:
+            logger.info(f'Inserted {i+1} objects')
 
-    if (i + 1) % (len(X) // 10) == 0:
-        logger.info(f'Inserted {i+1} objects')
+        assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
 
-    assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
+    logger.info(f'Inserted {len(X)} objects')
 
-logger.info(f'Inserted {len(X)} objects in {time.time() - s:.5}s')
+
+insert_objects(X)
 
 # torch.save(framework, 'framework.pt')
 # framework = torch.load('framework.pt')
@@ -69,24 +68,18 @@ framework.print_stats()
 @measure_runtime
 def perform_search(k: int, nprobe: int) -> float:
     recall = 0
+
     for i in tqdm(range(len(Q))):
         _, I = framework.search(Q[i], k, nprobe)
-        # _, I = faiss.knn(Q[i : i + 1], X, k, metric=METRIC)
-        # I[i]
-        # I = I[0]
-        # logger.info(torch.from_numpy(I + 1), GT[i, :k])
-        # logger.info((I + 1).tolist())
         recall += len(set((I[0] + 1).tolist()).intersection(set(GT[i, :k].tolist()))) / k
-        # recall += (torch.from_numpy(I + 1) == GT[i, :k]).sum().item() / len(GT)
-        # logger.info(recall)
-        # exit(0)
-    return recall / len(Q)  # 0.058560000000003706
+
+    return recall / len(Q)
 
 
 # Search
 k = 10
 logger.info(f'{k=}')
-for nprobe in range(1, 20 + 1):
+for nprobe in [1, 2]:
     logger.info(f'{nprobe=}')
     logger.info(perform_search(k, nprobe))
 
