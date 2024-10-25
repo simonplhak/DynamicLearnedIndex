@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 import time
 from dataclasses import dataclass
 
@@ -22,7 +23,7 @@ experiment_config = ExperimentConfig(
     FrameworkConfig(
         LMIIndex,
         arity=3,
-        bucket_shape=(200, 768),
+        bucket_shape=(200, 768) if socket.gethostname() == 'Pro.local' else (1_000, 768),
         distance=DistanceConfig(
             METRIC_INNER_PRODUCT,
             keep_max=True,
@@ -35,7 +36,7 @@ experiment_config = ExperimentConfig(
 logger.info(experiment_config)
 
 # Load the dataset
-DATASET_SIZE = 10_000
+DATASET_SIZE = 10_000 if socket.gethostname() == 'Pro.local' else 300_000
 X = torch.from_numpy(h5py.File('laion2B-en-clip768v2-n=300K.h5', 'r')['emb'][:DATASET_SIZE]).to(torch.float32)  # type: ignore
 Q = torch.from_numpy(h5py.File('public-queries-2024-laion2B-en-clip768v2-n=10k.h5', 'r')['emb'][:]).to(  # type: ignore
     torch.float32,
