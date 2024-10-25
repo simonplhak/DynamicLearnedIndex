@@ -32,8 +32,29 @@ class Index(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
-        """Search for the k nearest neighbors of the given query in the index."""
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
+        """Search for the k nearest neighbors of the given query in the index.
+
+        Parameters
+        ----------
+        query : Tensor
+            Single query vector of shape (1, dimensionality).
+        k : int
+            Number of nearest neighbors to search for.
+        nprobe : int
+            Number of buckets to probe at each level.
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray, int]
+            A tuple containing the neighbor distances, neighbor indices, and the size of the candidate set.
+
+        Raises
+        ------
+        NotImplementedError
+            This method must be implemented by subclasses.
+
+        """
         raise NotImplementedError
 
     def empty(self) -> None:

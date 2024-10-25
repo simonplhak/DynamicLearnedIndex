@@ -78,7 +78,7 @@ class DummyIndex(Index):
 
             offset += existing_bucket.get_n_objects()
 
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
         _ = nprobe  # We do not use nprobe
         bucket_id = int(torch.randint(self.config.n_buckets, (1,)))
         return self.buckets[bucket_id].search(query, k, nprobe)

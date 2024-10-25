@@ -45,14 +45,32 @@ class Bucket:
         self.ids[start:stop] = I
         self.n_objects += len(X)
 
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
+        """Search for the k nearest neighbors of the given query in the bucket.
+
+        Parameters
+        ----------
+        query : Tensor
+            Single query vector of shape (1, dimensionality).
+        k : int
+            Number of nearest neighbors to search for.
+        nprobe : int
+            Number of buckets to probe at each level.
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray, int]
+            A tuple containing the neighbor distances, neighbor indices, and the size of the candidate set.
+
+        """
         _ = nprobe  # We do not use nprobe for a single bucket
 
         assert query.shape == (1, self.dimensionality)
 
         D, I = knn(query, self.data[: self.n_objects], k, metric=self.metric)
+        n_candidates = self.n_objects
 
-        return D[0], self.ids[I[0]]  # Convert local indexes back to the global IDs
+        return D[0], self.ids[I[0]], n_candidates  # Convert local indexes back to the global IDs
 
     def empty(self) -> None:
         self.n_objects = 0

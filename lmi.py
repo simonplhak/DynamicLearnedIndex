@@ -76,7 +76,7 @@ class LMIIndex(Index):
 
         self._assign_objects_to_new_buckets(buckets)
 
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
         nprobe = min(nprobe, self.config.n_buckets)
 
         bucket_ids = self._predict(query, nprobe)[1][0]
@@ -85,12 +85,14 @@ class LMIIndex(Index):
             np.zeros((nprobe, 1, k), dtype=np.float32),
             np.zeros((nprobe, 1, k), dtype=np.int64),
         )
+        n_candidates = 0
 
         for i in range(len(bucket_ids)):
             bucket_id = int(bucket_ids[i].item())
-            D_all[i, :, :], I_all[i, :, :] = self.buckets[bucket_id].search(query, k, nprobe)
+            D_all[i, :, :], I_all[i, :, :], n_level_candidates = self.buckets[bucket_id].search(query, k, nprobe)
+            n_candidates += n_level_candidates
 
-        return merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max)
+        return *merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max), n_candidates
 
     def insert(self, buckets: list[Bucket]) -> bool:
         # TODO: get rid of torch.concatenate

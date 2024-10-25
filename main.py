@@ -66,14 +66,15 @@ framework.print_stats()
 
 
 @measure_runtime
-def perform_search(k: int, nprobe: int) -> float:
-    recall = 0
+def perform_search(k: int, nprobe: int) -> tuple[float, float]:
+    recall, n_candidates = 0.0, 0.0
 
     for i in tqdm(range(len(Q))):
-        _, I = framework.search(Q[i], k, nprobe)
+        _, I, n_query_candidates = framework.search(Q[i], k, nprobe)
         recall += len(set((I[0] + 1).tolist()).intersection(set(GT[i, :k].tolist()))) / k
+        n_candidates += n_query_candidates
 
-    return recall / len(Q)
+    return recall / len(Q), n_candidates / len(Q)
 
 
 # Search
@@ -81,7 +82,8 @@ k = 10
 logger.info(f'{k=}')
 for nprobe in [1, 2]:
     logger.info(f'{nprobe=}')
-    logger.info(perform_search(k, nprobe))
+    recall, n_candidates = perform_search(k, nprobe)
+    logger.info(f'{recall=:.4f}, {n_candidates=:.2f}')
 
 # import faiss
 

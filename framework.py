@@ -47,11 +47,23 @@ class Framework:
         for i in range(current_level - 1):
             self.levels[i].empty()
 
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
         """Search the index for k nearest neighbors.
 
-        Search the index for the k nearest neighbors of a single query vector
-        while probing nprobe buckets at each level.
+        Parameters
+        ----------
+        query : Tensor
+            Single query vector of shape (dimensionality,).
+        k : int
+            Number of nearest neighbors to search for.
+        nprobe : int
+            Number of buckets to probe at each level.
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray, int]
+            A tuple containing the neighbor distances, neighbor indices, and the size of the candidate set.
+
         """
         assert query.shape == (self.dimensionality,)
 
@@ -68,11 +80,13 @@ class Framework:
             np.zeros((n_partial_results, 1, k), dtype=np.float32),
             np.zeros((n_partial_results, 1, k), dtype=np.int64),
         )
+        n_candidates = 0
 
         for i, level in enumerate(searchable_levels):
-            D_all[i, :, :], I_all[i, :, :] = level.search(query, k, nprobe)
+            D_all[i, :, :], I_all[i, :, :], n_level_candidates = level.search(query, k, nprobe)
+            n_candidates += n_level_candidates
 
-        return merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max)
+        return *merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max), n_candidates
 
     def get_n_objects(self) -> int:
         """Return the total number of objects in the index."""
