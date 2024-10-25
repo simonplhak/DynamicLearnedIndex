@@ -75,7 +75,7 @@ class LMIIndex(Index):
                 self.optimizer.step()
                 self.optimizer.zero_grad()
 
-        self._assign_objects_to_new_buckets(buckets)
+        self.insert(buckets)
 
         if self.is_degenerated():
             logger.warning('Trained degenerated index!')
@@ -101,25 +101,13 @@ class LMIIndex(Index):
     def insert(self, buckets: list[Bucket]) -> bool:
         for bucket in buckets:  # ! can be parallelized
             X, I = bucket.get_data(), bucket.get_ids()
+
             bucket_ids = self._predict(X, 1)[1].reshape(-1)
 
             for i, child_bucket in self.buckets.items():
                 child_bucket.insert_bulk(X[bucket_ids == i], I[np.where(bucket_ids == i)])
 
         return True
-
-    def _assign_objects_to_new_buckets(self, buckets: list[Bucket]) -> None:
-        # Add the vectors to the new buckets
-        for existing_bucket in buckets:
-            bucket_data = existing_bucket.get_data()
-            bucket_indexes = existing_bucket.get_ids()
-
-            # Each vector belongs to a new bucket
-            classes = self._predict(bucket_data, 1)[1].reshape(-1)
-
-            # Assign the vectors to the new buckets
-            for i, new_child_bucket in self.buckets.items():
-                new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[np.where(classes == i)])
 
     def _predict(self, X: Tensor, top_k: int) -> tuple[Tensor, Tensor]:
         assert self.model is not None, 'Model is not trained yet.'
