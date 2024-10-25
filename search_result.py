@@ -37,6 +37,6 @@ class SearchResult:
 
         logger.info(
             f'{avg_recall:.2f}%, '
-            f'{avg_n_candidates:.2f} candidates ({candidates_percentage:.1f}%), '
+            f'{avg_n_candidates:.2f} candidates ({candidates_percentage:.2f}%), '
             f'{avg_time_per_query_in_ms:.2f}ms per query',
         )

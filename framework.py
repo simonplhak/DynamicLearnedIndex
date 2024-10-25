@@ -118,3 +118,27 @@ class Framework:
                 logger.info(f'  Bucket {j}: {bucket.get_n_objects()} | {bucket.get_capacity()}')
 
         logger.info(f' Total: {self.get_n_objects()} objects')
+
+    def collect_stats(self) -> dict:
+        return {
+            'summary': {
+                'n_objects': self.get_n_objects(),
+                'n_levels': len(self.levels),
+                'n_buckets': sum(map(len, map(self.config.index_class.get_buckets, self.levels))),
+            },
+            'buffer': {
+                'n_objects': self.buffer.get_n_objects(),
+                'capacity': self.buffer.get_capacity(),
+            },
+            'levels': [
+                {
+                    'n_objects': level.get_n_objects(),
+                    'n_buckets': len(level.get_buckets()),
+                    'buckets': [b.get_n_objects() for b in level.get_buckets()],
+                    'total_capacity_with_bucket_expansion': level.get_total_capacity_with_bucket_expansion(),
+                    'total_capacity': level.get_total_capacity(),
+                    'is_degenerated': level.is_degenerated(),
+                }
+                for level in self.levels
+            ],
+        }

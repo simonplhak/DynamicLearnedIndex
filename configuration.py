@@ -55,8 +55,8 @@ class ExperimentConfig:
     dirty_state: bool
     """Whether the repository was in a dirty state."""
 
-    def __init__(self, config: FrameworkConfig, search_configs: list[SearchConfig]) -> None:
-        self.framework_config = config
+    def __init__(self, framework_config: FrameworkConfig, search_configs: list[SearchConfig]) -> None:
+        self.framework_config = framework_config
         self.search_configs = search_configs
 
         self.commit_hash = subprocess.check_output(['git', 'describe', '--always']).strip().decode()  # noqa: S603, S607

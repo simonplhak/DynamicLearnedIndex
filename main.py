@@ -65,6 +65,8 @@ insert_objects(X)
 # torch.save(framework, 'framework.pt')
 # framework = torch.load('framework.pt')
 framework.print_stats()
+stats = framework.collect_stats()
+logger.info(stats)
 
 
 @measure_runtime
