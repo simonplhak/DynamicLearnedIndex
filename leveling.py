@@ -17,11 +17,7 @@ class Leveling(Framework):
     def __init__(self, config: FrameworkConfig) -> None:
         super().__init__(config)
 
-    def compact(
-        self,
-        X: Tensor,
-        I: int,
-    ) -> None:
+    def compact(self, X: Tensor, I: int) -> None:
         if not self.buffer.is_full():
             self.buffer.insert_single(X, I)
             return

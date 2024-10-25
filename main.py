@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 
 import h5py
@@ -70,40 +71,66 @@ framework.print_stats()
 
 @dataclass
 class SearchResult:
+    database_size: int
     n_queries: int
     recall_per_query: list[float]
     n_candidates_per_query: list[int]
+    total_search_time: float
 
     def add(self, recall: float, n_candidates: int) -> None:
         self.recall_per_query.append(recall)
         self.n_candidates_per_query.append(n_candidates)
 
-    def get_averages(self) -> tuple[float, float]:
-        return sum(self.recall_per_query) / self.n_queries, sum(self.n_candidates_per_query) / self.n_queries
+    def avg_recall(self) -> float:
+        return sum(self.recall_per_query) / self.n_queries * 100
+
+    def avg_n_candidates(self) -> float:
+        return sum(self.n_candidates_per_query) / self.n_queries
+
+    def candidates_percentage(self) -> float:
+        return self.avg_n_candidates() / self.database_size * 100
+
+    def avg_time_per_query_in_ms(self) -> float:
+        return self.total_search_time / self.n_queries * 1_000
+
+    def log_stats(self) -> None:
+        avg_recall = self.avg_recall()
+        avg_n_candidates = self.avg_n_candidates()
+        candidates_percentage = self.candidates_percentage()
+        avg_time_per_query_in_ms = self.avg_time_per_query_in_ms()
+
+        logger.info(
+            f'{avg_recall:.2f}%, '
+            f'{avg_n_candidates:.2f} candidates ({candidates_percentage:.1f}%), '
+            f'{avg_time_per_query_in_ms:.2f}ms per query',
+        )
 
 
 @measure_runtime
-def perform_search(k: int, nprobe: int) -> SearchResult:
-    result = SearchResult(len(Q), [], [])
+def perform_search(db_size: int, k: int, nprobe: int) -> SearchResult:
+    recall_per_query = []
+    n_candidates_per_query = []
 
+    s = time.time()
     for i in tqdm(range(len(Q))):
         _, I, n_query_candidates = framework.search(Q[i], k, nprobe)
         recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, :k].tolist()))) / k
-        result.add(recall, n_query_candidates)
 
-    return result
+        recall_per_query.append(recall)
+        n_candidates_per_query.append(n_query_candidates)
+    e = time.time() - s
+
+    return SearchResult(db_size, len(Q), recall_per_query, n_candidates_per_query, e)
 
 
 # Search
 k = 10
 logger.info(f'{k=}')
-for nprobe in [1, 2]:
+for nprobe in [1]:
     logger.info(f'{nprobe=}')
 
-    result = perform_search(k, nprobe)
-
-    recall, n_candidates = result.get_averages()
-    logger.info(f'{recall=:.4f}, {n_candidates=:.2f}')
+    result = perform_search(len(X), k, nprobe)
+    result.log_stats()
 
     # TODO: store result in a file
 
