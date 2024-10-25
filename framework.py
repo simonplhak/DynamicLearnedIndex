@@ -104,11 +104,17 @@ class Framework:
 
         logger.info('Index stats:')
         logger.info(f' Buffer: {self.buffer.get_n_objects()} | {self.buffer.get_capacity()}')
+
         for i, level in enumerate(self.levels):
             hard_capacity_limit = bucket_size * (self.config.arity ** (i + 1))
+            status = 'OK' if not level.is_degenerated() else 'DEGENERATED'
+
             logger.info(
-                f' Level {i}: {level.get_n_objects()} | {hard_capacity_limit} ({level.get_total_capacity_with_bucket_expansion()})',
+                f' Level {i} ({status}): {level.get_n_objects()}'
+                f' | {hard_capacity_limit} ({level.get_total_capacity_with_bucket_expansion()})',
             )
+
             for j, bucket in enumerate(level.get_buckets()):
                 logger.info(f'  Bucket {j}: {bucket.get_n_objects()} | {bucket.get_capacity()}')
+
         logger.info(f' Total: {self.get_n_objects()} objects')

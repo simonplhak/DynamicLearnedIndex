@@ -11,6 +11,9 @@ if TYPE_CHECKING:
 
     from configuration import IndexConfig
 
+DEGENERATION_THRESHOLD = 0.3
+"""The fraction of the buckets that must be empty for the index to be degenerated."""
+
 
 class Index(ABC):
     def __init__(self, config: IndexConfig) -> None:
@@ -76,3 +79,7 @@ class Index(ABC):
 
     def get_buckets(self) -> list[Bucket]:
         return list(self.buckets.values())
+
+    def is_degenerated(self) -> bool:
+        """Return whether the index is degenerated."""
+        return sum(map(Bucket.is_empty, self.buckets.values())) >= self.config.n_buckets * DEGENERATION_THRESHOLD

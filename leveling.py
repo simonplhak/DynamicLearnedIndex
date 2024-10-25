@@ -50,7 +50,7 @@ class Leveling(Framework):
                 break
 
         # idx == len(self.levels) -> Allocate a new level
-        # idx != len(self.levels) -> We do the merging of the existing levels and then accommodate the data
+        # idx != len(self.levels) -> We progressively merge existing levels and then accommodate the data
 
         for i in range(idx, 0, -1):
             if i == len(self.levels):  # We need to allocate a new level
