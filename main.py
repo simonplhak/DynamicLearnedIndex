@@ -24,10 +24,7 @@ experiment_config = ExperimentConfig(
         LMIIndex,
         arity=3,
         bucket_shape=(200 if socket.gethostname() == 'Pro.local' else 1_000, 768),
-        distance=DistanceConfig(
-            METRIC_INNER_PRODUCT,
-            keep_max=True,
-        ),
+        distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
         sample_percentage=0.1,
     ),
     [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2]],
