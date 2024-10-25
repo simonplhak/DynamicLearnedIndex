@@ -28,8 +28,6 @@ class BLISSIndex(Index):
     def __init__(self, config: IndexConfig) -> None:
         super().__init__(config)
 
-        self.bucket_size = config.bucket_shape[0]
-        self.sample_size: int = self.bucket_size  # TODO: think about sample_size
         self.k_training: int = 100
         self.top_k_buckets_to_load_balance_between: int = (
             config.n_buckets  # ? Tied to the number of buckets? In the paper it is rather a small number...
