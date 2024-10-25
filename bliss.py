@@ -109,17 +109,12 @@ class BLISSIndex(Index):
 
     @measure_runtime
     def insert(self, buckets: list[Bucket]) -> bool:
-        # TODO: get rid of torch.concatenate
-        X, I = torch.concatenate([b.get_data() for b in buckets]), np.concatenate([b.get_ids() for b in buckets])
+        for bucket in buckets:  # ! can be parallelized
+            X, I = bucket.get_data(), bucket.get_ids()
+            bucket_ids = self._predict(X, 1)[1].reshape(-1)
 
-        # Predict to which bucket each vector belongs
-        bucket_ids = self._predict(X, 1)[1].reshape(-1)
-
-        # Because we use dynamic bucket size, we do not check for overflowing buckets.
-
-        # Add the vectors to the buckets
-        for i, child_bucket in self.buckets.items():
-            child_bucket.insert_bulk(X[bucket_ids == i], I[bucket_ids == i])
+            for i, child_bucket in self.buckets.items():
+                child_bucket.insert_bulk(X[bucket_ids == i], I[np.where(bucket_ids == i)])
 
         return True  # Insertion successful
 

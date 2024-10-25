@@ -95,17 +95,12 @@ class LMIIndex(Index):
         return *merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max), n_candidates
 
     def insert(self, buckets: list[Bucket]) -> bool:
-        # TODO: get rid of torch.concatenate
-        X, I = torch.concatenate([b.get_data() for b in buckets]), np.concatenate([b.get_ids() for b in buckets])
+        for bucket in buckets:  # ! can be parallelized
+            X, I = bucket.get_data(), bucket.get_ids()
+            bucket_ids = self._predict(X, 1)[1].reshape(-1)
 
-        # Predict to which bucket each vector belongs
-        bucket_ids = self._predict(X, 1)[1].reshape(-1)
-
-        # Because we use dynamic bucket size, we do not check for overflowing buckets.
-
-        # Add the vectors to the buckets
-        for i, child_bucket in self.buckets.items():
-            child_bucket.insert_bulk(X[bucket_ids == i], I[bucket_ids == i])
+            for i, child_bucket in self.buckets.items():
+                child_bucket.insert_bulk(X[bucket_ids == i], I[np.where(bucket_ids == i)])
 
         return True
 
@@ -118,8 +113,8 @@ class LMIIndex(Index):
             # Each vector belongs to a new bucket
             classes = self._predict(bucket_data, 1)[1].reshape(-1)
 
+            # Assign the vectors to the new buckets
             for i, new_child_bucket in self.buckets.items():
-                # ! This insert overflows as k-means produces unbalanced clusters
                 new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[np.where(classes == i)])
 
     def _predict(self, X: Tensor, top_k: int) -> tuple[Tensor, Tensor]:
