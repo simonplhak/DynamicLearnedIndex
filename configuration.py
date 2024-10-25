@@ -47,4 +47,4 @@ class SearchConfig:
 @dataclass
 class ExperimentConfig:
     framework_config: FrameworkConfig
-    search_config: SearchConfig
+    search_configs: list[SearchConfig]

@@ -29,7 +29,7 @@ experiment_config = ExperimentConfig(
         ),
         sample_percentage=0.1,
     ),
-    SearchConfig(k=10, nprobe=10),
+    [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2]],
 )
 
 logger.info(experiment_config)
@@ -107,14 +107,14 @@ class SearchResult:
 
 
 @measure_runtime
-def perform_search(db_size: int, k: int, nprobe: int) -> SearchResult:
+def perform_search(db_size: int, config: SearchConfig) -> SearchResult:
     recall_per_query = []
     n_candidates_per_query = []
 
     s = time.time()
     for i in tqdm(range(len(Q))):
-        _, I, n_query_candidates = framework.search(Q[i], k, nprobe)
-        recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, :k].tolist()))) / k
+        _, I, n_query_candidates = framework.search(Q[i], config.k, config.nprobe)
+        recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
 
         recall_per_query.append(recall)
         n_candidates_per_query.append(n_query_candidates)
@@ -124,14 +124,10 @@ def perform_search(db_size: int, k: int, nprobe: int) -> SearchResult:
 
 
 # Search
-k = 10
-logger.info(f'{k=}')
-for nprobe in [1]:
-    logger.info(f'{nprobe=}')
-
-    result = perform_search(len(X), k, nprobe)
+for config in experiment_config.search_configs:
+    logger.info(f'{config=}')
+    result = perform_search(len(X), config)
     result.log_stats()
-
     # TODO: store result in a file
 
 # import faiss
