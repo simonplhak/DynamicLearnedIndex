@@ -16,7 +16,8 @@ from torch.utils.data import DataLoader
 from dynamic_bucket import DynamicBucket
 from index import Index
 from labeled_dataset import LabeledDataset
-from utils import measure_runtime, np_rng, take_sample
+from sampling import take_sample
+from utils import measure_runtime, np_rng
 
 if TYPE_CHECKING:
     from bucket import Bucket
