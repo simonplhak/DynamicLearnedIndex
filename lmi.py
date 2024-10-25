@@ -47,8 +47,7 @@ class LMIIndex(Index):
 
     @measure_runtime
     def train(self, buckets: list[Bucket]) -> None:
-        sample_size = sum(b.get_n_objects() for b in buckets)  # TODO: change
-        X_sample, _ = take_sample(buckets, sample_size, self.config.bucket_shape[1])
+        X_sample, _ = take_sample(buckets, self.config.sample_percentage, self.config.bucket_shape[1])
 
         # Run k-means to obtain training labels
         kmeans = Kmeans(

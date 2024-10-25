@@ -26,6 +26,7 @@ experiment_config = ExperimentConfig(
             METRIC_INNER_PRODUCT,
             keep_max=True,
         ),
+        sample_percentage=0.1,
     ),
     SearchConfig(k=10, nprobe=10),
 )

@@ -22,6 +22,7 @@ class IndexConfig:
     n_buckets: int
     bucket_shape: BucketShape
     distance: DistanceConfig
+    sample_percentage: float
 
 
 @dataclass
@@ -30,6 +31,7 @@ class FrameworkConfig:
     arity: int
     bucket_shape: BucketShape
     distance: DistanceConfig
+    sample_percentage: float
 
 
 @dataclass

@@ -30,6 +30,7 @@ class Leveling(Framework):
                     n_buckets=pow(self.config.arity, 1),
                     distance=self.config.distance,
                     bucket_shape=self.config.bucket_shape,
+                    sample_percentage=self.config.sample_percentage,
                 ),
             )
             index.train([self.buffer])
@@ -59,6 +60,7 @@ class Leveling(Framework):
                         n_buckets=pow(self.config.arity, i + 1),
                         distance=self.config.distance,
                         bucket_shape=self.config.bucket_shape,
+                        sample_percentage=self.config.sample_percentage,
                     ),
                 )
                 index.train(self.levels[i - 1].get_buckets())

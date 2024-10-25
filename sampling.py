@@ -14,11 +14,17 @@ SEED = 42
 np_rng = np.random.default_rng(SEED)
 torch_rng = torch.Generator().manual_seed(SEED)
 
+SAMPLING_THRESHOLD = 100_000
 
-def take_sample(buckets: list[Bucket], sample_size: int, dimensionality: int) -> tuple[torch.Tensor, torch.Tensor]:
+
+def take_sample(buckets: list[Bucket], percentage: float, dimensionality: int) -> tuple[torch.Tensor, torch.Tensor]:
     """Return a tensor of size (sample_size, dimensionality) with the sample of objects from the given buckets."""
+    assert 0 <= percentage <= 1, 'Percentage must be between 0 and 1'
+
     total_n_objects = sum(b.get_n_objects() for b in buckets)
-    sample_indexes = torch.randint(total_n_objects, (sample_size,))
+    sample_size = total_n_objects if total_n_objects < SAMPLING_THRESHOLD else int(total_n_objects * percentage)
+
+    sample_indexes = torch.randperm(total_n_objects, generator=torch_rng)[:sample_size]
 
     start, stop, result_offset = 0, 0, 0
     result = torch.empty((sample_size, dimensionality), dtype=torch.float32)

@@ -16,8 +16,8 @@ from torch.utils.data import DataLoader
 from dynamic_bucket import DynamicBucket
 from index import Index
 from labeled_dataset import LabeledDataset
-from sampling import take_sample
-from utils import measure_runtime, np_rng
+from sampling import np_rng, take_sample
+from utils import measure_runtime
 
 if TYPE_CHECKING:
     from bucket import Bucket
@@ -55,8 +55,7 @@ class BLISSIndex(Index):
 
     @measure_runtime
     def train(self, buckets: list[Bucket]) -> None:
-        sample_size = sum(b.get_n_objects() for b in buckets)  # TODO: change
-        X_sample, I_sample = take_sample(buckets, sample_size, self.config.bucket_shape[1])
+        X_sample, I_sample = take_sample(buckets, self.config.sample_percentage, self.config.bucket_shape[1])
 
         total_n_objects = sum(b.get_n_objects() for b in buckets)
 
