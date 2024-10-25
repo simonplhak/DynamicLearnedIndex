@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import socket
 import time
-from dataclasses import dataclass
 
 import h5py
 import torch
@@ -13,6 +12,7 @@ from tqdm import tqdm
 from configuration import DistanceConfig, ExperimentConfig, FrameworkConfig, SearchConfig
 from leveling import Leveling
 from lmi import LMIIndex
+from search_result import SearchResult
 from utils import measure_runtime
 
 SEED = 42
@@ -68,43 +68,6 @@ insert_objects(X)
 # torch.save(framework, 'framework.pt')
 # framework = torch.load('framework.pt')
 framework.print_stats()
-
-
-@dataclass
-class SearchResult:
-    database_size: int
-    n_queries: int
-    recall_per_query: list[float]
-    n_candidates_per_query: list[int]
-    total_search_time: float
-
-    def add(self, recall: float, n_candidates: int) -> None:
-        self.recall_per_query.append(recall)
-        self.n_candidates_per_query.append(n_candidates)
-
-    def avg_recall(self) -> float:
-        return sum(self.recall_per_query) / self.n_queries * 100
-
-    def avg_n_candidates(self) -> float:
-        return sum(self.n_candidates_per_query) / self.n_queries
-
-    def candidates_percentage(self) -> float:
-        return self.avg_n_candidates() / self.database_size * 100
-
-    def avg_time_per_query_in_ms(self) -> float:
-        return self.total_search_time / self.n_queries * 1_000
-
-    def log_stats(self) -> None:
-        avg_recall = self.avg_recall()
-        avg_n_candidates = self.avg_n_candidates()
-        candidates_percentage = self.candidates_percentage()
-        avg_time_per_query_in_ms = self.avg_time_per_query_in_ms()
-
-        logger.info(
-            f'{avg_recall:.2f}%, '
-            f'{avg_n_candidates:.2f} candidates ({candidates_percentage:.1f}%), '
-            f'{avg_time_per_query_in_ms:.2f}ms per query',
-        )
 
 
 @measure_runtime
