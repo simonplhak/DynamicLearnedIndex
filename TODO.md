@@ -1,6 +1,5 @@
 # TODOs
 
-- candidate set size
 - train lmi on a sample
 - ? fix weights reset with LMI
 - implement my own algorithm for situations where the clustering does not conform to maximal bucket sizes - essentially `train` method (is this framework or index specific?)

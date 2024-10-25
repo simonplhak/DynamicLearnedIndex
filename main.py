@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import h5py
 import torch
 from faiss import METRIC_INNER_PRODUCT
@@ -65,16 +67,30 @@ insert_objects(X)
 framework.print_stats()
 
 
+@dataclass
+class SearchResult:
+    n_queries: int
+    recall_per_query: list[float]
+    n_candidates_per_query: list[int]
+
+    def add(self, recall: float, n_candidates: int) -> None:
+        self.recall_per_query.append(recall)
+        self.n_candidates_per_query.append(n_candidates)
+
+    def get_averages(self) -> tuple[float, float]:
+        return sum(self.recall_per_query) / self.n_queries, sum(self.n_candidates_per_query) / self.n_queries
+
+
 @measure_runtime
-def perform_search(k: int, nprobe: int) -> tuple[float, float]:
-    recall, n_candidates = 0.0, 0.0
+def perform_search(k: int, nprobe: int) -> SearchResult:
+    result = SearchResult(len(Q), [], [])
 
     for i in tqdm(range(len(Q))):
         _, I, n_query_candidates = framework.search(Q[i], k, nprobe)
-        recall += len(set((I[0] + 1).tolist()).intersection(set(GT[i, :k].tolist()))) / k
-        n_candidates += n_query_candidates
+        recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, :k].tolist()))) / k
+        result.add(recall, n_query_candidates)
 
-    return recall / len(Q), n_candidates / len(Q)
+    return result
 
 
 # Search
@@ -82,8 +98,13 @@ k = 10
 logger.info(f'{k=}')
 for nprobe in [1, 2]:
     logger.info(f'{nprobe=}')
-    recall, n_candidates = perform_search(k, nprobe)
+
+    result = perform_search(k, nprobe)
+
+    recall, n_candidates = result.get_averages()
     logger.info(f'{recall=:.4f}, {n_candidates=:.2f}')
+
+    # TODO: store result in a file
 
 # import faiss
 
