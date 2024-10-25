@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from loguru import logger
+
 from configuration import IndexConfig
 from framework import Framework
 
@@ -54,7 +56,6 @@ class Leveling(Framework):
 
         for i in range(idx, 0, -1):
             if i == len(self.levels):  # We need to allocate a new level
-                # TODO: reset the model's weights first?
                 index = self.config.index_class(
                     IndexConfig(
                         n_buckets=pow(self.config.arity, i + 1),
@@ -67,8 +68,15 @@ class Leveling(Framework):
                 self._create_new_level(index)
             else:
                 # ? when to retrain and when to keep the existing model?
-                # ? self.levels[i].train([*self.levels[i].get_buckets(), *self.levels[i - 1].get_buckets()])
-                assert self.levels[i].insert(self.levels[i - 1].get_buckets())
+                logger.info(f'{self.levels[i].is_degenerated()=}')
+                if self.levels[i].is_degenerated():  # Throw away the degenerated index and create a new one
+                    # * Here, we could simply reset the model weights without allocating a new model
+                    index = self.config.index_class(self.levels[i].config)
+
+                    index.train([*self.levels[i].get_buckets(), *self.levels[i - 1].get_buckets()])
+                    self.levels[i] = index
+                else:  # Accommodate the data as the index is not degenerated
+                    assert self.levels[i].insert(self.levels[i - 1].get_buckets())
 
             self.levels[i - 1].empty()
 

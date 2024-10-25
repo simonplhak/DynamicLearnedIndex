@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import torch
 from faiss import Kmeans, merge_knn_results
+from loguru import logger
 from torch import Tensor
 from torch.nn import CrossEntropyLoss, Linear, ReLU, Sequential
 from torch.nn.functional import softmax
@@ -75,6 +76,9 @@ class LMIIndex(Index):
                 self.optimizer.zero_grad()
 
         self._assign_objects_to_new_buckets(buckets)
+
+        if self.is_degenerated():
+            logger.warning('Trained degenerated index!')
 
     def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
         nprobe = min(nprobe, self.config.n_buckets)

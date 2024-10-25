@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 
     from configuration import IndexConfig
 
-DEGENERATION_THRESHOLD = 0.3
+DEGENERATION_THRESHOLD = 0.5
 """The fraction of the buckets that must be empty for the index to be degenerated."""
 
 
