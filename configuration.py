@@ -19,11 +19,23 @@ class DistanceConfig:
 
 
 @dataclass
+class SamplingConfig:
+    percentage: float
+    """Percentage of objects to sample. Must be between 0 and 1."""
+    threshold: int
+    """From which number of objects to start sampling. Must be at least 0."""
+
+    def __post_init__(self) -> None:
+        assert 0 <= self.percentage <= 1
+        assert self.threshold >= 0
+
+
+@dataclass
 class IndexConfig:
     n_buckets: int
     bucket_shape: BucketShape
     distance: DistanceConfig
-    sample_percentage: float
+    sampling: SamplingConfig
 
 
 @dataclass
@@ -32,7 +44,7 @@ class FrameworkConfig:
     arity: int
     bucket_shape: BucketShape
     distance: DistanceConfig
-    sample_percentage: float
+    sampling: SamplingConfig
 
 
 @dataclass
@@ -50,6 +62,7 @@ class ExperimentConfig:
     framework_config: FrameworkConfig
     search_configs: list[SearchConfig]
 
+    # Reproducibility
     commit_hash: str
     """Hash of the current commit."""
     dirty_state: bool

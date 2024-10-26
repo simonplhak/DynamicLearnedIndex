@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from loguru import logger
-
 from configuration import IndexConfig
 from framework import Framework
 
@@ -28,7 +26,7 @@ class Leveling(Framework):
                     n_buckets=pow(self.config.arity, 1),
                     distance=self.config.distance,
                     bucket_shape=self.config.bucket_shape,
-                    sample_percentage=self.config.sample_percentage,
+                    sampling=self.config.sampling,
                 ),
             )
             index.train([self.buffer])
@@ -57,14 +55,13 @@ class Leveling(Framework):
                         n_buckets=pow(self.config.arity, i + 1),
                         distance=self.config.distance,
                         bucket_shape=self.config.bucket_shape,
-                        sample_percentage=self.config.sample_percentage,
+                        sampling=self.config.sampling,
                     ),
                 )
                 index.train(self.levels[i - 1].get_buckets())
                 self._create_new_level(index)
             else:
                 # ? when to retrain and when to keep the existing model?
-                logger.info(f'{self.levels[i].is_degenerated()=}')
                 if self.levels[i].is_degenerated():  # Throw away the degenerated index and create a new one
                     # * Here, we could simply reset the model weights without allocating a new model
                     index = self.config.index_class(self.levels[i].config)

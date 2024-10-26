@@ -48,7 +48,7 @@ class LMIIndex(Index):
 
     @measure_runtime
     def train(self, buckets: list[Bucket]) -> None:
-        X_sample, _ = take_sample(buckets, self.config.sample_percentage, self.config.bucket_shape[1])
+        X_sample, _ = take_sample(buckets, self.config.sampling, self.config.bucket_shape[1])
 
         # Run k-means to obtain training labels
         kmeans = Kmeans(

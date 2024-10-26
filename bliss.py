@@ -53,7 +53,7 @@ class BLISSIndex(Index):
 
     @measure_runtime
     def train(self, buckets: list[Bucket]) -> None:
-        X_sample, I_sample = take_sample(buckets, self.config.sample_percentage, self.config.bucket_shape[1])
+        X_sample, I_sample = take_sample(buckets, self.config.sampling, self.config.bucket_shape[1])
 
         total_n_objects = sum(b.get_n_objects() for b in buckets)
 

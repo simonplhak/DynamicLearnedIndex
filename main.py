@@ -9,7 +9,7 @@ from faiss import METRIC_INNER_PRODUCT
 from loguru import logger
 from tqdm import tqdm
 
-from configuration import DistanceConfig, ExperimentConfig, FrameworkConfig, SearchConfig
+from configuration import DistanceConfig, ExperimentConfig, FrameworkConfig, SamplingConfig, SearchConfig
 from leveling import Leveling
 from lmi import LMIIndex
 from search_result import SearchResult
@@ -25,7 +25,7 @@ experiment_config = ExperimentConfig(
         arity=3,
         bucket_shape=(200 if socket.gethostname() == 'Pro.local' else 1_000, 768),
         distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
-        sample_percentage=0.1,
+        sampling=SamplingConfig(percentage=0.1, threshold=100_000),
     ),
     [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2]],
 )
