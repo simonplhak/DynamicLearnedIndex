@@ -5,9 +5,23 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from index import Index
 
 type BucketShape = tuple[int, int]  # (number of vectors, dimensionality)
+
+
+@dataclass
+class DatasetConfig:
+    dataset_size: int
+    """Number of objects in the dataset."""
+    X: Path
+    """Path to the dataset."""
+    Q: Path
+    """Path to the queries."""
+    GT: Path
+    """Path to the ground truth."""
 
 
 @dataclass
@@ -59,6 +73,7 @@ class SearchConfig:
 
 @dataclass
 class ExperimentConfig:
+    dataset_config: DatasetConfig
     framework_config: FrameworkConfig
     search_configs: list[SearchConfig]
 
@@ -68,7 +83,13 @@ class ExperimentConfig:
     dirty_state: bool
     """Whether the repository was in a dirty state."""
 
-    def __init__(self, framework_config: FrameworkConfig, search_configs: list[SearchConfig]) -> None:
+    def __init__(
+        self,
+        dataset_config: DatasetConfig,
+        framework_config: FrameworkConfig,
+        search_configs: list[SearchConfig],
+    ) -> None:
+        self.dataset_config = dataset_config
         self.framework_config = framework_config
         self.search_configs = search_configs
 

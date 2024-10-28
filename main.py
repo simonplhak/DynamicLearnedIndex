@@ -4,13 +4,12 @@ import socket
 import time
 from pathlib import Path
 
-import h5py
 import torch
 from faiss import METRIC_INNER_PRODUCT
 from loguru import logger
 from tqdm import tqdm
 
-from configuration import DistanceConfig, ExperimentConfig, FrameworkConfig, SamplingConfig, SearchConfig
+from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SamplingConfig, SearchConfig
 from leveling import Leveling
 from lmi import LMIIndex
 from plots import (
@@ -20,7 +19,7 @@ from plots import (
     save_relevant_results_to_csv,
 )
 from search_result import SearchResult
-from utils import measure_runtime
+from utils import load_data, measure_runtime
 
 SEED = 42
 torch.manual_seed(SEED)
@@ -32,30 +31,45 @@ experiment_id = time.strftime('%Y%m%d-%H%M%S')
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
 
+if socket.gethostname() == 'Pro.local':
+    experiment_config = ExperimentConfig(
+        DatasetConfig(
+            dataset_size=10_000,
+            X=Path('laion2B-en-clip768v2-n=300K.h5'),
+            Q=Path('public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
+            GT=Path('gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
+        ),
+        FrameworkConfig(
+            LMIIndex,
+            arity=3,
+            bucket_shape=(200, 768),
+            distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
+            sampling=SamplingConfig(percentage=0.1, threshold=100_000),
+        ),
+        [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2]],
+    )
+else:
+    experiment_config = ExperimentConfig(
+        DatasetConfig(
+            dataset_size=10_120_191,
+            X=Path('laion2B-en-clip768v2-n=10M.h5'),
+            Q=Path('public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
+            GT=Path('gold-standard-dbsize=10M--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
+        ),
+        FrameworkConfig(
+            LMIIndex,
+            arity=3,
+            bucket_shape=(3_000, 768),
+            distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
+            sampling=SamplingConfig(percentage=0.1, threshold=100_000),
+        ),
+        [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
+    )
+
 logger.info(f'Experiment ID: {experiment_id}')
-
-experiment_config = ExperimentConfig(
-    FrameworkConfig(
-        LMIIndex,
-        arity=3,
-        bucket_shape=(200 if socket.gethostname() == 'Pro.local' else 1_000, 768),
-        distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
-        sampling=SamplingConfig(percentage=0.1, threshold=100_000),
-    ),
-    [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2]],
-)
-
 logger.info(experiment_config)
 
-# Load the dataset
-DATASET_SIZE = 10_000 if socket.gethostname() == 'Pro.local' else 300_000
-X = torch.from_numpy(h5py.File('laion2B-en-clip768v2-n=300K.h5', 'r')['emb'][:DATASET_SIZE]).to(torch.float32)  # type: ignore
-Q = torch.from_numpy(h5py.File('public-queries-2024-laion2B-en-clip768v2-n=10k.h5', 'r')['emb'][:]).to(  # type: ignore
-    torch.float32,
-)
-GT = torch.from_numpy(
-    h5py.File('gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5', 'r')['knns'][:],  # type: ignore
-)
+X, Q, GT = load_data(experiment_config.dataset_config)
 
 # Create the framework
 framework = Leveling(experiment_config.framework_config)

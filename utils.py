@@ -2,9 +2,15 @@ from __future__ import annotations
 
 import functools
 import time
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any, Callable
 
+import h5py
+import torch
 from loguru import logger
+from torch import Tensor
+
+if TYPE_CHECKING:
+    from configuration import DatasetConfig
 
 
 def measure_runtime(func: Callable) -> Callable:
@@ -19,3 +25,11 @@ def measure_runtime(func: Callable) -> Callable:
         return result
 
     return wrapper_measure_runtime
+
+
+@measure_runtime
+def load_data(config: DatasetConfig) -> tuple[Tensor, Tensor, Tensor]:
+    X = torch.from_numpy(h5py.File(config.X, 'r')['emb'][: config.dataset_size]).to(torch.float32)  # type: ignore
+    Q = torch.from_numpy(h5py.File(config.Q, 'r')['emb'][:]).to(torch.float32)  # type: ignore
+    GT = torch.from_numpy(h5py.File(config.GT, 'r')['knns'][:])  # type: ignore
+    return X, Q, GT
