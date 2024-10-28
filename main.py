@@ -63,7 +63,7 @@ else:
             distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
             sampling=SamplingConfig(percentage=0.1, threshold=100_000),
         ),
-        [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
+        [SearchConfig(k=30, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
     )
 
 logger.info(f'Experiment ID: {experiment_id}')
