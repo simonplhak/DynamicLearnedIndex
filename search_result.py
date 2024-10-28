@@ -1,12 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from loguru import logger
+
+if TYPE_CHECKING:
+    from configuration import SearchConfig
 
 
 @dataclass
 class SearchResult:
+    config: SearchConfig
     database_size: int
     n_queries: int
     recall_per_query: list[float]
@@ -28,6 +33,9 @@ class SearchResult:
 
     def avg_time_per_query_in_ms(self) -> float:
         return self.total_search_time / self.n_queries * 1_000
+
+    def queries_per_second(self) -> float:
+        return self.n_queries / self.total_search_time
 
     def log_stats(self) -> None:
         avg_recall = self.avg_recall()

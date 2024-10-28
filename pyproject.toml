@@ -29,6 +29,7 @@ ignore = [
     "E741",   # Ambiguous variable name: {name}
     "TD002",  # Missing author in TODO; try: # TODO(<author_name>): ... or # TODO @<author_name>: ...
     "D105",   # Missing docstring in magic method
+    "PD901",  # Avoid using the generic variable name df for DataFrames
 ]
 select = [
     "F",     # Pyflakes

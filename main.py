@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import socket
 import time
+from pathlib import Path
 
 import h5py
 import torch
@@ -12,12 +13,26 @@ from tqdm import tqdm
 from configuration import DistanceConfig, ExperimentConfig, FrameworkConfig, SamplingConfig, SearchConfig
 from leveling import Leveling
 from lmi import LMIIndex
+from plots import (
+    plot_queries_per_second_vs_recall,
+    plot_recall_vs_avg_time_per_query,
+    plot_recall_vs_nprobe,
+    save_relevant_results_to_csv,
+)
 from search_result import SearchResult
 from utils import measure_runtime
 
 SEED = 42
 torch.manual_seed(SEED)
 
+EXPERIMENTAL_RESULTS_DIR = Path('experimental_results')
+
+experiment_id = time.strftime('%Y%m%d-%H%M%S')
+
+logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
+logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
+
+logger.info(f'Experiment ID: {experiment_id}')
 
 experiment_config = ExperimentConfig(
     FrameworkConfig(
@@ -83,12 +98,29 @@ def perform_search(db_size: int, config: SearchConfig) -> SearchResult:
         n_candidates_per_query.append(n_query_candidates)
     e = time.time() - s
 
-    return SearchResult(db_size, len(Q), recall_per_query, n_candidates_per_query, e)
+    return SearchResult(config, db_size, len(Q), recall_per_query, n_candidates_per_query, e)
 
 
 # Search
+results = []
 for config in experiment_config.search_configs:
     logger.info(f'{config=}')
     result = perform_search(len(X), config)
     result.log_stats()
+    results.append(result)
     # TODO: store result in a file
+
+# Save results
+experiment_dir = EXPERIMENTAL_RESULTS_DIR / experiment_id
+experiment_dir.mkdir(exist_ok=True, parents=True)
+(experiment_dir / 'experiment_id.txt').open('w').writelines([experiment_id])
+(experiment_dir / 'experiment_config.txt').open('w').writelines([str(experiment_config)])
+(experiment_dir / 'results.txt').open('w').writelines([str(results)])
+
+# Save relevant plot data
+df = save_relevant_results_to_csv(experiment_config, results, experiment_dir)
+
+# Save plots
+plot_recall_vs_nprobe(df, experiment_dir)
+plot_queries_per_second_vs_recall(df, experiment_dir)
+plot_recall_vs_avg_time_per_query(df, experiment_dir)
