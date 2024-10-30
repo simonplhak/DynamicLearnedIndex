@@ -29,7 +29,7 @@ torch.manual_seed(SEED)
 EXPERIMENTAL_RESULTS_DIR = Path('experimental_results')
 
 commit_hash, dirty_state = obtain_commit_hash(), obtain_dirty_state()
-experiment_id = f'{commit_hash}-{dirty_state}-{time.strftime('%Y%m%d-%H%M%S')}'
+experiment_id = f'{time.strftime('%Y%m%d-%H%M%S')}-{commit_hash}{'-dirty' if dirty_state else ''}'
 
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
@@ -128,12 +128,12 @@ logger.info(f'Build time: {build_result.time:.5}s')
 logger.info(pprint.pformat(build_result.stats))
 
 # Search
-results = []
+search_results = []
 for config in experiment_config.search_configs:
     logger.info(config)
     result = perform_search(len(X), config)
     result.log_stats()
-    results.append(result)
+    search_results.append(result)
     # TODO: store result in a file
 
 # Save results
@@ -141,10 +141,11 @@ experiment_dir = EXPERIMENTAL_RESULTS_DIR / experiment_id
 experiment_dir.mkdir(exist_ok=True, parents=True)
 (experiment_dir / 'experiment_id.txt').open('w').writelines([experiment_id])
 (experiment_dir / 'experiment_config.txt').open('w').writelines([str(experiment_config)])
-(experiment_dir / 'results.txt').open('w').writelines([str(results)])
+(experiment_dir / 'search_results.txt').open('w').writelines([str(search_results)])
+(experiment_dir / 'build_result.txt').open('w').writelines([str(build_result)])
 
 # Save relevant plot data
-df = save_relevant_results_to_csv(experiment_config, build_result, results, experiment_dir)
+df = save_relevant_results_to_csv(experiment_config, build_result, search_results, experiment_dir)
 
 # Save plots
 plot_recall_vs_nprobe(df, experiment_dir)
