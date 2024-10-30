@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from itertools import chain
+from statistics import mean, median
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -134,10 +135,17 @@ class Framework:
                 {
                     'n_objects': level.get_n_objects(),
                     'n_buckets': len(level.get_buckets()),
-                    'buckets': [b.get_n_objects() for b in level.get_buckets()],
                     'total_capacity_with_bucket_expansion': level.get_total_capacity_with_bucket_expansion(),
                     'total_capacity': level.get_total_capacity(),
                     'is_degenerated': level.is_degenerated(),
+                    'min_occupation': min(b.get_n_objects() for b in level.get_buckets()),
+                    'avg_occupation': mean(b.get_n_objects() for b in level.get_buckets()) / len(level.get_buckets()),
+                    'median_occupation': median(b.get_n_objects() for b in level.get_buckets()),
+                    'max_occupation': max(b.get_n_objects() for b in level.get_buckets()),
+                    'min_capacity': min(b.get_capacity() for b in level.get_buckets()),
+                    'avg_capacity': mean(b.get_capacity() for b in level.get_buckets()) / len(level.get_buckets()),
+                    'median_capacity': median(b.get_capacity() for b in level.get_buckets()),
+                    'max_capacity': max(b.get_capacity() for b in level.get_buckets()),
                 }
                 for level in self.levels
             ],

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import subprocess
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -82,16 +81,3 @@ class ExperimentConfig:
     """Hash of the current commit."""
     dirty_state: bool
     """Whether the repository was in a dirty state."""
-
-    def __init__(
-        self,
-        dataset_config: DatasetConfig,
-        framework_config: FrameworkConfig,
-        search_configs: list[SearchConfig],
-    ) -> None:
-        self.dataset_config = dataset_config
-        self.framework_config = framework_config
-        self.search_configs = search_configs
-
-        self.commit_hash = subprocess.check_output(['git', 'describe', '--always']).strip().decode()  # noqa: S603, S607
-        self.dirty_state = subprocess.call(['git', 'diff', '--quiet']) != 0  # noqa: S603, S607

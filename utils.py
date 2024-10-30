@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import functools
+import subprocess
 import time
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -33,3 +34,11 @@ def load_data(config: DatasetConfig) -> tuple[Tensor, Tensor, Tensor]:
     Q = torch.from_numpy(h5py.File(config.Q, 'r')['emb'][:]).to(torch.float32)  # type: ignore
     GT = torch.from_numpy(h5py.File(config.GT, 'r')['knns'][:])  # type: ignore
     return X, Q, GT
+
+
+def obtain_commit_hash() -> str:
+    return subprocess.check_output(['git', 'describe', '--always']).strip().decode()  # noqa: S603, S607
+
+
+def obtain_dirty_state() -> bool:
+    return subprocess.call(['git', 'diff', '--quiet']) != 0  # noqa: S603, S607

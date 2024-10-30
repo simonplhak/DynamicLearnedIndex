@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pprint
 import socket
 import time
 from pathlib import Path
@@ -20,14 +21,15 @@ from plots import (
     save_relevant_results_to_csv,
 )
 from search_result import SearchResult
-from utils import load_data, measure_runtime
+from utils import load_data, measure_runtime, obtain_commit_hash, obtain_dirty_state
 
 SEED = 42
 torch.manual_seed(SEED)
 
 EXPERIMENTAL_RESULTS_DIR = Path('experimental_results')
 
-experiment_id = time.strftime('%Y%m%d-%H%M%S')
+commit_hash, dirty_state = obtain_commit_hash(), obtain_dirty_state()
+experiment_id = f'{commit_hash}-{dirty_state}-{time.strftime('%Y%m%d-%H%M%S')}'
 
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
@@ -48,6 +50,8 @@ if socket.gethostname() == 'Pro.local':
             sampling=SamplingConfig(percentage=0.1, threshold=100_000),
         ),
         [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2]],
+        commit_hash,
+        dirty_state,
     )
 else:
     experiment_config = ExperimentConfig(
@@ -65,6 +69,8 @@ else:
             sampling=SamplingConfig(percentage=0.1, threshold=100_000),
         ),
         [SearchConfig(k=30, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
+        commit_hash,
+        dirty_state,
     )
 
 logger.info(f'Experiment ID: {experiment_id}')
@@ -80,7 +86,6 @@ framework = Leveling(experiment_config.framework_config)
 @measure_runtime
 def insert_objects(X: torch.Tensor) -> BuildResult:
     s = time.time()
-
     for i in range(len(X)):
         framework.insert(X[i], i)
 
@@ -88,20 +93,15 @@ def insert_objects(X: torch.Tensor) -> BuildResult:
             logger.info(f'Inserted {i+1} objects')
 
         assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
+    build_time = time.time() - s
 
     logger.info(f'Inserted {len(X)} objects')
-    e = time.time() - s
 
-    return BuildResult(e)
+    return BuildResult(build_time, framework.collect_stats())
 
 
 build_result = insert_objects(X)
-
-# torch.save(framework, 'framework.pt')
-# framework = torch.load('framework.pt')
 framework.print_stats()
-stats = framework.collect_stats()
-logger.info(stats)
 
 
 @measure_runtime
@@ -116,15 +116,16 @@ def perform_search(db_size: int, config: SearchConfig) -> SearchResult:
 
         recall_per_query.append(recall)
         n_candidates_per_query.append(n_query_candidates)
-    e = time.time() - s
+    search_time = time.time() - s
 
-    return SearchResult(config, db_size, len(Q), recall_per_query, n_candidates_per_query, e)
+    return SearchResult(config, db_size, len(Q), recall_per_query, n_candidates_per_query, search_time)
 
 
 # Print stats once again
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
-logger.info(build_result)
+logger.info(f'Build time: {build_result.time:.5}s')
+logger.info(pprint.pformat(build_result.stats))
 
 # Search
 results = []
