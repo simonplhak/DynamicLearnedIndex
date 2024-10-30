@@ -8,12 +8,14 @@ import seaborn as sns
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from build_result import BuildResult
     from configuration import ExperimentConfig
     from search_result import SearchResult
 
 
 def save_relevant_results_to_csv(
     config: ExperimentConfig,
+    build_result: BuildResult,
     results: list[SearchResult],
     experiment_dir: Path,
 ) -> pd.DataFrame:
@@ -23,6 +25,7 @@ def save_relevant_results_to_csv(
             'avg_recall': [result.avg_recall() for result in results],
             'avg_time_per_query': [result.avg_time_per_query_in_ms() for result in results],
             'queries_per_second': [result.queries_per_second() for result in results],
+            'build_time': build_result.time,
         },
     )
     df.to_csv(experiment_dir / 'df_plot.csv')

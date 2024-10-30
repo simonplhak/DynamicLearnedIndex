@@ -9,6 +9,7 @@ from faiss import METRIC_INNER_PRODUCT
 from loguru import logger
 from tqdm import tqdm
 
+from build_result import BuildResult
 from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SamplingConfig, SearchConfig
 from leveling import Leveling
 from lmi import LMIIndex
@@ -77,7 +78,9 @@ framework = Leveling(experiment_config.framework_config)
 
 # Insert the dataset one object at a time
 @measure_runtime
-def insert_objects(X: torch.Tensor) -> None:
+def insert_objects(X: torch.Tensor) -> BuildResult:
+    s = time.time()
+
     for i in range(len(X)):
         framework.insert(X[i], i)
 
@@ -87,9 +90,12 @@ def insert_objects(X: torch.Tensor) -> None:
         assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
 
     logger.info(f'Inserted {len(X)} objects')
+    e = time.time() - s
+
+    return BuildResult(e)
 
 
-insert_objects(X)
+build_result = insert_objects(X)
 
 # torch.save(framework, 'framework.pt')
 # framework = torch.load('framework.pt')
@@ -115,10 +121,15 @@ def perform_search(db_size: int, config: SearchConfig) -> SearchResult:
     return SearchResult(config, db_size, len(Q), recall_per_query, n_candidates_per_query, e)
 
 
+# Print stats once again
+logger.info(f'Experiment ID: {experiment_id}')
+logger.info(experiment_config)
+logger.info(build_result)
+
 # Search
 results = []
 for config in experiment_config.search_configs:
-    logger.info(f'{config=}')
+    logger.info(config)
     result = perform_search(len(X), config)
     result.log_stats()
     results.append(result)
@@ -132,7 +143,7 @@ experiment_dir.mkdir(exist_ok=True, parents=True)
 (experiment_dir / 'results.txt').open('w').writelines([str(results)])
 
 # Save relevant plot data
-df = save_relevant_results_to_csv(experiment_config, results, experiment_dir)
+df = save_relevant_results_to_csv(experiment_config, build_result, results, experiment_dir)
 
 # Save plots
 plot_recall_vs_nprobe(df, experiment_dir)
