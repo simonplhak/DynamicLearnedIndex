@@ -132,9 +132,8 @@ search_results = []
 for config in experiment_config.search_configs:
     logger.info(config)
     result = perform_search(len(X), config)
-    result.log_stats()
+    logger.info(result.get_stats())
     search_results.append(result)
-    # TODO: store result in a file
 
 # Save results
 experiment_dir = EXPERIMENTAL_RESULTS_DIR / experiment_id

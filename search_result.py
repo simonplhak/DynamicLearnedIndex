@@ -37,14 +37,14 @@ class SearchResult:
     def queries_per_second(self) -> float:
         return self.n_queries / self.total_search_time
 
-    def log_stats(self) -> None:
+    def get_stats(self) -> str:
         avg_recall = self.avg_recall()
         avg_n_candidates = self.avg_n_candidates()
         candidates_percentage = self.candidates_percentage()
         avg_time_per_query_in_ms = self.avg_time_per_query_in_ms()
 
-        logger.info(
+        return (
             f'{avg_recall:.2f}%, '
             f'{avg_n_candidates:.2f} candidates ({candidates_percentage:.2f}%), '
-            f'{avg_time_per_query_in_ms:.2f}ms per query',
+            f'{avg_time_per_query_in_ms:.2f}ms per query'
         )
