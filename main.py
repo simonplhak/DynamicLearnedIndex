@@ -21,7 +21,7 @@ from plots import (
     plot_recall_vs_nprobe,
     save_relevant_results_to_csv,
 )
-from utils import load_data, measure_runtime, obtain_commit_hash, obtain_dirty_state
+from utils import load_data, measure_memory_usage, measure_runtime, obtain_commit_hash, obtain_dirty_state
 
 SEED = 42
 torch.manual_seed(SEED)
@@ -84,6 +84,7 @@ framework = Leveling(experiment_config.framework_config)
 
 # Insert the dataset one object at a time
 @measure_runtime
+@measure_memory_usage
 def insert_objects(X: torch.Tensor) -> BuildResult:
     s = time.time()
     for i in range(len(X)):

@@ -6,12 +6,22 @@ import time
 from typing import TYPE_CHECKING, Any, Callable
 
 import h5py
+import psutil
 import torch
 from loguru import logger
 from torch import Tensor
 
 if TYPE_CHECKING:
     from configuration import DatasetConfig
+
+
+def sizeof_fmt(num: float, suffix: str = 'B') -> str:
+    # https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
+    for unit in ('', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi'):
+        if abs(num) < 1024.0:  # noqa: PLR2004
+            return f'{num:3.1f}{unit}{suffix}'
+        num /= 1024.0
+    return f'{num:.1f}Yi{suffix}'
 
 
 def measure_runtime(func: Callable) -> Callable:
@@ -26,6 +36,20 @@ def measure_runtime(func: Callable) -> Callable:
         return result
 
     return wrapper_measure_runtime
+
+
+def measure_memory_usage(func: Callable) -> Callable:
+    @functools.wraps(func)
+    def wrapper_measure_memory_usage(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+        process = psutil.Process()
+        start = process.memory_info().rss
+        result = func(*args, **kwargs)
+        stop = process.memory_info().rss
+        # ? What if some objects are garbage collected during the function's execution?
+        logger.debug(f'Function {func.__name__} allocated {sizeof_fmt(stop - start)}.')
+        return result
+
+    return wrapper_measure_memory_usage
 
 
 @measure_runtime
