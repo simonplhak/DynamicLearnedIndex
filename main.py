@@ -136,6 +136,7 @@ def perform_search(db_size: int, config: SearchConfig) -> ExperimentSearchResult
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
 logger.info(f'Build time: {build_result.time:.5}s')
+logger.info(f'Insert throughput: {len(X)/build_result.time:.2} IPS')  # TODO: store persistently?
 logger.info(pprint.pformat(build_result.stats))
 
 # Search
@@ -144,6 +145,7 @@ for config in experiment_config.search_configs:
     logger.info(config)
     result = perform_search(len(X), config)
     logger.info(result.get_stats())
+    logger.info(f'Search throughput: {len(Q)/result.total_search_time:.2} QPS')  # TODO: store persistently?
     search_results.append(result)
 
 # Save results
