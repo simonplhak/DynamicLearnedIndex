@@ -5,16 +5,17 @@ core functionality
   - degeneration
     - pustit 3x experiment (1x nechavam existujici modely, 1x pokazde zmenim model, 1x nase heuristika)
     - precist znovu paper, jesli se k tomuhle vyjadruji
+- model
+  - different models
+  - adjust model size
 - deletion of objects
 
 additional things
-- ? use more sophisticated sampling technique
+- sampling
+  - ? use more sophisticated sampling technique
   - use constant sample size to provide bounded model construction time?
   - force the same number of sampled objects from each bucket?
-
----
-
-- add overview of all important stats from build and search
+- overview of all important stats from build and search
 - pustit na 100M
 
 ---
