@@ -107,6 +107,25 @@ class Framework:
         merge_time_in_ms = (time.time() - s) * SEC_TO_MSEC
 
         # Collect statistics
+
+        ## Calculate result_object_level_location
+        # ! Takes a long time, but is needed for debugging.
+        # ! TODO: run only with debug flag
+        # TODO: refactor + extract into a separate method
+        result_object_level_location: list[tuple[int, int]] = []  # (i, j) where i is the level and j is the bucket
+        nns = I[0]
+        assert len(nns) == k
+        for nn_id in nns.tolist():
+            if nn_id in self.buffer.get_ids():
+                result_object_level_location.append((-1, -1))  # -1, -1 ~ buffer
+            else:
+                for i, level in enumerate(self.levels):
+                    for j, bucket in enumerate(level.buckets.values()):
+                        if nn_id in bucket.get_ids():
+                            result_object_level_location.append((i, j))
+                            break
+        assert len(result_object_level_location) == k
+
         statistics = FrameworkSearchStatistics(
             total_n_candidates=sum(n_candidates_per_level),
             n_candidates_per_level=n_candidates_per_level,
@@ -115,6 +134,7 @@ class Framework:
             search_time_in_ms=search_time_in_ms,
             merge_time_in_ms=merge_time_in_ms,
             total_search_time_in_ms=search_time_in_ms + preparation_time_in_ms + merge_time_in_ms,
+            result_object_level_location=result_object_level_location,
         )
 
         return D, I, statistics

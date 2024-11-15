@@ -15,3 +15,6 @@ class FrameworkSearchStatistics:
     merge_time_in_ms: float
 
     total_search_time_in_ms: float
+
+    # At what level is each result object located?
+    result_object_level_location: list[tuple[int, int]]
