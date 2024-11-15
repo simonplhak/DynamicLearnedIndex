@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from index import Index
+    from search_strategy import SearchStrategy
 
 type BucketShape = tuple[int, int]  # (number of vectors, dimensionality)
 
@@ -58,6 +59,7 @@ class FrameworkConfig:
     bucket_shape: BucketShape
     distance: DistanceConfig
     sampling: SamplingConfig
+    search_strategy: type[SearchStrategy]
 
 
 @dataclass

@@ -76,6 +76,7 @@ class Framework:
         # Preparation step
         s = time.time()
         query = query.reshape((1, self.dimensionality))
+        search_strategy = self.config.search_strategy(self.config.arity, 1 + len(self.levels))
 
         # Search the buffer if it is not empty
         searchable_levels = [self.buffer] if not self.buffer.is_empty() else []
@@ -96,7 +97,8 @@ class Framework:
         s = time.time()
         for i, level in enumerate(searchable_levels):
             s = time.time()
-            D_all[i, :, :], I_all[i, :, :], n_level_candidates = level.search(query, k, nprobe)
+            level_nprobe = search_strategy.determine_level_nprobe(i, nprobe)
+            D_all[i, :, :], I_all[i, :, :], n_level_candidates = level.search(query, k, level_nprobe)
             search_time_per_level_in_ms[i] += (time.time() - s) * SEC_TO_MSEC
 
             n_candidates_per_level[i] += n_level_candidates

@@ -5,6 +5,9 @@ core functionality
   - degeneration
     - pustit 3x experiment (1x nechavam existujici modely, 1x pokazde zmenim model, 1x nase heuristika)
     - precist znovu paper, jesli se k tomuhle vyjadruji
+- search strategy
+  - implement latest
+  - implement historic
 - model
   - different models
   - adjust model size
@@ -20,8 +23,6 @@ additional things
 
 ---
 
-- nprobe search strategy
-  - DFS
 - ? train index until it is not degenerated
 - performance
   - ? insertion of objects in bulk
