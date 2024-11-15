@@ -141,7 +141,7 @@ def perform_search(db_size: int, config: SearchConfig) -> ExperimentSearchResult
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
 logger.info(f'Build time: {build_result.time:.5}s')
-logger.info(f'Insert throughput: {len(X)/build_result.time:.3} IPS')  # TODO: store persistently?
+logger.info(f'Insert throughput: {int(len(X)/build_result.time)} IPS')  # TODO: store persistently?
 logger.info(f'Total model training time: {build_result.total_model_training_time():.3}s')
 logger.info(f'Framework overhead time: {build_result.time - build_result.total_model_training_time():.3}s')
 logger.info(pprint.pformat(build_result.stats))
@@ -152,7 +152,7 @@ for config in experiment_config.search_configs:
     logger.info(config)
     result = perform_search(len(X), config)
     logger.info(result.get_stats())
-    logger.info(f'Search throughput: {len(Q)/result.total_search_time:.3} QPS')  # TODO: store persistently?
+    logger.info(f'Search throughput: {int(len(Q)/result.total_search_time)} QPS')  # TODO: store persistently?
     search_results.append(result)
 
 # Save results
