@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 import faiss
@@ -52,7 +53,9 @@ class BLISSIndex(Index):
         """Do not shift an object when it is within the top K predicted buckets."""
 
     @measure_runtime
-    def train(self, buckets: list[Bucket]) -> None:
+    def train(self, buckets: list[Bucket]) -> float:
+        s = time.time()
+
         X_sample, I_sample = take_sample(buckets, self.config.sampling, self.config.bucket_shape[1])
 
         total_n_objects = sum(b.get_n_objects() for b in buckets)
@@ -97,6 +100,8 @@ class BLISSIndex(Index):
         self._assign_objects_to_new_buckets(bucket_assignment, buckets)
 
         # TODO: what if all objects were inserted into the same bucket? = unbalanced partitioning
+
+        return time.time() - s
 
     # def _fix_bucket_assignment(self, bucket_assignment: Tensor) -> Tensor:
     #     # TODO: move objects that are above the capacity limit into

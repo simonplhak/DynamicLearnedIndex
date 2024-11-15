@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -24,7 +25,9 @@ class DummyIndex(Index):
 
         self.bucket_size = config.bucket_shape[0]
 
-    def train(self, buckets: list[Bucket]) -> None:
+    def train(self, buckets: list[Bucket]) -> float:
+        s = time.time()
+
         # Add the vectors to the new buckets
         for existing_bucket in buckets:
             bucket_data = existing_bucket.get_data()
@@ -35,6 +38,8 @@ class DummyIndex(Index):
 
             for i, new_child_bucket in self.buckets.items():
                 new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[np.where(classes == i)])
+
+        return time.time() - s
 
     def insert(self, buckets: list[Bucket]) -> bool:
         total_n_objects = sum(b.get_n_objects() for b in buckets)

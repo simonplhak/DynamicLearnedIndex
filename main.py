@@ -87,8 +87,10 @@ framework = Leveling(experiment_config.framework_config)
 @measure_memory_usage
 def insert_objects(X: torch.Tensor) -> BuildResult:
     s = time.time()
+    per_objects_insertion_statistics = []
     for i in range(len(X)):
-        framework.insert(X[i], i)
+        statistics = framework.insert(X[i], i)
+        per_objects_insertion_statistics.append(statistics)
 
         if (i + 1) % (len(X) // 10) == 0:
             logger.info(f'Inserted {i+1} objects')
@@ -98,7 +100,7 @@ def insert_objects(X: torch.Tensor) -> BuildResult:
 
     logger.info(f'Inserted {len(X)} objects')
 
-    return BuildResult(build_time, framework.collect_stats())
+    return BuildResult(build_time, framework.collect_stats(), per_objects_insertion_statistics)
 
 
 build_result = insert_objects(X)
@@ -136,7 +138,9 @@ def perform_search(db_size: int, config: SearchConfig) -> ExperimentSearchResult
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
 logger.info(f'Build time: {build_result.time:.5}s')
-logger.info(f'Insert throughput: {len(X)/build_result.time:.2} IPS')  # TODO: store persistently?
+logger.info(f'Insert throughput: {len(X)/build_result.time:.3} IPS')  # TODO: store persistently?
+logger.info(f'Total model training time: {build_result.total_model_training_time():.3}s')
+logger.info(f'Framework overhead time: {build_result.time - build_result.total_model_training_time():.3}s')
 logger.info(pprint.pformat(build_result.stats))
 
 # Search
@@ -145,7 +149,7 @@ for config in experiment_config.search_configs:
     logger.info(config)
     result = perform_search(len(X), config)
     logger.info(result.get_stats())
-    logger.info(f'Search throughput: {len(Q)/result.total_search_time:.2} QPS')  # TODO: store persistently?
+    logger.info(f'Search throughput: {len(Q)/result.total_search_time:.3} QPS')  # TODO: store persistently?
     search_results.append(result)
 
 # Save results

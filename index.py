@@ -22,8 +22,11 @@ class Index(ABC):
         self.buckets: dict[int, Bucket]
 
     @abstractmethod
-    def train(self, buckets: list[Bucket]) -> None:
-        """Train the index on the objects in the given buckets."""
+    def train(self, buckets: list[Bucket]) -> float:
+        """Train the index on the objects in the given buckets.
+
+        Returns the training time in seconds.
+        """
         raise NotImplementedError
 
     @abstractmethod

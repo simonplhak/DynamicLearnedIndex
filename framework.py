@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from torch import Tensor
 
     from configuration import FrameworkConfig
+    from framework_compaction_statistics import FrameworkCompactionStatistics
     from index import Index
 
 SEC_TO_MSEC = 1_000
@@ -33,14 +34,14 @@ class Framework:
         # Data properties
         self.dimensionality: int = config.bucket_shape[1]
 
-    def insert(self, X: Tensor, I: int) -> None:
+    def insert(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:
         """Insert a single vector into the index."""
         assert X.shape == (self.dimensionality,)
 
-        self.compact(X, I)
+        return self.compact(X, I)
 
     @abstractmethod
-    def compact(self, X: Tensor, I: int) -> None:
+    def compact(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:
         raise NotImplementedError
 
     def _create_new_level(self, index: Index) -> None:

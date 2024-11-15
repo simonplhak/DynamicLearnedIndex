@@ -15,9 +15,6 @@ additional things
 ---
 
 - add overview of all important stats from build and search
-- merit
-  - total build time - trainng time
-    - jak dlouho nam trva jen trenova, jak dlouho nam trva zbytek?
 - pustit na 100M
 
 ---

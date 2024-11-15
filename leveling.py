@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 from configuration import IndexConfig
 from framework import Framework
+from framework_compaction_statistics import FrameworkCompactionStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -15,10 +17,12 @@ class Leveling(Framework):
     def __init__(self, config: FrameworkConfig) -> None:
         super().__init__(config)
 
-    def compact(self, X: Tensor, I: int) -> None:
+    def compact(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:
+        s = time.time()
+
         if not self.buffer.is_full():
             self.buffer.insert_single(X, I)
-            return
+            return FrameworkCompactionStatistics(0.0, time.time() - s)
 
         if len(self.levels) == 0:
             index = self.config.index_class(
@@ -29,13 +33,13 @@ class Leveling(Framework):
                     sampling=self.config.sampling,
                 ),
             )
-            index.train([self.buffer])
+            model_training_time = index.train([self.buffer])
             self._create_new_level(index)
             self.buffer.empty()
 
             # Add the new vector into the buffer
             self.buffer.insert_single(X, I)
-            return
+            return FrameworkCompactionStatistics(model_training_time, time.time() - s)
 
         # Set to len(self.levels), so that we allocate a new level if no level with enough space is found
         idx = len(self.levels)  # idx in [0, len(self.levels))]
@@ -48,6 +52,8 @@ class Leveling(Framework):
         # idx == len(self.levels) -> Allocate a new level
         # idx != len(self.levels) -> We progressively merge existing levels and then accommodate the data
 
+        total_model_training_time = 0.0
+
         for i in range(idx, 0, -1):
             if i == len(self.levels):  # We need to allocate a new level
                 index = self.config.index_class(
@@ -58,7 +64,7 @@ class Leveling(Framework):
                         sampling=self.config.sampling,
                     ),
                 )
-                index.train(self.levels[i - 1].get_buckets())
+                total_model_training_time += index.train(self.levels[i - 1].get_buckets())
                 self._create_new_level(index)
             else:
                 # ? when to retrain and when to keep the existing model?
@@ -66,7 +72,9 @@ class Leveling(Framework):
                     # * Here, we could simply reset the model weights without allocating a new model
                     index = self.config.index_class(self.levels[i].config)
 
-                    index.train([*self.levels[i].get_buckets(), *self.levels[i - 1].get_buckets()])
+                    total_model_training_time += index.train(
+                        [*self.levels[i].get_buckets(), *self.levels[i - 1].get_buckets()],
+                    )
                     self.levels[i] = index
                 else:  # Accommodate the data as the index is not degenerated
                     assert self.levels[i].insert(self.levels[i - 1].get_buckets())
@@ -81,3 +89,5 @@ class Leveling(Framework):
 
         # Add the new vector into the buffer
         self.buffer.insert_single(X, I)
+
+        return FrameworkCompactionStatistics(total_model_training_time, time.time() - s)

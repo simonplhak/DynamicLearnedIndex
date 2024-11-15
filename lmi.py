@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -47,7 +48,8 @@ class LMIIndex(Index):
         self.optimizer = Adam(params=self.model.parameters(), lr=self.lr)
 
     @measure_runtime
-    def train(self, buckets: list[Bucket]) -> None:
+    def train(self, buckets: list[Bucket]) -> float:
+        s = time.time()
         X_sample, _ = take_sample(buckets, self.config.sampling, self.config.bucket_shape[1])
 
         # Run k-means to obtain training labels
@@ -79,6 +81,8 @@ class LMIIndex(Index):
 
         if self.is_degenerated():
             logger.warning('Trained degenerated index!')
+
+        return time.time() - s
 
     def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
         nprobe = min(nprobe, self.config.n_buckets)
