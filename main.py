@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from build_result import BuildResult
 from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SamplingConfig, SearchConfig
+from experiment_search_result import ExperimentSearchResult
 from leveling import Leveling
 from lmi import LMIIndex
 from plots import (
@@ -20,7 +21,6 @@ from plots import (
     plot_recall_vs_nprobe,
     save_relevant_results_to_csv,
 )
-from search_result import SearchResult
 from utils import load_data, measure_runtime, obtain_commit_hash, obtain_dirty_state
 
 SEED = 42
@@ -105,20 +105,30 @@ framework.print_stats()
 
 
 @measure_runtime
-def perform_search(db_size: int, config: SearchConfig) -> SearchResult:
+def perform_search(db_size: int, config: SearchConfig) -> ExperimentSearchResult:
     recall_per_query = []
     n_candidates_per_query = []
+    per_query_statistics = []
 
     s = time.time()
     for i in tqdm(range(len(Q))):
-        _, I, n_query_candidates = framework.search(Q[i], config.k, config.nprobe)
+        _, I, statistics = framework.search(Q[i], config.k, config.nprobe)
         recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
 
         recall_per_query.append(recall)
-        n_candidates_per_query.append(n_query_candidates)
+        n_candidates_per_query.append(statistics.total_n_candidates)
+        per_query_statistics.append(statistics)
     search_time = time.time() - s
 
-    return SearchResult(config, db_size, len(Q), recall_per_query, n_candidates_per_query, search_time)
+    return ExperimentSearchResult(
+        config,
+        db_size,
+        len(Q),
+        recall_per_query,
+        n_candidates_per_query,
+        search_time,
+        per_query_statistics,
+    )
 
 
 # Print stats once again

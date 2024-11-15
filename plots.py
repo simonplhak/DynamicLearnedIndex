@@ -10,13 +10,13 @@ if TYPE_CHECKING:
 
     from build_result import BuildResult
     from configuration import ExperimentConfig
-    from search_result import SearchResult
+    from experiment_search_result import ExperimentSearchResult
 
 
 def save_relevant_results_to_csv(
     config: ExperimentConfig,
     build_result: BuildResult,
-    results: list[SearchResult],
+    results: list[ExperimentSearchResult],
     experiment_dir: Path,
 ) -> pd.DataFrame:
     df = pd.DataFrame(

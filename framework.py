@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from abc import abstractmethod
 from itertools import chain
 from statistics import mean, median
@@ -10,12 +11,15 @@ from faiss import merge_knn_results
 from loguru import logger
 
 from bucket import Bucket
+from framework_search_statistics import FrameworkSearchStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor
 
     from configuration import FrameworkConfig
     from index import Index
+
+SEC_TO_MSEC = 1_000
 
 
 class Framework:
@@ -48,7 +52,7 @@ class Framework:
         for i in range(current_level - 1):
             self.levels[i].empty()
 
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
         """Search the index for k nearest neighbors.
 
         Parameters
@@ -62,12 +66,14 @@ class Framework:
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray, int]
-            A tuple containing the neighbor distances, neighbor indices, and the size of the candidate set.
+        tuple[np.ndarray, np.ndarray, SearchStatistics]
+            A tuple containing the neighbor distances, neighbor indices, and the search statistics.
 
         """
         assert query.shape == (self.dimensionality,)
 
+        # Preparation step
+        s = time.time()
         query = query.reshape((1, self.dimensionality))
 
         # Search the buffer if it is not empty
@@ -81,13 +87,37 @@ class Framework:
             np.zeros((n_partial_results, 1, k), dtype=np.float32),
             np.zeros((n_partial_results, 1, k), dtype=np.int64),
         )
-        n_candidates = 0
+        n_candidates_per_level = [0] * n_partial_results
+        search_time_per_level_in_ms = [0.0] * n_partial_results
+        preparation_time_in_ms = (time.time() - s) * SEC_TO_MSEC
 
+        # Search step
+        s = time.time()
         for i, level in enumerate(searchable_levels):
+            s = time.time()
             D_all[i, :, :], I_all[i, :, :], n_level_candidates = level.search(query, k, nprobe)
-            n_candidates += n_level_candidates
+            search_time_per_level_in_ms[i] += (time.time() - s) * SEC_TO_MSEC
 
-        return *merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max), n_candidates
+            n_candidates_per_level[i] += n_level_candidates
+        search_time_in_ms = (time.time() - s) * SEC_TO_MSEC
+
+        # Merge step
+        s = time.time()
+        D, I = merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max)
+        merge_time_in_ms = (time.time() - s) * SEC_TO_MSEC
+
+        # Collect statistics
+        statistics = FrameworkSearchStatistics(
+            total_n_candidates=sum(n_candidates_per_level),
+            n_candidates_per_level=n_candidates_per_level,
+            search_time_per_level_in_ms=search_time_per_level_in_ms,
+            preparation_time_in_ms=preparation_time_in_ms,
+            search_time_in_ms=search_time_in_ms,
+            merge_time_in_ms=merge_time_in_ms,
+            total_search_time_in_ms=search_time_in_ms + preparation_time_in_ms + merge_time_in_ms,
+        )
+
+        return D, I, statistics
 
     def get_n_objects(self) -> int:
         """Return the total number of objects in the index."""
