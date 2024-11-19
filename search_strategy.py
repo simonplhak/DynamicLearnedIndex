@@ -47,6 +47,11 @@ class KNNSearchStrategy(SearchStrategy):
 
 
 @dataclass
+class ModelDrivenSearchStrategy(SearchStrategy):
+    def determine_level_nprobe(self, level: int, overall_nprobe: int) -> int:
+        raise NotImplementedError  # TODO: implement
+
+@dataclass
 class LatestSearchStrategy(SearchStrategy):
     def determine_level_nprobe(self, level: int, overall_nprobe: int) -> int:
         raise NotImplementedError  # TODO: implement

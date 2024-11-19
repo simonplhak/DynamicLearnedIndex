@@ -1,5 +1,9 @@
 # Dynamic Learned Index
 
+## Resources
+
+- https://github.com/psu-db/dynamic-extension
+
 ## Running the code
 
 ```shell
