@@ -63,6 +63,23 @@ class Index(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def predict_bucket_scores(self, X: Tensor) -> list[tuple[int, float]]:
+        """Predict score of each bucket for the given query.
+
+        Parameters
+        ----------
+        X : Tensor
+            Single query vector of shape (1, dimensionality).
+
+        Returns
+        -------
+        list[tuple[int, float]]
+            A list of tuples containing the bucket index and the score.
+
+        """
+        raise NotImplementedError
+
     def empty(self) -> None:
         for bucket in self.buckets.values():
             bucket.empty()

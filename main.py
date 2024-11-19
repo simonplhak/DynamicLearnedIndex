@@ -21,7 +21,7 @@ from plots import (
     plot_recall_vs_nprobe,
     save_relevant_results_to_csv,
 )
-from search_strategy import KNNSearchStrategy
+from search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
 from utils import load_data, measure_memory_usage, measure_runtime, obtain_commit_hash, obtain_dirty_state
 
 SEED = 42
@@ -49,7 +49,8 @@ if socket.gethostname() == 'Pro.local':
             bucket_shape=(200, 768),
             distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
             sampling=SamplingConfig(percentage=0.1, threshold=100_000),
-            search_strategy=KNNSearchStrategy,
+            # search_strategy=KNNSearchStrategy,
+            search_strategy=ModelDrivenSearchStrategy,
         ),
         [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2]],
         commit_hash,
@@ -69,7 +70,8 @@ else:
             bucket_shape=(3_000, 768),
             distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
             sampling=SamplingConfig(percentage=0.1, threshold=100_000),
-            search_strategy=KNNSearchStrategy,
+            # search_strategy=KNNSearchStrategy,
+            search_strategy=ModelDrivenSearchStrategy,
         ),
         [SearchConfig(k=30, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
         commit_hash,
@@ -118,7 +120,8 @@ def perform_search(db_size: int, config: SearchConfig) -> ExperimentSearchResult
 
     s = time.time()
     for i in tqdm(range(len(Q))):
-        _, I, statistics = framework.search(Q[i], config.k, config.nprobe)
+        # _, I, statistics = framework.search(Q[i], config.k, config.nprobe)
+        _, I, statistics = framework.search_model_driven(Q[i], config.k, config.nprobe)
         recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
 
         recall_per_query.append(recall)

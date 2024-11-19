@@ -113,6 +113,19 @@ class LMIIndex(Index):
 
         return True
 
+    def predict_bucket_scores(self, X: Tensor) -> list[tuple[int, float]]:
+        assert self.model is not None, 'Model is not trained yet.'
+
+        # Evaluate the model
+        self.model.eval()
+
+        with torch.no_grad():
+            logits = self.model(X)
+            # Compute probabilities from logits
+            probabilities = softmax(logits, dim=1)
+
+        return [(i, probabilities[0][i].item()) for i in range(self.config.n_buckets)]
+
     def _predict(self, X: Tensor, top_k: int) -> tuple[Tensor, Tensor]:
         assert self.model is not None, 'Model is not trained yet.'
 

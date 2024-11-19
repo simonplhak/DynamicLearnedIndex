@@ -12,6 +12,7 @@ from loguru import logger
 
 from bucket import Bucket
 from framework_search_statistics import FrameworkSearchStatistics
+from search_strategy import ModelDrivenSearchStrategy
 
 if TYPE_CHECKING:
     from torch import Tensor
@@ -72,6 +73,7 @@ class Framework:
 
         """
         assert query.shape == (self.dimensionality,)
+        assert self.config.search_strategy != ModelDrivenSearchStrategy
 
         # Preparation step
         s = time.time()
@@ -99,6 +101,114 @@ class Framework:
             s = time.time()
             level_nprobe = search_strategy.determine_level_nprobe(i, nprobe)
             D_all[i, :, :], I_all[i, :, :], n_level_candidates = level.search(query, k, level_nprobe)
+            search_time_per_level_in_ms[i] += (time.time() - s) * SEC_TO_MSEC
+
+            n_candidates_per_level[i] += n_level_candidates
+        search_time_in_ms = (time.time() - s) * SEC_TO_MSEC
+
+        # Merge step
+        s = time.time()
+        D, I = merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max)
+        merge_time_in_ms = (time.time() - s) * SEC_TO_MSEC
+
+        # Collect statistics
+
+        ## Calculate result_object_level_location
+        # ! Takes a long time, but is needed for debugging.
+        # ! TODO: run only with debug flag
+        # TODO: refactor + extract into a separate method
+        # result_object_level_location: list[tuple[int, int]] = []  # (i, j) where i is the level and j is the bucket
+        # nns = I[0]
+        # assert len(nns) == k
+        # for nn_id in nns.tolist():
+        #     if nn_id in self.buffer.get_ids():
+        #         result_object_level_location.append((-1, -1))  # -1, -1 ~ buffer
+        #     else:
+        #         for i, level in enumerate(self.levels):
+        #             for j, bucket in enumerate(level.buckets.values()):
+        #                 if nn_id in bucket.get_ids():
+        #                     result_object_level_location.append((i, j))
+        #                     break
+        # assert len(result_object_level_location) == k
+        result_object_level_location = []
+
+        statistics = FrameworkSearchStatistics(
+            total_n_candidates=sum(n_candidates_per_level),
+            n_candidates_per_level=n_candidates_per_level,
+            search_time_per_level_in_ms=search_time_per_level_in_ms,
+            preparation_time_in_ms=preparation_time_in_ms,
+            search_time_in_ms=search_time_in_ms,
+            merge_time_in_ms=merge_time_in_ms,
+            total_search_time_in_ms=search_time_in_ms + preparation_time_in_ms + merge_time_in_ms,
+            result_object_level_location=result_object_level_location,
+        )
+
+        return D, I, statistics
+
+    def search_model_driven(
+        self,
+        query: Tensor,
+        k: int,
+        nprobe: int,
+    ) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
+        """Search the index for k nearest neighbors.
+
+        Parameters
+        ----------
+        query : Tensor
+            Single query vector of shape (dimensionality,).
+        k : int
+            Number of nearest neighbors to search for.
+        nprobe : int
+            Number of buckets to probe at each level.
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray, SearchStatistics]
+            A tuple containing the neighbor distances, neighbor indices, and the search statistics.
+
+        """
+        assert query.shape == (self.dimensionality,)
+        assert self.config.search_strategy == ModelDrivenSearchStrategy
+
+        # Preparation step
+        s = time.time()
+        query = query.reshape((1, self.dimensionality))
+
+        # Collect bucket scores from each level
+        per_level_bucket_scores = [
+            (level_idx, *bucket_scores)
+            for level_idx, level in enumerate(self.levels)
+            for bucket_scores in level.predict_bucket_scores(query)
+        ]
+
+        # Determine the order of buckets
+        visit_order = sorted(per_level_bucket_scores, key=lambda x: x[2], reverse=True)
+
+        # Collect the buckets
+        bucket_locations_to_visit = visit_order[: nprobe - 1]
+        buckets_to_visit = (
+            [self.levels[level_idx].buckets[bucket_idx] for level_idx, bucket_idx, _ in bucket_locations_to_visit]
+            + [self.buffer]
+            if not self.buffer.is_empty()
+            else []
+        )
+
+        # Prepare helper variables
+        n_partial_results = len(buckets_to_visit)
+        D_all, I_all = (
+            np.zeros((n_partial_results, 1, k), dtype=np.float32),
+            np.zeros((n_partial_results, 1, k), dtype=np.int64),
+        )
+        n_candidates_per_level = [0] * n_partial_results
+        search_time_per_level_in_ms = [0.0] * n_partial_results
+        preparation_time_in_ms = (time.time() - s) * SEC_TO_MSEC
+
+        # Search the buckets
+        s = time.time()
+        for i, bucket in enumerate(buckets_to_visit):
+            s = time.time()
+            D_all[i, :, :], I_all[i, :, :], n_level_candidates = bucket.search(query, k, -1)
             search_time_per_level_in_ms[i] += (time.time() - s) * SEC_TO_MSEC
 
             n_candidates_per_level[i] += n_level_candidates
