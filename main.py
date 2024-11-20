@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import pprint
 import socket
 import time
@@ -49,14 +50,14 @@ if socket.gethostname() == 'Pro.local':
             bucket_shape=(200, 768),
             distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
             sampling=SamplingConfig(percentage=0.1, threshold=100_000),
-            # search_strategy=KNNSearchStrategy,
-            search_strategy=ModelDrivenSearchStrategy,
+            search_strategy=KNNSearchStrategy,
+            # search_strategy=ModelDrivenSearchStrategy,
         ),
         [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2]],
         commit_hash,
         dirty_state,
     )
-else:
+elif socket.gethostname().startswith('david'):
     experiment_config = ExperimentConfig(
         DatasetConfig(
             dataset_size=10_120_191,
@@ -70,13 +71,46 @@ else:
             bucket_shape=(3_000, 768),
             distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
             sampling=SamplingConfig(percentage=0.1, threshold=100_000),
-            # search_strategy=KNNSearchStrategy,
-            search_strategy=ModelDrivenSearchStrategy,
+            search_strategy=KNNSearchStrategy,
+            # search_strategy=ModelDrivenSearchStrategy,
         ),
         [SearchConfig(k=30, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
         commit_hash,
         dirty_state,
     )
+else:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--scratch-folder', type=str, required=True)
+    args = parser.parse_args()
+
+    logger.info(f'Using scratch folder: {args.scratch_folder}')
+    assert Path(args.scratch_folder).is_dir()
+
+    experiment_config = ExperimentConfig(
+        DatasetConfig(
+            dataset_size=102_144_212,
+            X=Path(args.scratch_folder) / 'laion2B-en-clip768v2-n=100M.h5',
+            Q=Path(
+                '/storage/brno12-cerit/home/prochazka/fi-lmi-data/data/LAION2B/public-queries-2024-laion2B-en-clip768v2-n=10k.h5',
+            ),
+            GT=Path(
+                '/storage/brno12-cerit/home/prochazka/fi-lmi-data/data/LAION2B/gold-standard-dbsize=100M--public-queries-2024-laion2B-en-clip768v2-n=10k.h5',
+            ),
+        ),
+        FrameworkConfig(
+            LMIIndex,
+            arity=3,
+            bucket_shape=(5_000, 768),
+            distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
+            sampling=SamplingConfig(percentage=0.1, threshold=100_000),
+            search_strategy=KNNSearchStrategy,
+            # search_strategy=ModelDrivenSearchStrategy,
+        ),
+        [SearchConfig(k=30, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100, 200, 500]],
+        commit_hash,
+        dirty_state,
+    )
+
 
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
