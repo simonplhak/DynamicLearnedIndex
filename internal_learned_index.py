@@ -15,7 +15,7 @@ DEGENERATION_THRESHOLD = 0.5
 """The fraction of the buckets that must be empty for the index to be degenerated."""
 
 
-class Index(ABC):
+class InternalLearnedIndex(ABC):
     def __init__(self, config: IndexConfig) -> None:
         self.config = config
 

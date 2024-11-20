@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 
     from configuration import FrameworkConfig
     from framework_compaction_statistics import FrameworkCompactionStatistics
-    from index import Index
+    from internal_learned_index import InternalLearnedIndex
 
 SEC_TO_MSEC = 1_000
 
@@ -30,7 +30,7 @@ class Framework:
 
         # Fundamental properties
         self.buffer: Bucket = Bucket(config.bucket_shape, config.distance.metric)
-        self.levels: list[Index] = []
+        self.levels: list[InternalLearnedIndex] = []
 
         # Data properties
         self.dimensionality: int = config.bucket_shape[1]
@@ -45,7 +45,7 @@ class Framework:
     def compact(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:
         raise NotImplementedError
 
-    def _create_new_level(self, index: Index) -> None:
+    def _create_new_level(self, index: InternalLearnedIndex) -> None:
         self.levels.append(index)
 
     def _empty_upper_levels(self, current_level: int) -> None:

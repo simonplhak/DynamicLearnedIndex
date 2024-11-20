@@ -14,7 +14,7 @@ from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 
 from dynamic_bucket import DynamicBucket
-from index import Index
+from internal_learned_index import InternalLearnedIndex
 from labeled_dataset import LabeledDataset
 from sampling import take_sample
 from utils import measure_runtime
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from configuration import IndexConfig
 
 
-class LMIIndex(Index):
+class LMIIndex(InternalLearnedIndex):
     """Learned Metric Index (LMI) implementation with dynamic buckets."""
 
     def __init__(self, config: IndexConfig) -> None:

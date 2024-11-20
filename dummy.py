@@ -8,13 +8,13 @@ import torch
 from torch import Tensor
 
 from bucket import Bucket
-from index import Index
+from internal_learned_index import InternalLearnedIndex
 
 if TYPE_CHECKING:
     from configuration import IndexConfig
 
 
-class DummyIndex(Index):
+class DummyIndex(InternalLearnedIndex):
     """A dummy index implementation that randomly stores the objects in the buckets."""
 
     def __init__(self, config: IndexConfig) -> None:

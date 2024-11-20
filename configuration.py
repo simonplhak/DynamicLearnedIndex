@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from index import Index
+    from internal_learned_index import InternalLearnedIndex
     from search_strategy import SearchStrategy
 
 type BucketShape = tuple[int, int]  # (number of vectors, dimensionality)
@@ -54,7 +54,7 @@ class IndexConfig:
 
 @dataclass
 class FrameworkConfig:
-    index_class: type[Index]
+    index_class: type[InternalLearnedIndex]
     arity: int
     bucket_shape: BucketShape
     distance: DistanceConfig

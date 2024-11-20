@@ -7,7 +7,7 @@ from framework import Framework
 if TYPE_CHECKING:
     from torch import Tensor
 
-    from index import Index
+    from internal_learned_index import InternalLearnedIndex
 
 # ! Currently broken as `.exists()` method was removed from `Index`
 
