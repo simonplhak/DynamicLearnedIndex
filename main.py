@@ -11,9 +11,7 @@ from faiss import METRIC_INNER_PRODUCT
 from loguru import logger
 from tqdm import tqdm
 
-from build_result import BuildResult
 from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SamplingConfig, SearchConfig
-from experiment_search_result import ExperimentSearchResult
 from leveling import Leveling
 from lmi import LMIIndex
 from plots import (
@@ -22,6 +20,7 @@ from plots import (
     plot_recall_vs_nprobe,
     save_relevant_results_to_csv,
 )
+from result import BuildResult, ExperimentSearchResult
 from search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
 from utils import load_data, measure_memory_usage, measure_runtime, obtain_commit_hash, obtain_dirty_state
 

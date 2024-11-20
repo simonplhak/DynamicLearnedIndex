@@ -8,9 +8,8 @@ import seaborn as sns
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from build_result import BuildResult
     from configuration import ExperimentConfig
-    from experiment_search_result import ExperimentSearchResult
+    from result import BuildResult, ExperimentSearchResult
 
 
 def save_relevant_results_to_csv(

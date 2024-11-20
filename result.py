@@ -6,7 +6,17 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from configuration import SearchConfig
-    from framework_search_statistics import FrameworkSearchStatistics
+    from statistic import FrameworkCompactionStatistics, FrameworkSearchStatistics
+
+
+@dataclass
+class BuildResult:
+    time: float
+    stats: dict
+    per_objects_insertion_statistics: list[FrameworkCompactionStatistics]
+
+    def total_model_training_time(self) -> float:
+        return sum(x.total_model_training_time for x in self.per_objects_insertion_statistics)
 
 
 @dataclass

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from configuration import IndexConfig
 from framework import Framework
-from framework_compaction_statistics import FrameworkCompactionStatistics
+from statistic import FrameworkCompactionStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor

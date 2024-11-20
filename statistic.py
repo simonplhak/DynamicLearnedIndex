@@ -4,6 +4,12 @@ from dataclasses import dataclass
 
 
 @dataclass
+class FrameworkCompactionStatistics:
+    total_model_training_time: float
+    total_compaction_time: float
+
+
+@dataclass
 class FrameworkSearchStatistics:
     total_n_candidates: int
     n_candidates_per_level: list[int]

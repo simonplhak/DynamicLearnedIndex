@@ -11,14 +11,13 @@ from faiss import merge_knn_results
 from loguru import logger
 
 from bucket import Bucket
-from framework_search_statistics import FrameworkSearchStatistics
 from search_strategy import ModelDrivenSearchStrategy
+from statistic import FrameworkCompactionStatistics, FrameworkSearchStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor
 
     from configuration import FrameworkConfig
-    from framework_compaction_statistics import FrameworkCompactionStatistics
     from internal_learned_index import InternalLearnedIndex
 
 SEC_TO_MSEC = 1_000
