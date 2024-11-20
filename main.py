@@ -154,8 +154,8 @@ def perform_search(db_size: int, config: SearchConfig) -> ExperimentSearchResult
 
     s = time.time()
     for i in tqdm(range(len(Q))):
-        # _, I, statistics = framework.search(Q[i], config.k, config.nprobe)
-        _, I, statistics = framework.search_model_driven(Q[i], config.k, config.nprobe)
+        _, I, statistics = framework.search(Q[i], config.k, config.nprobe)
+        # _, I, statistics = framework.search_model_driven(Q[i], config.k, config.nprobe)
         recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
 
         recall_per_query.append(recall)
