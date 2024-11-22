@@ -84,6 +84,9 @@ class InternalLearnedIndex(ABC):
         for bucket in self.buckets.values():
             bucket.empty()
 
+    def is_empty(self) -> bool:
+        return all(map(Bucket.is_empty, self.buckets.values()))
+
     def get_n_objects(self) -> int:
         return sum(map(Bucket.get_n_objects, self.buckets.values()))
 
