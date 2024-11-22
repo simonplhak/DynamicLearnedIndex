@@ -56,7 +56,7 @@ class BLISSIndex(InternalLearnedIndex):
     def train(self, buckets: list[Bucket]) -> float:
         s = time.time()
 
-        X_sample, I_sample = take_sample(buckets, self.config.sampling, self.config.bucket_shape[1])
+        X_sample, I_sample = take_sample(buckets, self.config.sample_threshold, self.config.bucket_shape[1])
 
         total_n_objects = sum(b.get_n_objects() for b in buckets)
 

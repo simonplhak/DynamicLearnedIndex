@@ -4,10 +4,10 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
+from torch import Tensor
 
 if TYPE_CHECKING:
     from bucket import Bucket
-    from configuration import SamplingConfig
 
 SEED = 42
 
@@ -16,16 +16,10 @@ np_rng = np.random.default_rng(SEED)
 torch_rng = torch.Generator().manual_seed(SEED)
 
 
-def take_sample(
-    buckets: list[Bucket],
-    config: SamplingConfig,
-    dimensionality: int,
-) -> tuple[torch.Tensor, torch.Tensor]:
+def take_sample(buckets: list[Bucket], sample_threshold: int, dimensionality: int) -> tuple[Tensor, Tensor]:
     """Return a tensor of size (sample_size, dimensionality) with the sample of objects from the given buckets."""
-    assert 0 <= config.percentage <= 1, 'Percentage must be between 0 and 1'
-
     total_n_objects = sum(b.get_n_objects() for b in buckets)
-    sample_size = total_n_objects if total_n_objects < config.threshold else int(total_n_objects * config.percentage)
+    sample_size = min(sample_threshold, total_n_objects)
 
     sample_indexes = torch.randperm(total_n_objects, generator=torch_rng)[:sample_size]
 

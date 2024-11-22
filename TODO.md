@@ -16,7 +16,6 @@ core functionality
 additional things
 - sampling
   - ? use more sophisticated sampling technique
-  - use constant sample size to provide bounded model construction time?
   - force the same number of sampled objects from each bucket?
 - overview of all important stats from build and search
 - pustit na 100M

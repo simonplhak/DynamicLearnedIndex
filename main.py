@@ -10,7 +10,7 @@ from faiss import METRIC_INNER_PRODUCT
 from loguru import logger
 from tqdm import tqdm
 
-from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SamplingConfig, SearchConfig
+from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SearchConfig
 from lmi import LMIIndex
 from plots import (
     plot_queries_per_second_vs_recall,
@@ -55,7 +55,7 @@ if socket.gethostname() == 'Pro.local':
             arity=3,
             bucket_shape=(200, 768),
             distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
-            sampling=SamplingConfig(percentage=0.1, threshold=100_000),
+            sample_threshold=100_000,
             search_strategy=KNNSearchStrategy,
             # search_strategy=ModelDrivenSearchStrategy,
         ),
@@ -76,7 +76,7 @@ elif socket.gethostname().startswith('david'):
             arity=3,
             bucket_shape=(3_000, 768),
             distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
-            sampling=SamplingConfig(percentage=0.1, threshold=100_000),
+            sample_threshold=100_000,
             search_strategy=KNNSearchStrategy,
             # search_strategy=ModelDrivenSearchStrategy,
         ),
@@ -101,7 +101,7 @@ else:
             arity=3,
             bucket_shape=(5_000, 768),
             distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
-            sampling=SamplingConfig(percentage=0.1, threshold=100_000),
+            sample_threshold=100_000,
             search_strategy=KNNSearchStrategy,
             # search_strategy=ModelDrivenSearchStrategy,
         ),
