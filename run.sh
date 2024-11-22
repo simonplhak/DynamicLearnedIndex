@@ -1,7 +1,7 @@
 #!/bin/bash
 #PBS -q elixircz@pbs-m1.metacentrum.cz
 #PBS -l select=1:ncpus=16:mem=1tb:scratch_local=200gb:cluster=elwe
-#PBS -l walltime=24:00:00
+#PBS -l walltime=72:00:00
 
 export OMP_NUM_THREADS=$PBS_NUM_PPN
 
