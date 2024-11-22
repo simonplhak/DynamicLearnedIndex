@@ -1,5 +1,4 @@
 #!/bin/bash
-#PBS -q elixircz@pbs-m1.metacentrum.cz
 #PBS -l select=1:ncpus=16:mem=1tb
 #PBS -l walltime=72:00:00
 
