@@ -1,6 +1,6 @@
 #!/bin/bash
-#PBS -l select=1:ncpus=16:mem=1tb
-#PBS -l walltime=72:00:00
+#PBS -l select=1:ncpus=8:mem=1tb
+#PBS -l walltime=96:00:00
 
 export OMP_NUM_THREADS=$PBS_NUM_PPN
 
