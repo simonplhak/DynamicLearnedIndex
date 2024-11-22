@@ -11,7 +11,6 @@ from loguru import logger
 from tqdm import tqdm
 
 from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SamplingConfig, SearchConfig
-from leveling import Leveling
 from lmi import LMIIndex
 from plots import (
     plot_queries_per_second_vs_recall,
@@ -21,7 +20,14 @@ from plots import (
 )
 from result import BuildResult, ExperimentSearchResult
 from search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
-from utils import load_data, measure_memory_usage, measure_runtime, obtain_commit_hash, obtain_dirty_state
+from utils import (
+    load_data,
+    measure_memory_usage,
+    measure_runtime,
+    obtain_commit_hash,
+    obtain_dirty_state,
+    parse_command_line_arguments,
+)
 
 SEED = 42
 torch.manual_seed(SEED)
@@ -33,6 +39,8 @@ experiment_id = f'{time.strftime('%Y%m%d-%H%M%S')}-{commit_hash}{'-dirty' if dir
 
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
+
+args = parse_command_line_arguments()
 
 if socket.gethostname() == 'Pro.local':
     experiment_config = ExperimentConfig(
@@ -51,7 +59,7 @@ if socket.gethostname() == 'Pro.local':
             search_strategy=KNNSearchStrategy,
             # search_strategy=ModelDrivenSearchStrategy,
         ),
-        [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2]],
+        [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
         commit_hash,
         dirty_state,
     )
@@ -109,7 +117,7 @@ logger.info(experiment_config)
 X, Q, GT = load_data(experiment_config.dataset_config)
 
 # Create the framework
-framework = Leveling(experiment_config.framework_config)
+framework = args.compaction_strategy_class(experiment_config.framework_config)
 
 
 # Insert the dataset one object at a time

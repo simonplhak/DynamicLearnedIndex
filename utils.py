@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import functools
 import subprocess
 import time
+from argparse import Namespace
 from typing import TYPE_CHECKING, Any, Callable
 
 import h5py
@@ -10,6 +12,9 @@ import psutil
 import torch
 from loguru import logger
 from torch import Tensor
+
+from bentley_saxe import BentleySaxe
+from leveling import Leveling
 
 if TYPE_CHECKING:
     from configuration import DatasetConfig
@@ -66,3 +71,19 @@ def obtain_commit_hash() -> str:
 
 def obtain_dirty_state() -> bool:
     return subprocess.call(['git', 'diff', '--quiet']) != 0  # noqa: S603, S607
+
+
+def parse_command_line_arguments() -> Namespace:
+    """Process command line arguments."""
+    compaction_strategies = {
+        'bentley-saxe': BentleySaxe,
+        'leveling': Leveling,
+    }
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--compaction-strategy', choices=compaction_strategies.keys(), required=True)
+    args = parser.parse_args()
+
+    compaction_strategy_class = compaction_strategies[args.compaction_strategy]
+
+    return Namespace(compaction_strategy_class=compaction_strategy_class)
