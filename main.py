@@ -182,6 +182,13 @@ logger.info(f'Total model training time: {build_result.total_model_training_time
 logger.info(f'Framework overhead time: {build_result.time - build_result.total_model_training_time():.3}s')
 logger.info(pprint.pformat(build_result.stats))
 
+# Save results
+experiment_dir = EXPERIMENTAL_RESULTS_DIR / experiment_id
+experiment_dir.mkdir(exist_ok=True, parents=True)
+(experiment_dir / 'experiment_id.txt').open('w').writelines([experiment_id])
+(experiment_dir / 'experiment_config.txt').open('w').writelines([pprint.pformat(experiment_config)])
+(experiment_dir / 'build_result.txt').open('w').writelines([pprint.pformat(build_result)])
+
 # Search
 search_results = []
 for config in experiment_config.search_configs:
@@ -192,12 +199,7 @@ for config in experiment_config.search_configs:
     search_results.append(result)
 
 # Save results
-experiment_dir = EXPERIMENTAL_RESULTS_DIR / experiment_id
-experiment_dir.mkdir(exist_ok=True, parents=True)
-(experiment_dir / 'experiment_id.txt').open('w').writelines([experiment_id])
-(experiment_dir / 'experiment_config.txt').open('w').writelines([pprint.pformat(experiment_config)])
 (experiment_dir / 'search_results.txt').open('w').writelines([pprint.pformat(search_results)])
-(experiment_dir / 'build_result.txt').open('w').writelines([pprint.pformat(build_result)])
 
 # Save relevant plot data
 df = save_relevant_results_to_csv(experiment_config, build_result, search_results, experiment_dir)
