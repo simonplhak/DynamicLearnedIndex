@@ -58,6 +58,7 @@ class LMIIndex(InternalLearnedIndex):
             k=self.config.n_buckets,
             verbose=False,
             seed=42,
+            spherical=True,
         )
         kmeans.train(X_sample)
         y = torch.from_numpy(kmeans.index.search(X_sample, 1)[1].T[0])  # type: ignore
