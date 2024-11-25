@@ -11,5 +11,5 @@ module add mambaforge || exit 2
 mamba activate /storage/brno12-cerit/home/prochazka/.conda/envs/DynamicLearnedIndex || exit 3
 
 cd '/storage/brno12-cerit/home/prochazka/fi-lmi-data/personal/david/research/DynamicLearnedIndex' || exit 4
-python3 main.py --compaction-strategy='leveling' &> "/storage/brno12-cerit/home/prochazka/fi-lmi-data/personal/david/research/DynamicLearnedIndex/metacentrum-logs/run-${PBS_JOBID}.log"
+python3 main.py --compaction-strategy='leveling' &>"/storage/brno12-cerit/home/prochazka/fi-lmi-data/personal/david/research/DynamicLearnedIndex/metacentrum-logs/run-${PBS_JOBID}.log"
 exit $?

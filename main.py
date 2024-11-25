@@ -105,7 +105,7 @@ else:
             search_strategy=KNNSearchStrategy,
             # search_strategy=ModelDrivenSearchStrategy,
         ),
-        [SearchConfig(k=30, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100, 200, 500]],
+        [SearchConfig(k=30, nprobe=nprobe) for nprobe in [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]],
         commit_hash,
         dirty_state,
     )
