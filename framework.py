@@ -302,11 +302,11 @@ class Framework:
                     'total_capacity': level.get_total_capacity(),
                     'is_degenerated': level.is_degenerated(),
                     'min_occupation': min(b.get_n_objects() for b in level.get_buckets()),
-                    'avg_occupation': mean(b.get_n_objects() for b in level.get_buckets()) / len(level.get_buckets()),
+                    'avg_occupation': mean(b.get_n_objects() for b in level.get_buckets()),
                     'median_occupation': median(b.get_n_objects() for b in level.get_buckets()),
                     'max_occupation': max(b.get_n_objects() for b in level.get_buckets()),
                     'min_capacity': min(b.get_capacity() for b in level.get_buckets()),
-                    'avg_capacity': mean(b.get_capacity() for b in level.get_buckets()) / len(level.get_buckets()),
+                    'avg_capacity': mean(b.get_capacity() for b in level.get_buckets()),
                     'median_capacity': median(b.get_capacity() for b in level.get_buckets()),
                     'max_capacity': max(b.get_capacity() for b in level.get_buckets()),
                 }
