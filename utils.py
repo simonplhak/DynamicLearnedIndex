@@ -40,7 +40,7 @@ def measure_runtime(func: Callable[Param, ReturnType]) -> Callable[Param, Return
         result = func(*args, **kwargs)
         stop = time.time()
 
-        logger.info(f'Execution of {func.__name__} took {stop - start:.5}s.')
+        logger.debug(f'Execution of {func.__name__} took {stop - start:.5}s.')
 
         return result
 

@@ -131,7 +131,7 @@ def insert_objects(X: torch.Tensor) -> BuildResult:
         per_objects_insertion_statistics.append(statistics)
 
         if (i + 1) % (len(X) // 10) == 0:
-            logger.info(f'Inserted {i+1} objects')
+            logger.info(f'Inserted {((i+1) / len(X) * 100):.0f}% ({i+1}) objects')
 
         assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
     build_time = time.time() - s
@@ -198,10 +198,11 @@ for config in experiment_config.search_configs:
     result = perform_search(len(X), config)
     logger.info(result.get_stats())
     logger.info(f'Search throughput: {int(len(Q)/result.total_search_time)} QPS')  # TODO: store persistently?
-    search_results.append(result)
 
-# Save results
-(experiment_dir / 'search_results.txt').open('w').writelines([pprint.pformat(search_results)])
+    # Save results
+    (experiment_dir / 'search_results.txt').open('a').writelines([pprint.pformat(result), '\n'])
+
+    search_results.append(result)
 
 # Save relevant plot data
 df = save_relevant_results_to_csv(experiment_config, build_result, search_results, experiment_dir)
