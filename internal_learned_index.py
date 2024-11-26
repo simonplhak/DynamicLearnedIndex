@@ -103,6 +103,15 @@ class InternalLearnedIndex(ABC):
     def get_buckets(self) -> list[Bucket]:
         return list(self.buckets.values())
 
+    def get_n_buckets(self) -> int:
+        return len(self.buckets)
+
+    def get_n_empty_buckets(self) -> int:
+        return sum(map(Bucket.is_empty, self.buckets.values()))
+
+    def get_percentage_of_empty_buckets(self) -> float:
+        return self.get_n_empty_buckets() / self.get_n_buckets()
+
     def is_degenerated(self) -> bool:
         """Return whether the index is degenerated."""
-        return sum(map(Bucket.is_empty, self.buckets.values())) >= self.config.n_buckets * DEGENERATION_THRESHOLD
+        return self.get_n_empty_buckets() >= self.config.n_buckets * DEGENERATION_THRESHOLD

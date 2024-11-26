@@ -288,7 +288,8 @@ class Framework:
             'summary': {
                 'n_objects': self.get_n_objects(),
                 'n_levels': len(self.levels),
-                'n_buckets': sum(map(len, map(self.config.index_class.get_buckets, self.levels))),
+                'n_buckets': self._get_n_buckets(),
+                'n_empty_buckets': self._get_n_empty_buckets(),
             },
             'buffer': {
                 'n_objects': self.buffer.get_n_objects(),
@@ -300,7 +301,9 @@ class Framework:
                     'n_buckets': len(level.get_buckets()),
                     'total_capacity_with_bucket_expansion': level.get_total_capacity_with_bucket_expansion(),
                     'total_capacity': level.get_total_capacity(),
-                    'is_degenerated': level.is_degenerated(),
+                    'is_degenerated': level.is_degenerated(),  # ? replace?
+                    'n_empty_buckets': level.get_n_empty_buckets(),
+                    'percentage_of_empty_buckets': level.get_percentage_of_empty_buckets(),
                     'min_occupation': min(b.get_n_objects() for b in level.get_buckets()),
                     'avg_occupation': mean(b.get_n_objects() for b in level.get_buckets()),
                     'median_occupation': median(b.get_n_objects() for b in level.get_buckets()),
@@ -313,3 +316,11 @@ class Framework:
                 for level in self.levels
             ],
         }
+
+    def _get_n_buckets(self) -> int:
+        """Return the total number of buckets in the index without the buffer."""
+        return sum(map(self.config.index_class.get_n_buckets, self.levels))
+
+    def _get_n_empty_buckets(self) -> int:
+        """Return the total number of empty buckets in the index without the buffer."""
+        return sum(map(self.config.index_class.get_n_empty_buckets, self.levels))

@@ -11,6 +11,7 @@ from loguru import logger
 from tqdm import tqdm
 
 from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SearchConfig
+from framework import Framework
 from lmi import LMIIndex
 from plots import (
     plot_queries_per_second_vs_recall,
@@ -117,7 +118,7 @@ logger.info(experiment_config)
 X, Q, GT = load_data(experiment_config.dataset_config)
 
 # Create the framework
-framework = args.compaction_strategy_class(experiment_config.framework_config)
+framework: Framework = args.compaction_strategy_class(experiment_config.framework_config)
 
 
 # Insert the dataset one object at a time
