@@ -8,6 +8,10 @@ class FrameworkCompactionStatistics:
     total_model_training_time: float
     total_compaction_time: float
 
+    # Mainly relevant for Leveling
+    allocated_new_level: bool  # Brand new level, not the empty ones in Bentley-Saxe
+    n_retrained_indexes: int  # Our heuristic, not the empty ones in Bentley-Saxe
+
 
 @dataclass
 class FrameworkSearchStatistics:

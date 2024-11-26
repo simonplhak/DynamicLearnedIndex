@@ -18,6 +18,12 @@ class BuildResult:
     def total_model_training_time(self) -> float:
         return sum(x.total_model_training_time for x in self.per_objects_insertion_statistics)
 
+    def when_were_the_new_levels_allocated(self) -> list[int]:
+        return [i for i, x in enumerate(self.per_objects_insertion_statistics) if x.allocated_new_level]
+
+    def total_n_retrained_indexes(self) -> int:
+        return sum(x.n_retrained_indexes for x in self.per_objects_insertion_statistics)
+
 
 @dataclass
 class ExperimentSearchResult:

@@ -17,6 +17,7 @@ def dfs_recursive(level: int, n_levels: int, arity: int, labels: list, counter: 
 
 
 def label_via_dfs(n_levels: int, arity: int) -> list[list[int]]:
+    """Create labels based on a pre-order DFS traversal."""
     labels = [[] for _ in range(n_levels)]
     counter = 1
 
@@ -50,6 +51,7 @@ class KNNSearchStrategy(SearchStrategy):
 class ModelDrivenSearchStrategy(SearchStrategy):
     def determine_level_nprobe(self, level: int, overall_nprobe: int) -> int:
         raise NotImplementedError  # TODO: implement
+
 
 @dataclass
 class LatestSearchStrategy(SearchStrategy):
