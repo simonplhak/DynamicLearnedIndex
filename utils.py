@@ -5,7 +5,7 @@ import functools
 import subprocess
 import time
 from argparse import Namespace
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any, Callable, ParamSpec, TypeVar
 
 import h5py
 import psutil
@@ -20,6 +20,10 @@ if TYPE_CHECKING:
     from configuration import DatasetConfig
 
 
+Param = ParamSpec('Param')
+ReturnType = TypeVar('ReturnType')
+
+
 def sizeof_fmt(num: float, suffix: str = 'B') -> str:
     # https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
     for unit in ('', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi'):
@@ -29,7 +33,7 @@ def sizeof_fmt(num: float, suffix: str = 'B') -> str:
     return f'{num:.1f}Yi{suffix}'
 
 
-def measure_runtime(func: Callable) -> Callable:
+def measure_runtime(func: Callable[Param, ReturnType]) -> Callable[Param, ReturnType]:
     @functools.wraps(func)
     def wrapper_measure_runtime(*args, **kwargs) -> Any:  # noqa: ANN401, ANN002, ANN003
         start = time.time()
@@ -43,7 +47,7 @@ def measure_runtime(func: Callable) -> Callable:
     return wrapper_measure_runtime
 
 
-def measure_memory_usage(func: Callable) -> Callable:
+def measure_memory_usage(func: Callable[Param, ReturnType]) -> Callable[Param, ReturnType]:
     @functools.wraps(func)
     def wrapper_measure_memory_usage(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
         process = psutil.Process()
