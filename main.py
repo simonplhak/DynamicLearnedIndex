@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING
 
 import torch
 from loguru import logger
-from tqdm import tqdm
 
 from config import choose_config
 from plots import (
@@ -17,18 +16,14 @@ from plots import (
     plot_recall_vs_nprobe,
     save_relevant_results_to_csv,
 )
-from result import BuildResult, ExperimentSearchResult
 from utils import (
     load_data,
-    measure_memory_usage,
-    measure_runtime,
     obtain_commit_hash,
     obtain_dirty_state,
     parse_command_line_arguments,
 )
 
 if TYPE_CHECKING:
-    from configuration import SearchConfig
     from framework import Framework
 
 SEED = 42
@@ -53,60 +48,8 @@ X, Q, GT = load_data(experiment_config.dataset_config)
 
 # Create the framework
 framework: Framework = args.compaction_strategy_class(experiment_config.framework_config)
-
-
-# Insert the dataset one object at a time
-@measure_runtime
-@measure_memory_usage
-def insert_objects(X: torch.Tensor) -> BuildResult:
-    s = time.time()
-    per_objects_insertion_statistics = []
-    for i in range(len(X)):
-        statistics = framework.insert(X[i], i)
-        per_objects_insertion_statistics.append(statistics)
-
-        if (i + 1) % (len(X) // 10) == 0:
-            logger.info(f'Inserted {((i+1) / len(X) * 100):.0f}% ({i+1}) objects')
-
-        assert framework.get_n_objects() == i + 1, f'Wrong number of objects: {framework.get_n_objects()} != {i + 1}'
-    build_time = time.time() - s
-
-    logger.info(f'Inserted {len(X)} objects')
-
-    return BuildResult(build_time, framework.collect_stats(), per_objects_insertion_statistics)
-
-
-build_result = insert_objects(X)
+build_result = framework.insert_objects_sequentially(X)
 framework.print_stats()
-
-
-@measure_runtime
-def perform_search(db_size: int, config: SearchConfig) -> ExperimentSearchResult:
-    recall_per_query = []
-    n_candidates_per_query = []
-    per_query_statistics = []
-
-    s = time.time()
-    for i in tqdm(range(len(Q))):
-        _, I, statistics = framework.search(Q[i], config.k, config.nprobe)
-        # _, I, statistics = framework.search_model_driven(Q[i], config.k, config.nprobe)
-        recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
-
-        recall_per_query.append(recall)
-        n_candidates_per_query.append(statistics.total_n_candidates)
-        per_query_statistics.append(statistics)
-    search_time = time.time() - s
-
-    return ExperimentSearchResult(
-        config,
-        db_size,
-        len(Q),
-        recall_per_query,
-        n_candidates_per_query,
-        search_time,
-        per_query_statistics,
-    )
-
 
 # Print stats once again
 logger.info(f'Experiment ID: {experiment_id}')
@@ -130,7 +73,7 @@ experiment_dir.mkdir(exist_ok=True, parents=True)
 search_results = []
 for config in experiment_config.search_configs:
     logger.info(config)
-    result = perform_search(len(X), config)
+    result = framework.perform_search(len(X), config, Q, GT)
     logger.info(result.get_stats())
     logger.info(f'Search throughput: {int(len(Q)/result.total_search_time)} QPS')  # TODO: store persistently?
 

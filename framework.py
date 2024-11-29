@@ -9,15 +9,18 @@ from typing import TYPE_CHECKING
 import numpy as np
 from faiss import merge_knn_results
 from loguru import logger
+from tqdm import tqdm
 
 from bucket import Bucket
+from result import BuildResult, ExperimentSearchResult
 from search_strategy import ModelDrivenSearchStrategy
 from statistic import FrameworkCompactionStatistics, FrameworkSearchStatistics
+from utils import measure_memory_usage, measure_runtime
 
 if TYPE_CHECKING:
     from torch import Tensor
 
-    from configuration import FrameworkConfig
+    from configuration import FrameworkConfig, SearchConfig
     from internal_learned_index import InternalLearnedIndex
 
 SEC_TO_MSEC = 1_000
@@ -33,6 +36,53 @@ class Framework:
 
         # Data properties
         self.dimensionality: int = config.bucket_shape[1]
+
+    @measure_runtime
+    @measure_memory_usage
+    def insert_objects_sequentially(self, X: Tensor) -> BuildResult:
+        """Insert the dataset one object at a time."""
+        s = time.time()
+        per_objects_insertion_statistics = []
+        for i in range(len(X)):
+            statistics = self.insert(X[i], i)
+            per_objects_insertion_statistics.append(statistics)
+
+            if (i + 1) % (len(X) // 10) == 0:
+                logger.info(f'Inserted {((i+1) / len(X) * 100):.0f}% ({i+1}) objects')
+
+            assert self.get_n_objects() == i + 1, f'Wrong number of objects: {self.get_n_objects()} != {i + 1}'
+        build_time = time.time() - s
+
+        logger.info(f'Inserted {len(X)} objects')
+
+        return BuildResult(build_time, self.collect_stats(), per_objects_insertion_statistics)
+
+    @measure_runtime
+    def perform_search(self, db_size: int, config: SearchConfig, Q: Tensor, GT: Tensor) -> ExperimentSearchResult:
+        recall_per_query = []
+        n_candidates_per_query = []
+        per_query_statistics = []
+
+        s = time.time()
+        for i in tqdm(range(len(Q))):
+            _, I, statistics = self.search_single(Q[i], config.k, config.nprobe)
+            # _, I, statistics = framework.search_model_driven(Q[i], config.k, config.nprobe)
+            recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
+
+            recall_per_query.append(recall)
+            n_candidates_per_query.append(statistics.total_n_candidates)
+            per_query_statistics.append(statistics)
+        search_time = time.time() - s
+
+        return ExperimentSearchResult(
+            config,
+            db_size,
+            len(Q),
+            recall_per_query,
+            n_candidates_per_query,
+            search_time,
+            per_query_statistics,
+        )
 
     def insert(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:
         """Insert a single vector into the index."""
@@ -53,7 +103,12 @@ class Framework:
         for i in range(current_level - 1):
             self.levels[i].empty()
 
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
+    def search_single(
+        self,
+        query: Tensor,
+        k: int,
+        nprobe: int,
+    ) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
         """Search the index for k nearest neighbors.
 
         Parameters
