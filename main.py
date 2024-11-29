@@ -1,15 +1,19 @@
 from __future__ import annotations
 
+import argparse
 import pprint
 import socket
 import time
+from argparse import Namespace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
 from loguru import logger
 
+from bentley_saxe import BentleySaxe
 from config import choose_config
+from leveling import Leveling
 from plots import (
     plot_queries_per_second_vs_recall,
     plot_recall_vs_avg_time_per_query,
@@ -20,7 +24,6 @@ from utils import (
     load_data,
     obtain_commit_hash,
     obtain_dirty_state,
-    parse_command_line_arguments,
 )
 
 if TYPE_CHECKING:
@@ -36,6 +39,23 @@ experiment_id = f'{time.strftime('%Y%m%d-%H%M%S')}-{commit_hash}{'-dirty' if dir
 
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
+
+
+def parse_command_line_arguments() -> Namespace:
+    """Process command line arguments."""
+    compaction_strategies = {
+        'bentley-saxe': BentleySaxe,
+        'leveling': Leveling,
+    }
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--compaction-strategy', choices=compaction_strategies.keys(), required=True)
+    args = parser.parse_args()
+
+    compaction_strategy_class = compaction_strategies[args.compaction_strategy]
+
+    return Namespace(compaction_strategy_class=compaction_strategy_class)
+
 
 args = parse_command_line_arguments()
 
