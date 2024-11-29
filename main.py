@@ -44,7 +44,7 @@ logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrac
 
 args = parse_command_line_arguments()
 
-experiment_config = choose_config(socket.gethostname())
+experiment_config = choose_config(socket.gethostname(), commit_hash, dirty_state)
 
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)

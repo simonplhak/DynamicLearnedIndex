@@ -1,20 +1,14 @@
 """Environment configurations for the experiments."""
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from configuration import ExperimentConfig
+from config import david, metacentrum, pro
+from configuration import ExperimentConfig
 
 
-def choose_config(hostname: str) -> ExperimentConfig:
-    from config import david, metacentrum, pro
-
+def choose_config(hostname: str, commit_hash: str, dirty_state: bool) -> ExperimentConfig:  # noqa: FBT001
     match hostname:
         case 'Pro.local':
-            return pro.experiment_config
+            return pro.create_config(commit_hash, dirty_state)
         case name if name.startswith('david'):
-            return david.experiment_config
+            return david.create_config(commit_hash, dirty_state)
         case _:
-            return metacentrum.experiment_config
+            return metacentrum.create_config(commit_hash, dirty_state)

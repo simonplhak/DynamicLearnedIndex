@@ -37,7 +37,9 @@ wget 'http://ingeotec.mx/~sadit/sisap2024-data/public-queries-2024-laion2B-en-cl
 wget 'http://ingeotec.mx/~sadit/sisap2024-data/gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
 
 # Run the experiments
-python3 main.py
+python3 main.py --compaction-strategy=leveling
+# Run the experiments with removed asserts and docstrings 
+python3 -OO main.py --compaction-strategy=leveling
 ```
 
 ## Resources
