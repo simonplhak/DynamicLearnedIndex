@@ -24,7 +24,7 @@ from utils import (
 )
 
 if TYPE_CHECKING:
-    from framework import Framework
+    from dynamic_learned_index import DynamicLearnedIndex
 
 SEED = 42
 torch.manual_seed(SEED)
@@ -46,10 +46,10 @@ logger.info(experiment_config)
 
 X, Q, GT = load_data(experiment_config.dataset_config)
 
-# Create the framework
-framework: Framework = args.compaction_strategy_class(experiment_config.framework_config)
-build_result = framework.insert_objects_sequentially(X)
-framework.print_stats()
+# Create the index
+dli: DynamicLearnedIndex = args.compaction_strategy_class(experiment_config.dli_config)
+build_result = dli.insert_objects_sequentially(X)
+dli.print_stats()
 
 # Print stats once again
 logger.info(f'Experiment ID: {experiment_id}')
@@ -73,7 +73,7 @@ experiment_dir.mkdir(exist_ok=True, parents=True)
 search_results = []
 for config in experiment_config.search_configs:
     logger.info(config)
-    result = framework.perform_search(len(X), config, Q, GT)
+    result = dli.perform_search(len(X), config, Q, GT)
     logger.info(result.get_stats())
     logger.info(f'Search throughput: {int(len(Q)/result.total_search_time)} QPS')  # TODO: store persistently?
 

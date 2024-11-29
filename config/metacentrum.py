@@ -4,7 +4,7 @@ from pathlib import Path
 
 from faiss import METRIC_INNER_PRODUCT
 
-from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SearchConfig
+from configuration import DatasetConfig, DistanceConfig, DLIConfig, ExperimentConfig, SearchConfig
 from lmi import LMIIndex
 from search_strategy import KNNSearchStrategy
 
@@ -19,7 +19,7 @@ def create_config(commit_hash: str, dirty_state: bool) -> ExperimentConfig:  # n
             Q=PATH_PREFIX / 'public-queries-2024-laion2B-en-clip768v2-n=10k.h5',
             GT=PATH_PREFIX / 'gold-standard-dbsize=100M--public-queries-2024-laion2B-en-clip768v2-n=10k.h5',
         ),
-        FrameworkConfig(
+        DLIConfig(
             LMIIndex,
             arity=3,
             bucket_shape=(5_000, 768),

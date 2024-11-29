@@ -6,17 +6,17 @@ from typing import TYPE_CHECKING
 from loguru import logger
 
 from configuration import IndexConfig
-from framework import Framework
+from dynamic_learned_index import DynamicLearnedIndex
 from statistic import FrameworkCompactionStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor
 
-    from configuration import FrameworkConfig
+    from configuration import DLIConfig
 
 
-class Leveling(Framework):
-    def __init__(self, config: FrameworkConfig) -> None:
+class Leveling(DynamicLearnedIndex):
+    def __init__(self, config: DLIConfig) -> None:
         super().__init__(config)
 
     def compact(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:

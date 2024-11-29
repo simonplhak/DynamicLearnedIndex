@@ -43,7 +43,7 @@ class IndexConfig:
 
 
 @dataclass
-class FrameworkConfig:
+class DLIConfig:
     index_class: type[InternalLearnedIndex]
     arity: int
     bucket_shape: BucketShape
@@ -65,7 +65,7 @@ class SearchConfig:
 @dataclass
 class ExperimentConfig:
     dataset_config: DatasetConfig
-    framework_config: FrameworkConfig
+    dli_config: DLIConfig
     search_configs: list[SearchConfig]
 
     # Reproducibility

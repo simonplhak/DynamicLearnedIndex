@@ -4,16 +4,16 @@ import time
 from typing import TYPE_CHECKING
 
 from bucket import Bucket
-from configuration import FrameworkConfig, IndexConfig
-from framework import Framework
+from configuration import DLIConfig, IndexConfig
+from dynamic_learned_index import DynamicLearnedIndex
 from statistic import FrameworkCompactionStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor
 
 
-class BentleySaxe(Framework):
-    def __init__(self, config: FrameworkConfig) -> None:
+class BentleySaxe(DynamicLearnedIndex):
+    def __init__(self, config: DLIConfig) -> None:
         super().__init__(config)
 
     def compact(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:

@@ -20,14 +20,14 @@ from utils import measure_memory_usage, measure_runtime
 if TYPE_CHECKING:
     from torch import Tensor
 
-    from configuration import FrameworkConfig, SearchConfig
+    from configuration import DLIConfig, SearchConfig
     from internal_learned_index import InternalLearnedIndex
 
 SEC_TO_MSEC = 1_000
 
 
-class Framework:
-    def __init__(self, config: FrameworkConfig) -> None:
+class DynamicLearnedIndex:
+    def __init__(self, config: DLIConfig) -> None:
         self.config = config
 
         # Fundamental properties
