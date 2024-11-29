@@ -85,20 +85,19 @@ class Leveling(Framework):
                 self._create_new_level(index)
 
                 allocated_new_level = True
-            else:
-                # ? when to retrain and when to keep the existing model?
-                if self.levels[i].is_degenerated():  # Throw away the degenerated index and create a new one
-                    # * Here, we could simply reset the model weights without allocating a new model
-                    index = self.config.index_class(self.levels[i].config)
+            # ? when to retrain and when to keep the existing model?
+            elif self.levels[i].is_degenerated():  # Throw away the degenerated index and create a new one
+                # * Here, we could simply reset the model weights without allocating a new model
+                index = self.config.index_class(self.levels[i].config)
 
-                    total_model_training_time += index.train(
-                        [*self.levels[i].get_buckets(), *self.levels[i - 1].get_buckets()],
-                    )
-                    self.levels[i] = index
+                total_model_training_time += index.train(
+                    [*self.levels[i].get_buckets(), *self.levels[i - 1].get_buckets()],
+                )
+                self.levels[i] = index
 
-                    n_retrained_indexes += 1
-                else:  # Accommodate the data as the index is not degenerated
-                    assert self.levels[i].insert(self.levels[i - 1].get_buckets())
+                n_retrained_indexes += 1
+            else:  # Accommodate the data as the index is not degenerated
+                assert self.levels[i].insert(self.levels[i - 1].get_buckets())
 
             self.levels[i - 1].empty()
 
