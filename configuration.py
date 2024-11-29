@@ -38,6 +38,8 @@ class IndexConfig:
     bucket_shape: BucketShape
     distance: DistanceConfig
     sample_threshold: int
+    # Required to automatically determine the number of hidden neurons
+    n_training_samples: int
 
 
 @dataclass

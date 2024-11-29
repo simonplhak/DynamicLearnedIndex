@@ -4,6 +4,7 @@ import pprint
 import socket
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import torch
 from faiss import METRIC_INNER_PRODUCT
@@ -11,7 +12,6 @@ from loguru import logger
 from tqdm import tqdm
 
 from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SearchConfig
-from framework import Framework
 from lmi import LMIIndex
 from plots import (
     plot_queries_per_second_vs_recall,
@@ -29,6 +29,9 @@ from utils import (
     obtain_dirty_state,
     parse_command_line_arguments,
 )
+
+if TYPE_CHECKING:
+    from framework import Framework
 
 SEED = 42
 torch.manual_seed(SEED)

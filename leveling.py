@@ -38,6 +38,7 @@ class Leveling(Framework):
                     distance=self.config.distance,
                     bucket_shape=self.config.bucket_shape,
                     sample_threshold=self.config.sample_threshold,
+                    n_training_samples=self.buffer.get_n_objects(),
                 ),
             )
             total_model_training_time = index.train([self.buffer])
@@ -77,6 +78,7 @@ class Leveling(Framework):
                         distance=self.config.distance,
                         bucket_shape=self.config.bucket_shape,
                         sample_threshold=self.config.sample_threshold,
+                        n_training_samples=self.levels[i - 1].get_n_objects(),
                     ),
                 )
                 total_model_training_time += index.train(self.levels[i - 1].get_buckets())

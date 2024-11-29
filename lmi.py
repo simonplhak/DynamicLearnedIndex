@@ -32,13 +32,25 @@ class LMIIndex(InternalLearnedIndex):
 
         self.buckets = {i: DynamicBucket(config.bucket_shape, config.distance.metric) for i in range(config.n_buckets)}
 
+        # Determine the number of neurons in all layers
+        n_input_neurons = self.config.bucket_shape[1]
+        n_output_neurons = config.n_buckets
+
+        # Inspired by https://stats.stackexchange.com/a/136542
+        alpha = 2
+        n_hidden_neurons = int(self.config.n_training_samples / (alpha * (n_input_neurons + n_output_neurons)))
+        n_hidden_neurons = (
+            int((n_input_neurons + n_output_neurons) / 2)
+            if n_hidden_neurons < min(n_input_neurons, n_output_neurons)
+            else n_hidden_neurons
+        )
+        logger.debug(f"LMI's model architecture: {n_input_neurons}-{n_hidden_neurons}-{n_output_neurons}")
+
         # Create a model
         self.model = Sequential(
-            Linear(self.config.bucket_shape[1], 512),
+            Linear(n_input_neurons, n_hidden_neurons),
             ReLU(),
-            Linear(512, 384),
-            ReLU(),
-            Linear(384, config.n_buckets),
+            Linear(n_hidden_neurons, n_output_neurons),
         )
 
         # Model's hyperparameters

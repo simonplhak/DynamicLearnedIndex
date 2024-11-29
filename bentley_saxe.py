@@ -43,6 +43,7 @@ class BentleySaxe(Framework):
                     distance=self.config.distance,
                     bucket_shape=self.config.bucket_shape,
                     sample_threshold=self.config.sample_threshold,
+                    n_training_samples=sum(map(Bucket.get_n_objects, self.get_buckets(current_level - 1))),
                 ),
             )
             model_training_time = index.train(self.get_buckets(current_level - 1))
