@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from configuration import ExperimentConfig
 
 
-def choose(hostname: str) -> ExperimentConfig:
+def choose_config(hostname: str) -> ExperimentConfig:
     from config import david, metacentrum, pro
 
     match hostname:

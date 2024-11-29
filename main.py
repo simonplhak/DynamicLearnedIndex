@@ -10,7 +10,7 @@ import torch
 from loguru import logger
 from tqdm import tqdm
 
-import config
+from config import choose_config
 from plots import (
     plot_queries_per_second_vs_recall,
     plot_recall_vs_avg_time_per_query,
@@ -44,7 +44,7 @@ logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrac
 
 args = parse_command_line_arguments()
 
-experiment_config = config.choose(socket.gethostname())
+experiment_config = choose_config(socket.gethostname())
 
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
