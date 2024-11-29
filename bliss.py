@@ -91,7 +91,7 @@ class BLISSIndex(InternalLearnedIndex):
                 offset += existing_bucket.get_n_objects()
 
             # Redistribute the objects
-            n_shifts = self._redistribute(bucket_assignment, bucket_predictions, total_n_objects)
+            _n_shifts = self._redistribute(bucket_assignment, bucket_predictions, total_n_objects)
             # logger.info(f'{n_shifts=}')
 
         # TODO: What if the number of objects in a bucket is larger than the bucket size?
@@ -173,8 +173,9 @@ class BLISSIndex(InternalLearnedIndex):
 
     @measure_runtime
     def _redistribute(self, bucket_assignment: np.ndarray, top_k_predicted_buckets: Tensor, dataset_size: int) -> int:
-        """Redistribute objects across buckets (put each object the least populated bucket among the top K in an incremental manner).
+        """Redistribute objects across buckets.
 
+        Puts each object the least populated bucket among the top K in an incremental manner.
         TODO: Different from BLISS, as this function does respect the bucket capacity limit.
         """
         n_shifts = 0
