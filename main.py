@@ -7,12 +7,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
-from faiss import METRIC_INNER_PRODUCT
 from loguru import logger
 from tqdm import tqdm
 
-from configuration import DatasetConfig, DistanceConfig, ExperimentConfig, FrameworkConfig, SearchConfig
-from lmi import LMIIndex
+import config
 from plots import (
     plot_queries_per_second_vs_recall,
     plot_recall_vs_avg_time_per_query,
@@ -20,7 +18,6 @@ from plots import (
     save_relevant_results_to_csv,
 )
 from result import BuildResult, ExperimentSearchResult
-from search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
 from utils import (
     load_data,
     measure_memory_usage,
@@ -31,6 +28,7 @@ from utils import (
 )
 
 if TYPE_CHECKING:
+    from configuration import SearchConfig
     from framework import Framework
 
 SEED = 42
@@ -46,74 +44,7 @@ logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrac
 
 args = parse_command_line_arguments()
 
-if socket.gethostname() == 'Pro.local':
-    experiment_config = ExperimentConfig(
-        DatasetConfig(
-            dataset_size=10_000,
-            X=Path('laion2B-en-clip768v2-n=300K.h5'),
-            Q=Path('public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
-            GT=Path('gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
-        ),
-        FrameworkConfig(
-            LMIIndex,
-            arity=3,
-            bucket_shape=(200, 768),
-            distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
-            sample_threshold=100_000,
-            search_strategy=KNNSearchStrategy,
-            # search_strategy=ModelDrivenSearchStrategy,
-        ),
-        [SearchConfig(k=10, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
-        commit_hash,
-        dirty_state,
-    )
-elif socket.gethostname().startswith('david'):
-    experiment_config = ExperimentConfig(
-        DatasetConfig(
-            dataset_size=10_120_191,
-            X=Path('laion2B-en-clip768v2-n=10M.h5'),
-            Q=Path('public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
-            GT=Path('gold-standard-dbsize=10M--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
-        ),
-        FrameworkConfig(
-            LMIIndex,
-            arity=3,
-            bucket_shape=(3_000, 768),
-            distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
-            sample_threshold=100_000,
-            search_strategy=KNNSearchStrategy,
-            # search_strategy=ModelDrivenSearchStrategy,
-        ),
-        [SearchConfig(k=30, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
-        commit_hash,
-        dirty_state,
-    )
-else:
-    experiment_config = ExperimentConfig(
-        DatasetConfig(
-            dataset_size=102_144_212,
-            X=Path('/storage/brno12-cerit/home/prochazka/fi-lmi-data/data/LAION2B/laion2B-en-clip768v2-n=100M.h5'),
-            Q=Path(
-                '/storage/brno12-cerit/home/prochazka/fi-lmi-data/data/LAION2B/public-queries-2024-laion2B-en-clip768v2-n=10k.h5',
-            ),
-            GT=Path(
-                '/storage/brno12-cerit/home/prochazka/fi-lmi-data/data/LAION2B/gold-standard-dbsize=100M--public-queries-2024-laion2B-en-clip768v2-n=10k.h5',
-            ),
-        ),
-        FrameworkConfig(
-            LMIIndex,
-            arity=3,
-            bucket_shape=(5_000, 768),
-            distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
-            sample_threshold=100_000,
-            search_strategy=KNNSearchStrategy,
-            # search_strategy=ModelDrivenSearchStrategy,
-        ),
-        [SearchConfig(k=30, nprobe=nprobe) for nprobe in [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]],
-        commit_hash,
-        dirty_state,
-    )
-
+experiment_config = config.choose(socket.gethostname())
 
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
