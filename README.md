@@ -1,36 +1,45 @@
 # Dynamic Learned Index
 
-## Resources
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit)
 
-- https://github.com/psu-db/dynamic-extension
+## Installation
 
-## Running the code
+This project uses [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/) to manage the environment.
+
+### Production
 
 ```shell
 # Setup the environment and install the dependencies
-conda create -y -n DynamicLearnedIndex python=3.12
+conda env create --file environment.yml
 conda activate DynamicLearnedIndex
-conda install -y -c pytorch faiss-cpu=1.9.0
-pip install torch --index-url https://download.pytorch.org/whl/cpu
-pip install numpy loguru psutil
+```
 
-# Dataset loading
-pip install h5py
+### Development
 
-# BLISS
-pip install scikit-learn
+In addition to the production dependencies, install these development dependencies using the following commands:
 
-# Evaluation
-pip install tqdm
+```shell
+pip install -r requirements-dev.txt
+pre-commit install
+```
 
-# Visualization
-pip install seaborn pandas
+#### Tips & Tricks
 
+During development, you can use the following command `pre-commit run --all-files` to run the pre-commit hooks. It will run the `ruff` linter and formatter to check for code style problems.
+
+## Running Experiments
+
+```shell
 # Download the datasets
 wget 'https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=300K.h5'
 wget 'http://ingeotec.mx/~sadit/sisap2024-data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
 wget 'http://ingeotec.mx/~sadit/sisap2024-data/gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
 
-# Run the code
+# Run the experiments
 python3 main.py
 ```
+
+## Resources
+
+- https://github.com/psu-db/dynamic-extension

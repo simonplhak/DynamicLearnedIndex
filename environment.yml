@@ -1,0 +1,22 @@
+name: DynamicLearnedIndex
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  # Core dependencies
+  - faiss-cpu
+  - pytorch
+  - numpy
+  # Logging
+  - loguru
+  # Profiling
+  - psutil
+  # Dataset loading
+  - h5py
+  # BLISS
+  - scikit-learn
+  # Evaluation
+  - tqdm
+  # Visualization
+  - seaborn
+  - pandas
