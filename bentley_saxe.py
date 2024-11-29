@@ -22,7 +22,12 @@ class BentleySaxe(Framework):
         self.buffer.insert_single(X, I)
 
         if not self.buffer.is_full():
-            return FrameworkCompactionStatistics(0, time.time() - s, False, 0)
+            return FrameworkCompactionStatistics(
+                total_model_training_time=0,
+                total_compaction_time=time.time() - s,
+                allocated_new_level=False,
+                n_retrained_indexes=0,
+            )
 
         # If the buffer is full, we need to merge it with the first level
         return self.compact_recursive(current_level=1, start_time=s)
@@ -49,7 +54,12 @@ class BentleySaxe(Framework):
             model_training_time = index.train(self.get_buckets(current_level - 1))
             self._create_new_level(index)
             self._empty_upper_levels(current_level)
-            return FrameworkCompactionStatistics(model_training_time, time.time() - start_time, True, 0)
+            return FrameworkCompactionStatistics(
+                total_model_training_time=model_training_time,
+                total_compaction_time=time.time() - start_time,
+                allocated_new_level=True,
+                n_retrained_indexes=0,
+            )
 
         # Option 2 -- We are on a level that already exists
         current_index = self.levels[current_level - 1]
@@ -60,7 +70,12 @@ class BentleySaxe(Framework):
             # TODO: reset the model's weights first
             model_training_time = current_index.train(self.get_buckets(current_level - 1))
             self._empty_upper_levels(current_level)
-            return FrameworkCompactionStatistics(model_training_time, time.time() - start_time, False, 0)
+            return FrameworkCompactionStatistics(
+                total_model_training_time=model_training_time,
+                total_compaction_time=time.time() - start_time,
+                allocated_new_level=False,
+                n_retrained_indexes=0,
+            )
 
         ## Option 2.2 -- The index exists
         can_be_inserted = current_index.get_free_space() >= sum(
@@ -74,7 +89,12 @@ class BentleySaxe(Framework):
         if can_be_inserted:
             current_index.insert(self.get_buckets(current_level - 1))
             self._empty_upper_levels(current_level)
-            return FrameworkCompactionStatistics(0, time.time() - start_time, False, 0)
+            return FrameworkCompactionStatistics(
+                total_model_training_time=0,
+                total_compaction_time=time.time() - start_time,
+                allocated_new_level=False,
+                n_retrained_indexes=0,
+            )
 
         ### Option 2.2.2 -- This level is overflowing, try to fit the objects in the level below
         ### The level is not able to absorb the data = overflow detected ~ `if not is_successfully_inserted`
