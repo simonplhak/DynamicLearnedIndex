@@ -10,7 +10,7 @@ from faiss import merge_knn_results
 from loguru import logger
 from tqdm import tqdm
 
-from bucket import Bucket
+from bucket import StaticBucket
 from result import BuildResult, ExperimentSearchResult
 from search_strategy import ModelDrivenSearchStrategy
 from statistic import FrameworkCompactionStatistics, FrameworkSearchStatistics
@@ -19,6 +19,7 @@ from utils import measure_memory_usage, measure_runtime
 if TYPE_CHECKING:
     from torch import Tensor
 
+    from bucket import Bucket
     from config.dli import DLIConfig
     from config.search import SearchConfig
     from internal_learned_index import InternalLearnedIndex
@@ -31,7 +32,7 @@ class DynamicLearnedIndex:
         self.config = config
 
         # Fundamental properties
-        self.buffer: Bucket = Bucket(config.bucket_shape, config.distance.metric)
+        self.buffer = StaticBucket(config.bucket_shape, config.distance.metric)
         self.levels: list[InternalLearnedIndex] = []
         self.compaction_strategy = config.compaction_strategy(config, self)
 

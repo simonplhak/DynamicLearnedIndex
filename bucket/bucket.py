@@ -1,16 +1,15 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
+
 import numpy as np
 import torch
 from faiss import knn
 from torch import Tensor
 
-SEED = 42
-torch.manual_seed(SEED)
 
-
-class Bucket:
-    """A bucket with a fixed capacity."""
+class Bucket(ABC):
+    """An abstract class representing a bucket."""
 
     def __init__(self, bucket_shape: tuple[int, int], metric: int) -> None:
         self.bucket_size, self.dimensionality = bucket_shape
@@ -23,27 +22,13 @@ class Bucket:
         self.n_objects: int = 0
         """Current number of objects in the bucket."""
 
+    @abstractmethod
     def insert_single(self, X: Tensor, I: int) -> None:
-        assert X.shape == (self.dimensionality,), 'X must be a 1D tensor'
-        assert self.n_objects + 1 <= self.bucket_size, 'Bucket will overflow'
+        raise NotImplementedError
 
-        self.data[self.n_objects] = X
-        self.ids[self.n_objects] = I
-        self.n_objects += 1
-
+    @abstractmethod
     def insert_bulk(self, X: Tensor, I: np.ndarray) -> None:
-        if len(X) == 0:
-            return
-
-        # ! solve the issue of overflow in the caller... = keep the bucket abstraction simple
-        assert self.n_objects + len(X) <= self.bucket_size, 'Bucket will overflow'
-        assert len(X) == len(I), 'X and I must have the same length'
-
-        start, stop = self.n_objects, self.n_objects + len(X)
-
-        self.data[start:stop] = X
-        self.ids[start:stop] = I
-        self.n_objects += len(X)
+        raise NotImplementedError
 
     def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
         """Search for the k nearest neighbors of the given query in the bucket.

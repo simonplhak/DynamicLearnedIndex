@@ -13,7 +13,7 @@ from torch.nn.functional import softmax
 from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 
-from dynamic_bucket import DynamicBucket
+from bucket import DynamicBucket
 from internal_learned_index import InternalLearnedIndex
 from labeled_dataset import LabeledDataset
 from sampling import take_sample
