@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import argparse
 import pprint
 import time
-from argparse import Namespace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import torch
 from loguru import logger
 
-from bentley_saxe import BentleySaxe
+import cli
 from execution_environment.detect import detect_environment
-from leveling import Leveling
 from plots import (
     plot_queries_per_second_vs_recall,
     plot_recall_vs_avg_time_per_query,
@@ -40,23 +37,7 @@ logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrac
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
 
 
-def parse_command_line_arguments() -> Namespace:
-    """Process command line arguments."""
-    compaction_strategies = {
-        'bentley-saxe': BentleySaxe,
-        'leveling': Leveling,
-    }
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--compaction-strategy', choices=compaction_strategies.keys(), required=True)
-    args = parser.parse_args()
-
-    compaction_strategy_class = compaction_strategies[args.compaction_strategy]
-
-    return Namespace(compaction_strategy_class=compaction_strategy_class)
-
-
-args = parse_command_line_arguments()
+args = cli.parse_arguments()
 
 
 experiment_config = detect_environment().create_config(commit_hash, dirty_state)
