@@ -9,13 +9,13 @@ if TYPE_CHECKING:
     import numpy as np
     from torch import Tensor
 
-    from config.index import IndexConfig
+    from config import IndexConfig
 
 DEGENERATION_THRESHOLD = 0.5
 """The fraction of the buckets that must be empty for the index to be degenerated."""
 
 
-class InternalLearnedIndex(ABC):
+class LearnedIndex(ABC):
     def __init__(self, config: IndexConfig) -> None:
         self.config = config
 

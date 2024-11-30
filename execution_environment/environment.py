@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from argparse import Namespace
 
-from config.experiment import ExperimentConfig
+from config import ExperimentConfig
 
 
 class Environment(ABC):

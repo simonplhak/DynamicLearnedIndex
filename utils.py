@@ -12,7 +12,7 @@ from loguru import logger
 from torch import Tensor
 
 if TYPE_CHECKING:
-    from config.dataset import DatasetConfig
+    from config import DatasetConfig
 
 
 Param = ParamSpec('Param')

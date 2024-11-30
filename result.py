@@ -5,7 +5,7 @@ from statistics import mean, median, stdev
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from config.search import SearchConfig
+    from config import SearchConfig
     from statistic import FrameworkCompactionStatistics, FrameworkSearchStatistics
 
 

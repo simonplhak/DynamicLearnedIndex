@@ -7,21 +7,22 @@ import numpy as np
 import torch
 from torch import Tensor
 
-from bucket import Bucket
-from internal_learned_index import InternalLearnedIndex
+from bucket import DynamicBucket
+from learned_index import LearnedIndex
 
 if TYPE_CHECKING:
-    from config.index import IndexConfig
+    from bucket import Bucket
+    from config import IndexConfig
 
 
-class DummyIndex(InternalLearnedIndex):
+class DummyIndex(LearnedIndex):
     """A dummy index implementation that randomly stores the objects in the buckets."""
 
     def __init__(self, config: IndexConfig) -> None:
         super().__init__(config)
 
         """Number of buckets."""
-        self.buckets = {i: Bucket(config.bucket_shape, config.distance.metric) for i in range(config.n_buckets)}
+        self.buckets = {i: DynamicBucket(config.bucket_shape, config.distance.metric) for i in range(config.n_buckets)}
 
         self.bucket_size = config.bucket_shape[0]
 

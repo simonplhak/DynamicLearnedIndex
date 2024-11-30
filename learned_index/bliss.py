@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import faiss
 import numpy as np
@@ -15,8 +15,8 @@ from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 
 from bucket import DynamicBucket
-from internal_learned_index import InternalLearnedIndex
 from labeled_dataset import LabeledDataset
+from learned_index.learned_index import LearnedIndex
 from sampling import np_rng, take_sample
 from utils import measure_runtime
 
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from config.index import IndexConfig
 
 
-class BLISSIndex(InternalLearnedIndex):
+class BLISSIndex(LearnedIndex):
     def __init__(self, config: IndexConfig) -> None:
         super().__init__(config)
 
@@ -53,6 +53,7 @@ class BLISSIndex(InternalLearnedIndex):
         """Do not shift an object when it is within the top K predicted buckets."""
 
     @measure_runtime
+    @override
     def train(self, buckets: list[Bucket]) -> float:
         s = time.time()
 
@@ -111,6 +112,7 @@ class BLISSIndex(InternalLearnedIndex):
     #     pass
 
     @measure_runtime
+    @override
     def insert(self, buckets: list[Bucket]) -> bool:
         for bucket in buckets:  # ! can be parallelized
             X, I = bucket.get_data(), bucket.get_ids()
@@ -121,6 +123,7 @@ class BLISSIndex(InternalLearnedIndex):
 
         return True  # Insertion successful
 
+    @override
     def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
         nprobe = min(nprobe, self.config.n_buckets)
 

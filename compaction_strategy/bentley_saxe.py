@@ -4,7 +4,7 @@ import time
 from typing import TYPE_CHECKING
 
 from bucket import Bucket
-from config.index import IndexConfig
+from config import IndexConfig
 from statistic import FrameworkCompactionStatistics
 
 if TYPE_CHECKING:

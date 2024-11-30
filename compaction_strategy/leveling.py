@@ -5,13 +5,13 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from config.index import IndexConfig
+from config import IndexConfig
 from statistic import FrameworkCompactionStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor
 
-    from config.dli import DLIConfig
+    from config import DLIConfig
     from dynamic_learned_index import DynamicLearnedIndex
 
 INSERTION_FAILED_MSG = 'Leveling: Insertion failed'

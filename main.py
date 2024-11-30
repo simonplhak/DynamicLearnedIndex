@@ -9,7 +9,7 @@ from loguru import logger
 
 import cli
 from dynamic_learned_index import DynamicLearnedIndex
-from execution_environment.detect import detect_environment
+from execution_environment import detect_environment
 from plots import (
     plot_queries_per_second_vs_recall,
     plot_recall_vs_avg_time_per_query,

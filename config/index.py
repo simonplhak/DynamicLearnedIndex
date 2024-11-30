@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from config import BucketShape
+from config.bucket_shape import BucketShape
 from config.distance import DistanceConfig
 
 

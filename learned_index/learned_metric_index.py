@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, override
 
 import numpy as np
 import torch
@@ -14,17 +14,17 @@ from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 
 from bucket import DynamicBucket
-from internal_learned_index import InternalLearnedIndex
 from labeled_dataset import LabeledDataset
+from learned_index.learned_index import LearnedIndex
 from sampling import take_sample
 from utils import measure_runtime
 
 if TYPE_CHECKING:
     from bucket import Bucket
-    from config.index import IndexConfig
+    from config import IndexConfig
 
 
-class LMIIndex(InternalLearnedIndex):
+class LearnedMetricIndex(LearnedIndex):
     """Learned Metric Index (LMI) implementation with dynamic buckets."""
 
     def __init__(self, config: IndexConfig) -> None:
@@ -60,6 +60,7 @@ class LMIIndex(InternalLearnedIndex):
         self.optimizer = Adam(params=self.model.parameters(), lr=self.lr)
 
     @measure_runtime
+    @override
     def train(self, buckets: list[Bucket]) -> float:
         s = time.time()
         X_sample, _ = take_sample(buckets, self.config.sample_threshold, self.config.bucket_shape[1])
@@ -97,6 +98,7 @@ class LMIIndex(InternalLearnedIndex):
 
         return time.time() - s
 
+    @override
     def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
         nprobe = min(nprobe, self.config.n_buckets)
 
@@ -115,6 +117,7 @@ class LMIIndex(InternalLearnedIndex):
 
         return *merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max), n_candidates
 
+    @override
     def insert(self, buckets: list[Bucket]) -> bool:
         for bucket in buckets:  # ! can be parallelized
             X, I = bucket.get_data(), bucket.get_ids()
@@ -126,6 +129,7 @@ class LMIIndex(InternalLearnedIndex):
 
         return True
 
+    @override
     def predict_bucket_scores(self, X: Tensor) -> list[tuple[int, float]]:
         assert self.model is not None, 'Model is not trained yet.'
 

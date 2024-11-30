@@ -5,13 +5,9 @@ from typing import TYPE_CHECKING, final, override
 
 from faiss import METRIC_INNER_PRODUCT
 
-from config.dataset import DatasetConfig
-from config.distance import DistanceConfig
-from config.dli import DLIConfig
-from config.experiment import ExperimentConfig
-from config.search import SearchConfig
+from config import DatasetConfig, DistanceConfig, DLIConfig, ExperimentConfig, SearchConfig
 from execution_environment.environment import Environment
-from lmi import LMIIndex
+from learned_index import LearnedMetricIndex
 from search_strategy import KNNSearchStrategy
 
 if TYPE_CHECKING:
@@ -30,7 +26,7 @@ class David(Environment):
                 GT=Path('gold-standard-dbsize=10M--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
             ),
             DLIConfig(
-                LMIIndex,
+                LearnedMetricIndex,
                 arity=3,
                 bucket_shape=(3_000, 768),
                 distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),

@@ -20,9 +20,8 @@ if TYPE_CHECKING:
     from torch import Tensor
 
     from bucket import Bucket
-    from config.dli import DLIConfig
-    from config.search import SearchConfig
-    from internal_learned_index import InternalLearnedIndex
+    from config import DLIConfig, SearchConfig
+    from learned_index import LearnedIndex
 
 SEC_TO_MSEC = 1_000
 
@@ -33,7 +32,7 @@ class DynamicLearnedIndex:
 
         # Fundamental properties
         self.buffer = StaticBucket(config.bucket_shape, config.distance.metric)
-        self.levels: list[InternalLearnedIndex] = []
+        self.levels: list[LearnedIndex] = []
         self.compaction_strategy = config.compaction_strategy(config, self)
 
         # Data properties
