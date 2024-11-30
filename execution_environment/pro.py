@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import final, override
+from typing import TYPE_CHECKING, final, override
 
 from faiss import METRIC_INNER_PRODUCT
 
@@ -14,11 +14,14 @@ from execution_environment.environment import Environment
 from lmi import LMIIndex
 from search_strategy import KNNSearchStrategy
 
+if TYPE_CHECKING:
+    from argparse import Namespace
+
 
 @final
 class Pro(Environment):
     @override
-    def create_config(self, commit_hash: str, dirty_state: bool) -> ExperimentConfig:
+    def create_config(self, args: Namespace, commit_hash: str, dirty_state: bool) -> ExperimentConfig:
         return ExperimentConfig(
             DatasetConfig(
                 dataset_size=10_000,
@@ -32,6 +35,7 @@ class Pro(Environment):
                 bucket_shape=(200, 768),
                 distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
                 sample_threshold=100_000,
+                compaction_strategy=args.compaction_strategy_class,
                 search_strategy=KNNSearchStrategy,
                 # search_strategy=ModelDrivenSearchStrategy,
             ),

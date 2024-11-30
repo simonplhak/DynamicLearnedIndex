@@ -1,17 +1,11 @@
 import argparse
 from argparse import Namespace
 
-from bentley_saxe import BentleySaxe
-from leveling import Leveling
+from compaction_strategy import compaction_strategies
 
 
 def parse_arguments() -> Namespace:
     """Process command line arguments."""
-    compaction_strategies = {
-        'bentley-saxe': BentleySaxe,
-        'leveling': Leveling,
-    }
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--compaction-strategy', choices=compaction_strategies.keys(), required=True)
     args = parser.parse_args()

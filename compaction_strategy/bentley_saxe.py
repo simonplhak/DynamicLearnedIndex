@@ -5,25 +5,32 @@ from typing import TYPE_CHECKING
 
 from bucket import Bucket
 from config.index import IndexConfig
-from dynamic_learned_index import DynamicLearnedIndex
 from statistic import FrameworkCompactionStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor
 
     from config.dli import DLIConfig
+    from dynamic_learned_index import DynamicLearnedIndex
 
 
-class BentleySaxe(DynamicLearnedIndex):
-    def __init__(self, config: DLIConfig) -> None:
-        super().__init__(config)
+class BentleySaxe:
+    def __init__(self, config: DLIConfig, dli: DynamicLearnedIndex) -> None:
+        self.config = config
+        self.dli = dli
+
+    def _empty_upper_levels(self, current_level: int) -> None:
+        # Empty all levels above the current level as the bucket objects are now in the new index and should be empty
+        self.dli.buffer.empty()
+        for i in range(current_level - 1):
+            self.dli.levels[i].empty()
 
     def compact(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:
         s = time.time()
 
-        self.buffer.insert_single(X, I)
+        self.dli.buffer.insert_single(X, I)
 
-        if not self.buffer.is_full():
+        if not self.dli.buffer.is_full():
             return FrameworkCompactionStatistics(
                 total_model_training_time=0,
                 total_compaction_time=time.time() - s,
@@ -43,18 +50,18 @@ class BentleySaxe(DynamicLearnedIndex):
         # Take all data above this level and either create a new index or merge the data into an existing one
 
         # Option 1 -- We have descended beyond the existing levels, there is no index, we must create one
-        if current_level > len(self.levels):
-            index = self.config.index_class(
+        if current_level > len(self.dli.levels):
+            index = self.dli.config.index_class(
                 IndexConfig(
-                    n_buckets=pow(self.config.arity, current_level),
-                    distance=self.config.distance,
-                    bucket_shape=self.config.bucket_shape,
-                    sample_threshold=self.config.sample_threshold,
-                    n_training_samples=sum(map(Bucket.get_n_objects, self.get_buckets(current_level - 1))),
+                    n_buckets=pow(self.dli.config.arity, current_level),
+                    distance=self.dli.config.distance,
+                    bucket_shape=self.dli.config.bucket_shape,
+                    sample_threshold=self.dli.config.sample_threshold,
+                    n_training_samples=sum(map(Bucket.get_n_objects, self.dli.get_buckets(current_level - 1))),
                 ),
             )
-            model_training_time = index.train(self.get_buckets(current_level - 1))
-            self._create_new_level(index)
+            model_training_time = index.train(self.dli.get_buckets(current_level - 1))
+            self.dli.levels.append(index)
             self._empty_upper_levels(current_level)
             return FrameworkCompactionStatistics(
                 total_model_training_time=model_training_time,
@@ -64,13 +71,13 @@ class BentleySaxe(DynamicLearnedIndex):
             )
 
         # Option 2 -- We are on a level that already exists
-        current_index = self.levels[current_level - 1]
+        current_index = self.dli.levels[current_level - 1]
 
         ## Option 2.1 -- The index does not exist at this level, we have to create it
         ##            -- Actually, we are just training it because we have not thrown out the old one...
         if current_index.is_empty():  # ~ the index does not exist
             # TODO: reset the model's weights first
-            model_training_time = current_index.train(self.get_buckets(current_level - 1))
+            model_training_time = current_index.train(self.dli.get_buckets(current_level - 1))
             self._empty_upper_levels(current_level)
             return FrameworkCompactionStatistics(
                 total_model_training_time=model_training_time,
@@ -81,15 +88,15 @@ class BentleySaxe(DynamicLearnedIndex):
 
         ## Option 2.2 -- The index exists
         can_be_inserted = current_index.get_free_space() >= sum(
-            map(Bucket.get_n_objects, self.get_buckets(current_level - 1)),
+            map(Bucket.get_n_objects, self.dli.get_buckets(current_level - 1)),
         )
 
-        # is_successfully_inserted = current_index.insert(self.get_buckets(current_level - 1))
+        # is_successfully_inserted = current_index.insert(self.dli.get_buckets(current_level - 1))
 
         ### Option 2.2.1 -- All data has been stored at this level
         # if is_successfully_inserted:
         if can_be_inserted:
-            current_index.insert(self.get_buckets(current_level - 1))
+            current_index.insert(self.dli.get_buckets(current_level - 1))
             self._empty_upper_levels(current_level)
             return FrameworkCompactionStatistics(
                 total_model_training_time=0,

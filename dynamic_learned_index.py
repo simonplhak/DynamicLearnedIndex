@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import time
-from abc import abstractmethod
 from itertools import chain
 from statistics import mean, median
 from typing import TYPE_CHECKING
@@ -34,6 +33,7 @@ class DynamicLearnedIndex:
         # Fundamental properties
         self.buffer: Bucket = Bucket(config.bucket_shape, config.distance.metric)
         self.levels: list[InternalLearnedIndex] = []
+        self.compaction_strategy = config.compaction_strategy(config, self)
 
         # Data properties
         self.dimensionality: int = config.bucket_shape[1]
@@ -91,18 +91,8 @@ class DynamicLearnedIndex:
 
         return self.compact(X, I)
 
-    @abstractmethod
     def compact(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:
-        raise NotImplementedError
-
-    def _create_new_level(self, index: InternalLearnedIndex) -> None:
-        self.levels.append(index)
-
-    def _empty_upper_levels(self, current_level: int) -> None:
-        # Empty all levels above the current level as the bucket objects are now in the new index and should be empty
-        self.buffer.empty()
-        for i in range(current_level - 1):
-            self.levels[i].empty()
+        return self.compaction_strategy.compact(X, I)
 
     def search_single(
         self,

@@ -3,12 +3,12 @@ from __future__ import annotations
 import pprint
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import torch
 from loguru import logger
 
 import cli
+from dynamic_learned_index import DynamicLearnedIndex
 from execution_environment.detect import detect_environment
 from plots import (
     plot_queries_per_second_vs_recall,
@@ -22,9 +22,6 @@ from utils import (
     obtain_dirty_state,
 )
 
-if TYPE_CHECKING:
-    from dynamic_learned_index import DynamicLearnedIndex
-
 SEED = 42
 torch.manual_seed(SEED)
 
@@ -36,11 +33,8 @@ experiment_id = f'{time.strftime('%Y%m%d-%H%M%S')}-{commit_hash}{'-dirty' if dir
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
 
-
 args = cli.parse_arguments()
-
-
-experiment_config = detect_environment().create_config(commit_hash, dirty_state)
+experiment_config = detect_environment().create_config(args, commit_hash, dirty_state)
 
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
@@ -48,7 +42,7 @@ logger.info(experiment_config)
 X, Q, GT = load_data(experiment_config.dataset_config)
 
 # Create the index
-dli: DynamicLearnedIndex = args.compaction_strategy_class(experiment_config.dli_config)
+dli = DynamicLearnedIndex(experiment_config.dli_config)
 build_result = dli.insert_objects_sequentially(X)
 dli.print_stats()
 
