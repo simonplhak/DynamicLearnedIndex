@@ -8,7 +8,7 @@ import seaborn as sns
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from configuration import ExperimentConfig
+    from config.experiment import ExperimentConfig
     from result import BuildResult, ExperimentSearchResult
 
 

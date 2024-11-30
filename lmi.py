@@ -21,7 +21,7 @@ from utils import measure_runtime
 
 if TYPE_CHECKING:
     from bucket import Bucket
-    from configuration import IndexConfig
+    from config.index import IndexConfig
 
 
 class LMIIndex(InternalLearnedIndex):

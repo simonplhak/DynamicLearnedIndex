@@ -4,12 +4,14 @@ import time
 from typing import TYPE_CHECKING
 
 from bucket import Bucket
-from configuration import DLIConfig, IndexConfig
+from config.index import IndexConfig
 from dynamic_learned_index import DynamicLearnedIndex
 from statistic import FrameworkCompactionStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor
+
+    from config.dli import DLIConfig
 
 
 class BentleySaxe(DynamicLearnedIndex):

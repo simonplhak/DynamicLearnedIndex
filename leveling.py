@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING
 
 from loguru import logger
 
-from configuration import IndexConfig
+from config.index import IndexConfig
 from dynamic_learned_index import DynamicLearnedIndex
 from statistic import FrameworkCompactionStatistics
 
 if TYPE_CHECKING:
     from torch import Tensor
 
-    from configuration import DLIConfig
+    from config.dli import DLIConfig
 
 
 class Leveling(DynamicLearnedIndex):

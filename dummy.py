@@ -11,7 +11,7 @@ from bucket import Bucket
 from internal_learned_index import InternalLearnedIndex
 
 if TYPE_CHECKING:
-    from configuration import IndexConfig
+    from config.index import IndexConfig
 
 
 class DummyIndex(InternalLearnedIndex):

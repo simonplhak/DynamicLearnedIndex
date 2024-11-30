@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import pprint
-import socket
 import time
 from argparse import Namespace
 from pathlib import Path
@@ -12,7 +11,7 @@ import torch
 from loguru import logger
 
 from bentley_saxe import BentleySaxe
-from config import choose_config
+from execution_environment.detect import detect_environment
 from leveling import Leveling
 from plots import (
     plot_queries_per_second_vs_recall,
@@ -59,7 +58,8 @@ def parse_command_line_arguments() -> Namespace:
 
 args = parse_command_line_arguments()
 
-experiment_config = choose_config(socket.gethostname(), commit_hash, dirty_state)
+
+experiment_config = detect_environment().create_config(commit_hash, dirty_state)
 
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
