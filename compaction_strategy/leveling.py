@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from config.dli import DLIConfig
     from dynamic_learned_index import DynamicLearnedIndex
 
+INSERTION_FAILED_MSG = 'Leveling: Insertion failed'
+
 
 class Leveling:
     def __init__(self, config: DLIConfig, dli: DynamicLearnedIndex) -> None:
@@ -98,12 +100,16 @@ class Leveling:
 
                 n_retrained_indexes += 1
             else:  # Accommodate the data as the index is not degenerated
-                assert self.dli.levels[i].insert(self.dli.levels[i - 1].get_buckets())
+                inserted = self.dli.levels[i].insert(self.dli.levels[i - 1].get_buckets())
+                if not inserted:
+                    raise ValueError(INSERTION_FAILED_MSG)
 
             self.dli.levels[i - 1].empty()
 
         # Accommodate the buffer data into the 0th level
-        assert self.dli.levels[0].insert([self.dli.buffer])
+        inserted = self.dli.levels[0].insert([self.dli.buffer])
+        if not inserted:
+            raise ValueError(INSERTION_FAILED_MSG)
 
         # Empty the buffer
         self.dli.buffer.empty()
