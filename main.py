@@ -10,16 +10,16 @@ from loguru import logger
 import cli
 from dynamic_learned_index import DynamicLearnedIndex
 from execution_environment import detect_environment
-from plots import (
-    plot_queries_per_second_vs_recall,
-    plot_recall_vs_avg_time_per_query,
-    plot_recall_vs_nprobe,
-    save_relevant_results_to_csv,
-)
 from utils import (
     load_data,
     obtain_commit_hash,
     obtain_dirty_state,
+)
+from vizualization.plots import (
+    plot_queries_per_second_vs_recall,
+    plot_recall_vs_avg_time_per_query,
+    plot_recall_vs_nprobe,
+    save_relevant_results_to_csv,
 )
 
 SEED = 42
@@ -28,7 +28,7 @@ torch.manual_seed(SEED)
 EXPERIMENTAL_RESULTS_DIR = Path('experimental_results')
 
 commit_hash, dirty_state = obtain_commit_hash(), obtain_dirty_state()
-experiment_id = f'{time.strftime('%Y%m%d-%H%M%S')}-{commit_hash}{'-dirty' if dirty_state else ''}'
+experiment_id = f"{time.strftime('%Y%m%d-%H%M%S')}-{commit_hash}{'-dirty' if dirty_state else ''}"
 
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
