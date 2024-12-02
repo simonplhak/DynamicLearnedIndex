@@ -66,7 +66,7 @@ class DynamicLearnedIndex:
 
         s = time.time()
         for i in tqdm(range(len(Q))):
-            _, I, statistics = self.search_single(Q[i], config.k, config.nprobe)
+            _, I, statistics = self.search_single(Q[i], config)
             # _, I, statistics = framework.search_model_driven(Q[i], config.k, config.nprobe)
             recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
 
@@ -97,8 +97,7 @@ class DynamicLearnedIndex:
     def search_single(
         self,
         query: Tensor,
-        k: int,
-        nprobe: int,
+        config: SearchConfig,
     ) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
         """Search the index for k nearest neighbors.
 
@@ -106,10 +105,8 @@ class DynamicLearnedIndex:
         ----------
         query : Tensor
             Single query vector of shape (dimensionality,).
-        k : int
-            Number of nearest neighbors to search for.
-        nprobe : int
-            Number of buckets to probe at each level.
+        config : SearchConfig
+            Search configuration.
 
         Returns
         -------
@@ -118,12 +115,12 @@ class DynamicLearnedIndex:
 
         """
         assert query.shape == (self.dimensionality,)
-        assert self.config.search_strategy != ModelDrivenSearchStrategy
+        assert config.search_strategy != ModelDrivenSearchStrategy
 
         # Preparation step
         s = time.time()
         query = query.reshape((1, self.dimensionality))
-        search_strategy = self.config.search_strategy(self.config.arity, 1 + len(self.levels))
+        search_strategy = config.search_strategy(self.config.arity, 1 + len(self.levels))
 
         # Search the buffer if it is not empty
         searchable_levels = [self.buffer] if not self.buffer.is_empty() else []
@@ -133,8 +130,8 @@ class DynamicLearnedIndex:
         n_partial_results = len(searchable_levels)
 
         D_all, I_all = (
-            np.zeros((n_partial_results, 1, k), dtype=np.float32),
-            np.zeros((n_partial_results, 1, k), dtype=np.int64),
+            np.zeros((n_partial_results, 1, config.k), dtype=np.float32),
+            np.zeros((n_partial_results, 1, config.k), dtype=np.int64),
         )
         n_candidates_per_level = [0] * n_partial_results
         search_time_per_level_in_ms = [0.0] * n_partial_results
@@ -144,8 +141,8 @@ class DynamicLearnedIndex:
         s = time.time()
         for i, level in enumerate(searchable_levels):
             s = time.time()
-            level_nprobe = search_strategy.determine_level_nprobe(i, nprobe)
-            D_all[i, :, :], I_all[i, :, :], n_level_candidates = level.search(query, k, level_nprobe)
+            level_nprobe = search_strategy.determine_level_nprobe(i, config.nprobe)
+            D_all[i, :, :], I_all[i, :, :], n_level_candidates = level.search(query, config.k, level_nprobe)
             search_time_per_level_in_ms[i] += (time.time() - s) * SEC_TO_MSEC
 
             n_candidates_per_level[i] += n_level_candidates
@@ -193,8 +190,7 @@ class DynamicLearnedIndex:
     def search_model_driven(
         self,
         query: Tensor,
-        k: int,
-        nprobe: int,
+        config: SearchConfig,
     ) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
         """Search the index for k nearest neighbors.
 
@@ -202,10 +198,8 @@ class DynamicLearnedIndex:
         ----------
         query : Tensor
             Single query vector of shape (dimensionality,).
-        k : int
-            Number of nearest neighbors to search for.
-        nprobe : int
-            Number of buckets to probe at each level.
+        config : SearchConfig
+            Search configuration.
 
         Returns
         -------
@@ -214,7 +208,7 @@ class DynamicLearnedIndex:
 
         """
         assert query.shape == (self.dimensionality,)
-        assert self.config.search_strategy == ModelDrivenSearchStrategy
+        assert self.config == ModelDrivenSearchStrategy
 
         # Preparation step
         s = time.time()
@@ -231,7 +225,7 @@ class DynamicLearnedIndex:
         visit_order = sorted(per_level_bucket_scores, key=lambda x: x[2], reverse=True)
 
         # Collect the buckets
-        bucket_locations_to_visit = visit_order[: nprobe - 1]
+        bucket_locations_to_visit = visit_order[: config.nprobe - 1]
         buckets_to_visit = (
             [self.levels[level_idx].buckets[bucket_idx] for level_idx, bucket_idx, _ in bucket_locations_to_visit]
             + [self.buffer]
@@ -242,8 +236,8 @@ class DynamicLearnedIndex:
         # Prepare helper variables
         n_partial_results = len(buckets_to_visit)
         D_all, I_all = (
-            np.zeros((n_partial_results, 1, k), dtype=np.float32),
-            np.zeros((n_partial_results, 1, k), dtype=np.int64),
+            np.zeros((n_partial_results, 1, config.k), dtype=np.float32),
+            np.zeros((n_partial_results, 1, config.k), dtype=np.int64),
         )
         n_candidates_per_level = [0] * n_partial_results
         search_time_per_level_in_ms = [0.0] * n_partial_results
@@ -253,7 +247,7 @@ class DynamicLearnedIndex:
         s = time.time()
         for i, bucket in enumerate(buckets_to_visit):
             s = time.time()
-            D_all[i, :, :], I_all[i, :, :], n_level_candidates = bucket.search(query, k, -1)
+            D_all[i, :, :], I_all[i, :, :], n_level_candidates = bucket.search(query, config.k, -1)
             search_time_per_level_in_ms[i] += (time.time() - s) * SEC_TO_MSEC
 
             n_candidates_per_level[i] += n_level_candidates

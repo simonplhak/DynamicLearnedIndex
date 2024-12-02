@@ -32,10 +32,15 @@ class David(Environment):
                 distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
                 sample_threshold=100_000,
                 compaction_strategy=args.compaction_strategy_class,
-                search_strategy=KNNSearchStrategy,
-                # search_strategy=ModelDrivenSearchStrategy,
             ),
-            [SearchConfig(k=30, nprobe=nprobe) for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]],
+            [
+                SearchConfig(
+                    KNNSearchStrategy,
+                    k=30,
+                    nprobe=nprobe,
+                )
+                for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]
+            ],
             commit_hash,
             dirty_state,
         )

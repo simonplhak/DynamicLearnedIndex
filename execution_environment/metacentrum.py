@@ -34,10 +34,15 @@ class Metacentrum(Environment):
                 distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
                 sample_threshold=100_000,
                 compaction_strategy=args.compaction_strategy_class,
-                search_strategy=KNNSearchStrategy,
-                # search_strategy=ModelDrivenSearchStrategy,
             ),
-            [SearchConfig(k=30, nprobe=nprobe) for nprobe in [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]],
+            [
+                SearchConfig(
+                    KNNSearchStrategy,
+                    k=30,
+                    nprobe=nprobe,
+                )
+                for nprobe in [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
+            ],
             commit_hash,
             dirty_state,
         )

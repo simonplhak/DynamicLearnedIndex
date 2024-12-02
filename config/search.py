@@ -1,8 +1,11 @@
 from dataclasses import dataclass
 
+from search_strategy import SearchStrategy
+
 
 @dataclass
 class SearchConfig:
+    search_strategy: type[SearchStrategy]
     k: int
     nprobe: int
 

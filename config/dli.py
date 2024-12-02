@@ -8,7 +8,6 @@ if TYPE_CHECKING:
     from config.bucket_shape import BucketShape
     from config.distance import DistanceConfig
     from learned_index import LearnedIndex
-    from search_strategy import SearchStrategy
 
 
 @dataclass
@@ -20,6 +19,3 @@ class DLIConfig:
     distance: DistanceConfig
     sample_threshold: int
     compaction_strategy: type[BentleySaxe | Leveling]
-
-    # Search
-    search_strategy: type[SearchStrategy]
