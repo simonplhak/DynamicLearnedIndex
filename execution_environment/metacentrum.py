@@ -29,7 +29,7 @@ class Metacentrum(Environment):
             ),
             DLIConfig(
                 LearnedMetricIndex,
-                arity=8,
+                arity=2,
                 bucket_shape=(5_000, 768),
                 distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
                 sample_threshold=100_000,
