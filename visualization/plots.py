@@ -20,6 +20,7 @@ def save_relevant_results_to_csv(
 ) -> pd.DataFrame:
     df = pd.DataFrame(
         {
+            'search_strategy': [r.search_strategy.__name__ for r in config.search_configs],
             'nprobe': [r.nprobe for r in config.search_configs],
             'avg_recall': [result.avg_recall() for result in results],
             'avg_time_per_query': [result.avg_time_per_query_in_ms() for result in results],
@@ -32,7 +33,7 @@ def save_relevant_results_to_csv(
 
 
 def plot_recall_vs_nprobe(df: pd.DataFrame, experiment_dir: Path) -> None:
-    plt = sns.lineplot(x='nprobe', y='avg_recall', data=df)
+    plt = sns.lineplot(x='nprobe', y='avg_recall', hue='search_strategy', data=df)
     plt.set_title('Number of visited buckets vs. average recall')
     plt.set_xlabel('Number of visited buckets')
     plt.set_ylabel('Average recall')
@@ -43,7 +44,7 @@ def plot_recall_vs_nprobe(df: pd.DataFrame, experiment_dir: Path) -> None:
 
 
 def plot_recall_vs_avg_time_per_query(df: pd.DataFrame, experiment_dir: Path) -> None:
-    plt = sns.lineplot(x='nprobe', y='avg_time_per_query', data=df)
+    plt = sns.lineplot(x='nprobe', y='avg_time_per_query', hue='search_strategy', data=df)
     plt.set_title('Number of visited buckets vs. average time per query')
     plt.set_xlabel('Number of visited buckets')
     plt.set_ylabel('Average time per query')
@@ -54,7 +55,7 @@ def plot_recall_vs_avg_time_per_query(df: pd.DataFrame, experiment_dir: Path) ->
 
 
 def plot_queries_per_second_vs_recall(df: pd.DataFrame, experiment_dir: Path) -> None:
-    plt = sns.lineplot(x='avg_recall', y='queries_per_second', data=df)
+    plt = sns.lineplot(x='avg_recall', y='queries_per_second', hue='search_strategy', data=df)
     plt.set_title('Average recall vs. queries per second')
     plt.set_xlabel('Average recall')
     plt.set_ylabel('Queries per second')
