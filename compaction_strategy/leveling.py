@@ -89,16 +89,16 @@ class Leveling:
 
                 allocated_new_level = True
             # ? when to retrain and when to keep the existing model?
-            elif self.dli.levels[i].is_degenerated():  # Throw away the degenerated index and create a new one
-                # * Here, we could simply reset the model weights without allocating a new model
-                index = self.dli.config.index_class(self.dli.levels[i].config)
+            # elif self.dli.levels[i].is_degenerated():  # Throw away the degenerated index and create a new one
+            #     # * Here, we could simply reset the model weights without allocating a new model
+            #     index = self.dli.config.index_class(self.dli.levels[i].config)
 
-                total_model_training_time += index.train(
-                    [*self.dli.levels[i].get_buckets(), *self.dli.levels[i - 1].get_buckets()],
-                )
-                self.dli.levels[i] = index
+            #     total_model_training_time += index.train(
+            #         [*self.dli.levels[i].get_buckets(), *self.dli.levels[i - 1].get_buckets()],
+            #     )
+            #     self.dli.levels[i] = index
 
-                n_retrained_indexes += 1
+            #     n_retrained_indexes += 1
             else:  # Accommodate the data as the index is not degenerated
                 inserted = self.dli.levels[i].insert(self.dli.levels[i - 1].get_buckets())
                 if not inserted:
