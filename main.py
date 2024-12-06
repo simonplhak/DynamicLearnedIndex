@@ -52,10 +52,10 @@ dli.print_stats()
 # Print stats once again
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
-logger.info(f'Build time: {build_result.time:.5}s')
+logger.info(f'Build time: {build_result.time:.5f}s')
 logger.info(f'Insert throughput: {int(len(X)/build_result.time)} IPS')  # TODO: store persistently?
-logger.info(f'Total model training time: {build_result.total_model_training_time():.3}s')
-logger.info(f'Framework overhead time: {build_result.time - build_result.total_model_training_time():.3}s')
+logger.info(f'Total model training time: {build_result.total_model_training_time():.3f}s')
+logger.info(f'Framework overhead time: {build_result.time - build_result.total_model_training_time():.3f}s')
 logger.info(f'When were the new levels allocated: {build_result.when_were_the_new_levels_allocated()}')
 logger.info(f'Total number of retrained indexes: {build_result.total_n_retrained_indexes()}')
 logger.info(pprint.pformat(build_result.stats))
