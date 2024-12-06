@@ -13,7 +13,7 @@ from tqdm import tqdm
 
 from bucket import StaticBucket
 from result import BuildResult, ExperimentSearchResult
-from search_strategy import ModelDrivenSearchStrategy
+from search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
 from statistic import FrameworkCompactionStatistics, FrameworkSearchStatistics
 from utils import measure_memory_usage, measure_runtime
 
@@ -68,7 +68,7 @@ class DynamicLearnedIndex:
         s = time.time()
         for i in tqdm(range(len(Q))):
             _, I, statistics = self.search_single(Q[i], config)
-            # _, I, statistics = framework.search_model_driven(Q[i], config.k, config.nprobe)
+
             recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
 
             sum_of_recalls += recall
@@ -116,7 +116,36 @@ class DynamicLearnedIndex:
 
         """
         assert query.shape == (self.dimensionality,)
-        assert config.search_strategy != ModelDrivenSearchStrategy
+
+        if config.search_strategy == KNNSearchStrategy:
+            return self.search_knn(query, config)
+
+        if config.search_strategy == ModelDrivenSearchStrategy:
+            return self.search_model_driven(query, config)
+
+        raise NotImplementedError
+
+    def search_knn(
+        self,
+        query: Tensor,
+        config: SearchConfig,
+    ) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
+        """Search the index for k nearest neighbors.
+
+        Parameters
+        ----------
+        query : Tensor
+            Single query vector of shape (dimensionality,).
+        config : SearchConfig
+            Search configuration.
+
+        Returns
+        -------
+        tuple[np.ndarray, np.ndarray, SearchStatistics]
+            A tuple containing the neighbor distances, neighbor indices, and the search statistics.
+
+        """
+        assert config.search_strategy == KNNSearchStrategy
 
         # Preparation step
         s = time.time()
@@ -208,8 +237,7 @@ class DynamicLearnedIndex:
             A tuple containing the neighbor distances, neighbor indices, and the search statistics.
 
         """
-        assert query.shape == (self.dimensionality,)
-        assert self.config == ModelDrivenSearchStrategy
+        assert config.search_strategy == ModelDrivenSearchStrategy
 
         # Preparation step
         s = time.time()
