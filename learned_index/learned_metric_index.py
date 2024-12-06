@@ -17,7 +17,7 @@ from bucket import DynamicBucket
 from labeled_dataset import LabeledDataset
 from learned_index.learned_index import LearnedIndex
 from sampling import take_sample
-from utils import measure_runtime
+from utils import get_model_size, measure_runtime
 
 if TYPE_CHECKING:
     from bucket import Bucket
@@ -142,6 +142,13 @@ class LearnedMetricIndex(LearnedIndex):
             probabilities = softmax(logits, dim=1)
 
         return [(i, probabilities[0][i].item()) for i in range(self.config.n_buckets)]
+
+    @override
+    def get_allocated_memory(self) -> int:
+        model_size = get_model_size(self.model)
+        bucket_size = sum([bucket.get_allocated_memory() for bucket in self.buckets.values()])
+
+        return model_size + bucket_size
 
     def _predict(self, X: Tensor, top_k: int) -> tuple[Tensor, Tensor]:
         assert self.model is not None, 'Model is not trained yet.'

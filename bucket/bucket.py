@@ -80,3 +80,9 @@ class Bucket(ABC):
 
     def get_ids(self) -> np.ndarray:
         return self.ids[: self.n_objects]
+
+    def get_allocated_memory(self) -> int:
+        data_memory = self.data.element_size() * self.data.nelement()
+        ids_memory = self.ids.nbytes
+
+        return data_memory + ids_memory

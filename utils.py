@@ -12,6 +12,8 @@ from loguru import logger
 from torch import Tensor
 
 if TYPE_CHECKING:
+    from torch.nn import Sequential
+
     from config import DatasetConfig
 
 
@@ -58,8 +60,8 @@ def measure_memory_usage(func: Callable[Param, ReturnType]) -> Callable[Param, R
 
 @measure_runtime
 def load_data(config: DatasetConfig) -> tuple[Tensor, Tensor, Tensor]:
-    X = torch.from_numpy(h5py.File(config.X, 'r')['emb'][: config.dataset_size]).to(torch.float32)  # type: ignore
-    Q = torch.from_numpy(h5py.File(config.Q, 'r')['emb'][:]).to(torch.float32)  # type: ignore
+    X = torch.from_numpy(h5py.File(config.X, 'r')['emb'][: config.dataset_size])  # type: ignore
+    Q = torch.from_numpy(h5py.File(config.Q, 'r')['emb'][:])  # type: ignore
     GT = torch.from_numpy(h5py.File(config.GT, 'r')['knns'][:])  # type: ignore
     return X, Q, GT
 
@@ -70,3 +72,15 @@ def obtain_commit_hash() -> str:
 
 def obtain_dirty_state() -> bool:
     return subprocess.call(['git', 'diff', '--quiet']) != 0  # noqa: S603, S607
+
+
+def get_model_size(model: Sequential) -> int:
+    param_size = 0
+    for param in model.parameters():
+        param_size += param.nelement() * param.element_size()
+
+    buffer_size = 0
+    for buffer in model.buffers():
+        buffer_size += buffer.nelement() * buffer.element_size()
+
+    return param_size + buffer_size

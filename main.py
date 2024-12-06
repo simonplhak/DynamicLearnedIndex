@@ -40,6 +40,7 @@ logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
 
 X, Q, GT = load_data(experiment_config.dataset_config)
+logger.info(f'Loaded dataset of {len(X)} objects of size {(X.element_size() * X.nelement()) / 1024 ** 2:.0f} MB')
 
 # Create the index
 dli = DynamicLearnedIndex(experiment_config.dli_config)

@@ -51,6 +51,7 @@ class DynamicLearnedIndex:
 
             if (i + 1) % (len(X) // 10) == 0:
                 logger.info(f'Inserted {((i+1) / len(X) * 100):.0f}% ({i+1}) objects')
+                logger.info(f'Allocated memory: {self.get_allocated_memory() / 1024 ** 2:.0f} MB')
 
             assert self.get_n_objects() == i + 1, f'Wrong number of objects: {self.get_n_objects()} != {i + 1}'
         build_time = time.time() - s
@@ -359,6 +360,7 @@ class DynamicLearnedIndex:
                 'n_levels': len(self.levels),
                 'n_buckets': self._get_n_buckets(),
                 'n_empty_buckets': self._get_n_empty_buckets(),
+                'allocated_memory_mb': int(self.get_allocated_memory() / 1024**2),
             },
             'buffer': {
                 'n_objects': self.buffer.get_n_objects(),
@@ -385,6 +387,10 @@ class DynamicLearnedIndex:
                 for level in self.levels
             ],
         }
+
+    def get_allocated_memory(self) -> int:
+        """Return the allocated memory of the index in bytes."""
+        return self.buffer.get_allocated_memory() + sum([index.get_allocated_memory() for index in self.levels])
 
     def _get_n_buckets(self) -> int:
         """Return the total number of buckets in the index without the buffer."""

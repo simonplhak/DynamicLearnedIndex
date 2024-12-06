@@ -80,6 +80,11 @@ class LearnedIndex(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def get_allocated_memory(self) -> int:
+        """Return the allocated memory of the index in bytes."""
+        raise NotImplementedError
+
     def empty(self) -> None:
         for bucket in self.buckets.values():
             bucket.empty()
