@@ -15,7 +15,7 @@ from utils import (
     obtain_commit_hash,
     obtain_dirty_state,
 )
-from vizualization.plots import (
+from visualization.plots import (
     plot_queries_per_second_vs_recall,
     plot_recall_vs_avg_time_per_query,
     plot_recall_vs_nprobe,
