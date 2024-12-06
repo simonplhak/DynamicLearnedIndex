@@ -361,6 +361,7 @@ class DynamicLearnedIndex:
                 'n_buckets': self._get_n_buckets(),
                 'n_empty_buckets': self._get_n_empty_buckets(),
                 'allocated_memory_mb': int(self.get_allocated_memory() / 1024**2),
+                'bucket_space_utilization': self.calculate_bucket_space_utilization(),
             },
             'buffer': {
                 'n_objects': self.buffer.get_n_objects(),
@@ -391,6 +392,13 @@ class DynamicLearnedIndex:
     def get_allocated_memory(self) -> int:
         """Return the allocated memory of the index in bytes."""
         return self.buffer.get_allocated_memory() + sum([index.get_allocated_memory() for index in self.levels])
+
+    def calculate_bucket_space_utilization(self) -> float:
+        """Return the utilization of the index."""
+        total_bucket_capacity = self.buffer.get_capacity() + sum(
+            map(self.config.index_class.get_total_capacity_with_bucket_expansion, self.levels),
+        )
+        return self.get_n_objects() / total_bucket_capacity
 
     def _get_n_buckets(self) -> int:
         """Return the total number of buckets in the index without the buffer."""
