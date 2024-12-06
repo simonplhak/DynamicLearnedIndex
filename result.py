@@ -35,10 +35,6 @@ class ExperimentSearchResult:
     total_search_time: float
     per_query_statistics: list[FrameworkSearchStatistics]
 
-    def add(self, recall: float, n_candidates: int) -> None:
-        self.recall_per_query.append(recall)
-        self.n_candidates_per_query.append(n_candidates)
-
     def avg_recall(self) -> float:
         return sum(self.recall_per_query) / self.n_queries * 100
 
