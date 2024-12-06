@@ -11,9 +11,13 @@ from torch import Tensor
 class Bucket(ABC):
     """An abstract class representing a bucket."""
 
-    def __init__(self, bucket_shape: tuple[int, int], metric: int) -> None:
+    def __init__(self, bucket_shape: tuple[int, int], metric: int, shrink_buckets: bool) -> None:  # noqa: FBT001
+        self.default_bucket_size = bucket_shape[0]
+        """The default size of the bucket before resizing."""
         self.bucket_size, self.dimensionality = bucket_shape
         self.metric = metric
+        self.shrink_buckets: bool = shrink_buckets
+        """Whether to shrink the buckets when calling the empty method."""
 
         self.data: Tensor = torch.empty(bucket_shape, dtype=torch.float32)
         """Objects stored in the bucket."""
@@ -57,8 +61,33 @@ class Bucket(ABC):
 
         return D[0], self.ids[I[0]], n_candidates  # Convert local indexes back to the global IDs
 
-    def empty(self) -> None:
+    def empty(self) -> int:
+        """Empty the bucket by setting the number of objects to 0.
+
+        When shrink_buckets is True, the data and ID tensors are resized to the original shape.
+
+        Returns
+        -------
+        int
+            The difference between the current bucket size and the original bucket size.
+
+        """
         self.n_objects = 0
+
+        if self.shrink_buckets and self.bucket_size != self.default_bucket_size:  # The bucket has been resized
+            del self.data, self.ids
+
+            assert self.bucket_size > self.default_bucket_size
+
+            deallocated_spaces = self.bucket_size - self.default_bucket_size
+
+            self.bucket_size = self.default_bucket_size
+            self.data = torch.empty((self.bucket_size, self.dimensionality), dtype=torch.float32)
+            self.ids = np.empty(self.bucket_size, dtype=np.int64)
+
+            return deallocated_spaces
+
+        return 0
 
     def is_full(self) -> bool:
         return self.n_objects == self.bucket_size

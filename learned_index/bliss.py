@@ -35,7 +35,10 @@ class BLISSIndex(LearnedIndex):
         )
         self.n_redistributions: int = 2
         """Number of buckets."""
-        self.buckets = {i: DynamicBucket(config.bucket_shape, config.distance.metric) for i in range(config.n_buckets)}
+        self.buckets = {
+            i: DynamicBucket(config.bucket_shape, config.distance.metric, config.shrink_buckets_during_compaction)
+            for i in range(config.n_buckets)
+        }
 
         self.model = Sequential(
             Linear(config.bucket_shape[1], 512),

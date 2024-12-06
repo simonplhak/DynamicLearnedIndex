@@ -47,7 +47,7 @@ X = X.to(torch.float32)
 # Create the index
 dli = DynamicLearnedIndex(experiment_config.dli_config)
 build_result = dli.insert_objects_sequentially(X)
-dli.print_stats()
+# dli.print_stats()
 
 # Print stats once again
 logger.info(f'Experiment ID: {experiment_id}')
@@ -58,6 +58,7 @@ logger.info(f'Total model training time: {build_result.total_model_training_time
 logger.info(f'Framework overhead time: {build_result.time - build_result.total_model_training_time():.3f}s')
 logger.info(f'When were the new levels allocated: {build_result.when_were_the_new_levels_allocated()}')
 logger.info(f'Total number of retrained indexes: {build_result.total_n_retrained_indexes()}')
+logger.info(f'Total deallocated spaces: {build_result.total_deallocated_spaces()}')
 logger.info(pprint.pformat(build_result.stats))
 
 # Save results

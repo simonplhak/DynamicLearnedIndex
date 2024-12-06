@@ -20,7 +20,7 @@ def parse_arguments() -> CLIArguments:
     """Process command line arguments."""
     parser = ArgumentParser()
     parser.add_argument('--compaction-strategy', choices=compaction_strategies.keys(), required=True)
-    parser.add_argument('--shrink-buckets-during-compaction', type=bool, required=True)
+    parser.add_argument('--shrink-buckets-during-compaction', action='store_true', default=False)
     args = parser.parse_args()
 
     return CLIArguments(args)

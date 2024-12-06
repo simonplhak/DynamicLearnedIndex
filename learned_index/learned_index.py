@@ -95,9 +95,13 @@ class LearnedIndex(ABC):
         """Return the size in bytes of the memory allocated for the buckets."""
         raise NotImplementedError
 
-    def empty(self) -> None:
+    def empty(self) -> int:
+        deallocated_spaces = 0
+
         for bucket in self.buckets.values():
-            bucket.empty()
+            deallocated_spaces += bucket.empty()
+
+        return deallocated_spaces
 
     def is_empty(self) -> bool:
         return all(map(Bucket.is_empty, self.buckets.values()))

@@ -26,6 +26,9 @@ class BuildResult:
     def total_n_retrained_indexes(self) -> int:
         return sum(x.n_retrained_indexes for x in self.per_objects_insertion_statistics)
 
+    def total_deallocated_spaces(self) -> int:
+        return sum(x.deallocated_spaces for x in self.per_objects_insertion_statistics)
+
 
 @dataclass
 class ExperimentSearchResult:

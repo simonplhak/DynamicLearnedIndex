@@ -19,11 +19,16 @@ class BentleySaxe:
         self.config = config
         self.dli = dli
 
-    def _empty_upper_levels(self, current_level: int) -> None:
+    def _empty_upper_levels(self, current_level: int) -> int:
         # Empty all levels above the current level as the bucket objects are now in the new index and should be empty
         self.dli.buffer.empty()
+
+        deallocated_spaces = 0
+
         for i in range(current_level - 1):
-            self.dli.levels[i].empty()
+            deallocated_spaces += self.dli.levels[i].empty()
+
+        return deallocated_spaces
 
     def compact(self, X: Tensor, I: int) -> FrameworkCompactionStatistics:
         s = time.time()
@@ -36,6 +41,7 @@ class BentleySaxe:
                 total_compaction_time=time.time() - s,
                 allocated_new_level=False,
                 n_retrained_indexes=0,
+                deallocated_spaces=0,
             )
 
         # If the buffer is full, we need to merge it with the first level
@@ -57,17 +63,19 @@ class BentleySaxe:
                     distance=self.dli.config.distance,
                     bucket_shape=self.dli.config.bucket_shape,
                     sample_threshold=self.dli.config.sample_threshold,
+                    shrink_buckets_during_compaction=self.dli.config.shrink_buckets_during_compaction,
                     n_training_samples=sum(map(Bucket.get_n_objects, self.dli.get_buckets(current_level - 1))),
                 ),
             )
             model_training_time = index.train(self.dli.get_buckets(current_level - 1))
             self.dli.levels.append(index)
-            self._empty_upper_levels(current_level)
+            deallocated_spaces = self._empty_upper_levels(current_level)
             return FrameworkCompactionStatistics(
                 total_model_training_time=model_training_time,
                 total_compaction_time=time.time() - start_time,
                 allocated_new_level=True,
                 n_retrained_indexes=0,
+                deallocated_spaces=deallocated_spaces,
             )
 
         # Option 2 -- We are on a level that already exists
@@ -78,12 +86,13 @@ class BentleySaxe:
         if current_index.is_empty():  # ~ the index does not exist
             # TODO: reset the model's weights first
             model_training_time = current_index.train(self.dli.get_buckets(current_level - 1))
-            self._empty_upper_levels(current_level)
+            deallocated_spaces = self._empty_upper_levels(current_level)
             return FrameworkCompactionStatistics(
                 total_model_training_time=model_training_time,
                 total_compaction_time=time.time() - start_time,
                 allocated_new_level=False,
                 n_retrained_indexes=0,
+                deallocated_spaces=deallocated_spaces,
             )
 
         ## Option 2.2 -- The index exists
@@ -97,12 +106,13 @@ class BentleySaxe:
         # if is_successfully_inserted:
         if can_be_inserted:
             current_index.insert(self.dli.get_buckets(current_level - 1))
-            self._empty_upper_levels(current_level)
+            deallocated_spaces = self._empty_upper_levels(current_level)
             return FrameworkCompactionStatistics(
                 total_model_training_time=0,
                 total_compaction_time=time.time() - start_time,
                 allocated_new_level=False,
                 n_retrained_indexes=0,
+                deallocated_spaces=deallocated_spaces,
             )
 
         ### Option 2.2.2 -- This level is overflowing, try to fit the objects in the level below

@@ -13,6 +13,6 @@ mamba activate /storage/brno12-cerit/home/prochazka/.conda/envs/DynamicLearnedIn
 cd '/storage/brno12-cerit/home/prochazka/fi-lmi-data/personal/david/research/DynamicLearnedIndex' || exit 4
 python3 -OO main.py \
     --compaction-strategy='leveling' \
-    --shrink-buckets-during-compaction='True' \
+    --shrink-buckets-during-compaction \
     &>"/storage/brno12-cerit/home/prochazka/fi-lmi-data/personal/david/research/DynamicLearnedIndex/metacentrum-logs/run-${PBS_JOBID}.log"
 exit $?

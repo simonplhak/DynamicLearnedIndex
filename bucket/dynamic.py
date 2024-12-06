@@ -14,8 +14,8 @@ from bucket.bucket import Bucket
 class DynamicBucket(Bucket):
     """A bucket that dynamically expands its capacity."""
 
-    def __init__(self, bucket_shape: tuple[int, int], metric: int) -> None:
-        super().__init__(bucket_shape, metric)
+    def __init__(self, bucket_shape: tuple[int, int], metric: int, shrink_buckets: bool) -> None:  # noqa: FBT001
+        super().__init__(bucket_shape, metric, shrink_buckets)
 
     @override
     def insert_single(self, X: Tensor, I: int) -> None:

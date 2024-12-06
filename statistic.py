@@ -11,6 +11,7 @@ class FrameworkCompactionStatistics:
     # Mainly relevant for Leveling
     allocated_new_level: bool  # Brand new level, not the empty ones in Bentley-Saxe
     n_retrained_indexes: int  # Our heuristic, not the empty ones in Bentley-Saxe
+    deallocated_spaces: int  # The number of deallocated spaces inside the dynamic buckets
 
 
 @dataclass

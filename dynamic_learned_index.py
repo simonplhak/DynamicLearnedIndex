@@ -32,7 +32,7 @@ class DynamicLearnedIndex:
         self.config = config
 
         # Fundamental properties
-        self.buffer = StaticBucket(config.bucket_shape, config.distance.metric)
+        self.buffer = StaticBucket(config.bucket_shape, config.distance.metric, config.shrink_buckets_during_compaction)
         self.levels: list[LearnedIndex] = []
         self.compaction_strategy = config.compaction_strategy(config, self)
 

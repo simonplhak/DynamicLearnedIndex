@@ -32,6 +32,7 @@ class Leveling:
                 total_compaction_time=time.time() - s,
                 allocated_new_level=False,
                 n_retrained_indexes=0,
+                deallocated_spaces=0,
             )
 
         if len(self.dli.levels) == 0:
@@ -41,6 +42,7 @@ class Leveling:
                     distance=self.dli.config.distance,
                     bucket_shape=self.dli.config.bucket_shape,
                     sample_threshold=self.dli.config.sample_threshold,
+                    shrink_buckets_during_compaction=self.dli.config.shrink_buckets_during_compaction,
                     n_training_samples=self.dli.buffer.get_n_objects(),
                 ),
             )
@@ -55,6 +57,7 @@ class Leveling:
                 total_compaction_time=time.time() - s,
                 allocated_new_level=True,
                 n_retrained_indexes=0,
+                deallocated_spaces=0,
             )
 
         # Set to len(self.dli.levels), so that we allocate a new level if no level with enough space is found
@@ -71,6 +74,7 @@ class Leveling:
         total_model_training_time = 0.0
         n_retrained_indexes = 0
         allocated_new_level = False
+        deallocated_spaces = 0
 
         for i in range(idx, 0, -1):
             if i == len(self.dli.levels):  # We need to allocate a new level
@@ -81,6 +85,7 @@ class Leveling:
                         distance=self.dli.config.distance,
                         bucket_shape=self.dli.config.bucket_shape,
                         sample_threshold=self.dli.config.sample_threshold,
+                        shrink_buckets_during_compaction=self.dli.config.shrink_buckets_during_compaction,
                         n_training_samples=self.dli.levels[i - 1].get_n_objects(),
                     ),
                 )
@@ -104,7 +109,7 @@ class Leveling:
                 if not inserted:
                     raise ValueError(INSERTION_FAILED_MSG)
 
-            self.dli.levels[i - 1].empty()
+            deallocated_spaces += self.dli.levels[i - 1].empty()
 
         # Accommodate the buffer data into the 0th level
         inserted = self.dli.levels[0].insert([self.dli.buffer])
@@ -122,4 +127,5 @@ class Leveling:
             time.time() - s,
             allocated_new_level,
             n_retrained_indexes,
+            deallocated_spaces,
         )
