@@ -5,6 +5,8 @@ from statistics import mean, median, stdev
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from torch import Tensor
+
     from config import SearchConfig
     from statistic import FrameworkCompactionStatistics, FrameworkSearchStatistics
 
@@ -30,29 +32,29 @@ class ExperimentSearchResult:
     config: SearchConfig
     database_size: int
     n_queries: int
-    recall_per_query: list[float]
-    n_candidates_per_query: list[int]
+    sum_of_recalls: float
+    n_candidates_per_query: Tensor
     total_search_time: float
     per_query_statistics: list[FrameworkSearchStatistics]
 
     def avg_recall(self) -> float:
-        return sum(self.recall_per_query) / self.n_queries * 100
+        return self.sum_of_recalls / self.n_queries * 100
 
     # Number of candidates
     def min_n_candidates(self) -> int:
-        return min(self.n_candidates_per_query)
+        return int(self.n_candidates_per_query.min())
 
     def mean_n_candidates(self) -> float:
-        return mean(self.n_candidates_per_query)
+        return float(self.n_candidates_per_query.mean())
 
     def median_n_candidates(self) -> float:
-        return median(self.n_candidates_per_query)
+        return float(self.n_candidates_per_query.median())
 
     def max_n_candidates(self) -> int:
-        return max(self.n_candidates_per_query)
+        return int(self.n_candidates_per_query.max())
 
     def std_n_candidates(self) -> float:
-        return stdev(self.n_candidates_per_query)
+        return float(self.n_candidates_per_query.std())
 
     # Search time
     def min_search_time(self) -> float:

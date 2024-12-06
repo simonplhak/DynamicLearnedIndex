@@ -6,6 +6,7 @@ from statistics import mean, median
 from typing import TYPE_CHECKING
 
 import numpy as np
+import torch
 from faiss import merge_knn_results
 from loguru import logger
 from tqdm import tqdm
@@ -60,9 +61,9 @@ class DynamicLearnedIndex:
 
     @measure_runtime
     def perform_search(self, db_size: int, config: SearchConfig, Q: Tensor, GT: Tensor) -> ExperimentSearchResult:
-        recall_per_query = []
-        n_candidates_per_query = []
-        per_query_statistics = []
+        sum_of_recalls = 0.0
+        n_candidates_per_query = torch.empty(len(Q), dtype=torch.float32)
+        per_query_statistics: list[FrameworkSearchStatistics] = [None] * len(Q)  # type: ignore
 
         s = time.time()
         for i in tqdm(range(len(Q))):
@@ -70,16 +71,16 @@ class DynamicLearnedIndex:
             # _, I, statistics = framework.search_model_driven(Q[i], config.k, config.nprobe)
             recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
 
-            recall_per_query.append(recall)
-            n_candidates_per_query.append(statistics.total_n_candidates)
-            per_query_statistics.append(statistics)
+            sum_of_recalls += recall
+            n_candidates_per_query[i] = statistics.total_n_candidates
+            per_query_statistics[i] = statistics
         search_time = time.time() - s
 
         return ExperimentSearchResult(
             config,
             db_size,
             len(Q),
-            recall_per_query,
+            sum_of_recalls,
             n_candidates_per_query,
             search_time,
             per_query_statistics,
