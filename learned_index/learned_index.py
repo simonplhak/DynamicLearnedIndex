@@ -81,8 +81,18 @@ class LearnedIndex(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_allocated_memory(self) -> int:
-        """Return the allocated memory of the bucket and model in bytes."""
+    def measure_total_allocated_memory(self) -> int:
+        """Return the size in bytes of the memory allocated for the buckets and model."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def measure_allocated_model_memory(self) -> int:
+        """Return the size in bytes of the memory allocated for the model."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def measure_allocated_bucket_memory(self) -> int:
+        """Return the size in bytes of the memory allocated for the buckets."""
         raise NotImplementedError
 
     def empty(self) -> None:
@@ -120,3 +130,6 @@ class LearnedIndex(ABC):
     def is_degenerated(self) -> bool:
         """Return whether the index is degenerated."""
         return self.get_n_empty_buckets() >= self.config.n_buckets * DEGENERATION_THRESHOLD
+
+    def calculate_bucket_space_utilization(self) -> float:
+        return self.get_n_objects() / self.get_total_capacity()

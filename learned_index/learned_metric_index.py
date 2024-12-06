@@ -144,11 +144,16 @@ class LearnedMetricIndex(LearnedIndex):
         return [(i, probabilities[0][i].item()) for i in range(self.config.n_buckets)]
 
     @override
-    def get_allocated_memory(self) -> int:
-        model_size = get_model_size(self.model)
-        bucket_size = sum([bucket.get_allocated_memory() for bucket in self.buckets.values()])
+    def measure_total_allocated_memory(self) -> int:
+        return self.measure_allocated_model_memory() + self.measure_allocated_bucket_memory()
 
-        return model_size + bucket_size
+    @override
+    def measure_allocated_model_memory(self) -> int:
+        return get_model_size(self.model)
+
+    @override
+    def measure_allocated_bucket_memory(self) -> int:
+        return sum([bucket.get_allocated_memory() for bucket in self.buckets.values()])
 
     def _predict(self, X: Tensor, top_k: int) -> tuple[Tensor, Tensor]:
         assert self.model is not None, 'Model is not trained yet.'
