@@ -11,7 +11,8 @@ from learned_index import LearnedMetricIndex
 from search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
 
 if TYPE_CHECKING:
-    from argparse import Namespace
+    from cli import CLIArguments
+
 
 PATH_PREFIX = Path('/storage/brno12-cerit/home/prochazka/fi-lmi-data/data/LAION2B')
 
@@ -19,7 +20,7 @@ PATH_PREFIX = Path('/storage/brno12-cerit/home/prochazka/fi-lmi-data/data/LAION2
 @final
 class Metacentrum(Environment):
     @override
-    def create_config(self, args: Namespace, commit_hash: str, dirty_state: bool) -> ExperimentConfig:
+    def create_config(self, args: CLIArguments, commit_hash: str, dirty_state: bool) -> ExperimentConfig:
         return ExperimentConfig(
             DatasetConfig(
                 dataset_size=102_144_212,
@@ -33,7 +34,8 @@ class Metacentrum(Environment):
                 bucket_shape=(5_000, 768),
                 distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
                 sample_threshold=100_000,
-                compaction_strategy=args.compaction_strategy_class,
+                compaction_strategy=args.compaction_strategy,
+                shrink_buckets_during_compaction=args.shrink_buckets_during_compaction,
             ),
             [
                 SearchConfig(

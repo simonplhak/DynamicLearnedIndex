@@ -1,15 +1,26 @@
-import argparse
-from argparse import Namespace
+from __future__ import annotations
 
-from compaction_strategy import compaction_strategies
+from argparse import ArgumentParser, Namespace
+from dataclasses import dataclass
+
+from compaction_strategy import BentleySaxe, Leveling, compaction_strategies
 
 
-def parse_arguments() -> Namespace:
+@dataclass
+class CLIArguments:
+    compaction_strategy: type[BentleySaxe | Leveling]
+    shrink_buckets_during_compaction: bool
+
+    def __init__(self, args: Namespace) -> None:
+        self.compaction_strategy = compaction_strategies[args.compaction_strategy]
+        self.shrink_buckets_during_compaction = args.shrink_buckets_during_compaction
+
+
+def parse_arguments() -> CLIArguments:
     """Process command line arguments."""
-    parser = argparse.ArgumentParser()
+    parser = ArgumentParser()
     parser.add_argument('--compaction-strategy', choices=compaction_strategies.keys(), required=True)
+    parser.add_argument('--shrink-buckets-during-compaction', type=bool, required=True)
     args = parser.parse_args()
 
-    compaction_strategy_class = compaction_strategies[args.compaction_strategy]
-
-    return Namespace(compaction_strategy_class=compaction_strategy_class)
+    return CLIArguments(args)

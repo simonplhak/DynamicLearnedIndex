@@ -12,10 +12,10 @@ if TYPE_CHECKING:
 
 @dataclass
 class DLIConfig:
-    # Construction
     index_class: type[LearnedIndex]
     arity: int
     bucket_shape: BucketShape
     distance: DistanceConfig
     sample_threshold: int
     compaction_strategy: type[BentleySaxe | Leveling]
+    shrink_buckets_during_compaction: bool
