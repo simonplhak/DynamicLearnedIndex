@@ -42,6 +42,8 @@ logger.info(experiment_config)
 X, Q, GT = load_data(experiment_config.dataset_config)
 logger.info(f'Loaded dataset of {len(X)} objects of size {(X.element_size() * X.nelement()) / 1024 ** 2:.0f} MB')
 
+X = X.to(torch.float32)
+
 # Create the index
 dli = DynamicLearnedIndex(experiment_config.dli_config)
 build_result = dli.insert_objects_sequentially(X)

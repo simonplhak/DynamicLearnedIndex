@@ -63,6 +63,11 @@ def load_data(config: DatasetConfig) -> tuple[Tensor, Tensor, Tensor]:
     X = torch.from_numpy(h5py.File(config.X, 'r')['emb'][: config.dataset_size])  # type: ignore
     Q = torch.from_numpy(h5py.File(config.Q, 'r')['emb'][:])  # type: ignore
     GT = torch.from_numpy(h5py.File(config.GT, 'r')['knns'][:])  # type: ignore
+
+    assert X.dtype == torch.float16
+    assert Q.dtype == torch.float32
+    assert GT.dtype == torch.int32
+
     return X, Q, GT
 
 

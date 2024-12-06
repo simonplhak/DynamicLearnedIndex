@@ -15,7 +15,7 @@ class Bucket(ABC):
         self.bucket_size, self.dimensionality = bucket_shape
         self.metric = metric
 
-        self.data: Tensor = torch.empty(bucket_shape)
+        self.data: Tensor = torch.empty(bucket_shape, dtype=torch.float32)
         """Objects stored in the bucket."""
         self.ids: np.ndarray = np.empty(self.bucket_size, dtype=np.int64)
         """Global index of each object in the bucket."""

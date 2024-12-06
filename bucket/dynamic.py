@@ -50,7 +50,12 @@ class DynamicBucket(Bucket):
 
     def _resize(self, factor: int) -> None:
         """Resize the bucket to the given factor."""
-        self.data = torch.cat((self.data, torch.zeros((self.bucket_size * (factor - 1), self.dimensionality))))
+        self.data = torch.cat(
+            (
+                self.data,
+                torch.zeros((self.bucket_size * (factor - 1), self.dimensionality), dtype=torch.float32),
+            ),
+        )
         self.ids = np.concatenate((self.ids, np.zeros(self.bucket_size * (factor - 1), dtype=np.int64)))
         self.bucket_size *= factor
 
