@@ -8,7 +8,7 @@ from faiss import METRIC_INNER_PRODUCT
 from config import DatasetConfig, DistanceConfig, DLIConfig, ExperimentConfig, SearchConfig
 from execution_environment.environment import Environment
 from learned_index import LearnedMetricIndex
-from search_strategy import KNNSearchStrategy
+from search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -37,10 +37,11 @@ class Metacentrum(Environment):
             ),
             [
                 SearchConfig(
-                    KNNSearchStrategy,
                     k=30,
+                    search_strategy=search_strategy,
                     nprobe=nprobe,
                 )
+                for search_strategy in [KNNSearchStrategy, ModelDrivenSearchStrategy]
                 for nprobe in [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
             ],
             commit_hash,

@@ -8,7 +8,7 @@ from faiss import METRIC_INNER_PRODUCT
 from config import DatasetConfig, DistanceConfig, DLIConfig, ExperimentConfig, SearchConfig
 from execution_environment.environment import Environment
 from learned_index import LearnedMetricIndex
-from search_strategy import KNNSearchStrategy
+from search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
 
 if TYPE_CHECKING:
     from argparse import Namespace
@@ -35,11 +35,12 @@ class Pro(Environment):
             ),
             [
                 SearchConfig(
-                    KNNSearchStrategy,
                     k=10,
+                    search_strategy=search_strategy,
                     nprobe=nprobe,
                 )
-                for nprobe in [1, 2, 3, 4, 5, 10, 25, 50, 100]
+                for search_strategy in [KNNSearchStrategy, ModelDrivenSearchStrategy]
+                for nprobe in [1, 5, 10]
             ],
             commit_hash,
             dirty_state,
