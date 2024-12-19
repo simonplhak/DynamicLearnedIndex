@@ -12,6 +12,8 @@ from loguru import logger
 from torch import Tensor
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from torch.nn import Sequential
 
     from config import DatasetConfig
@@ -22,7 +24,19 @@ ReturnType = TypeVar('ReturnType')
 
 
 def sizeof_fmt(num: float, suffix: str = 'B') -> str:
-    # https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
+    """Format a size in bytes to a human readable string.
+
+    Adapted from:
+    https://stackoverflow.com/questions/1094841/get-human-readable-version-of-file-size
+
+    Args:
+        num: Size in bytes
+        suffix: Unit suffix to append
+
+    Returns:
+        Formatted string like '3.1GiB'
+
+    """
     for unit in ('', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi'):
         if abs(num) < 1024.0:  # noqa: PLR2004
             return f'{num:3.1f}{unit}{suffix}'
@@ -31,13 +45,23 @@ def sizeof_fmt(num: float, suffix: str = 'B') -> str:
 
 
 def measure_runtime(func: Callable[Param, ReturnType]) -> Callable[Param, ReturnType]:
+    """Measure and log the runtime of a function.
+
+    Args:
+        func: Function to measure
+
+    Returns:
+        Wrapped function that logs runtime
+
+    """
+
     @functools.wraps(func)
     def wrapper_measure_runtime(*args: Param.args, **kwargs: Param.kwargs) -> ReturnType:
-        start = time.time()
+        start = time.perf_counter()  # More precise than time.time()
         result = func(*args, **kwargs)
-        stop = time.time()
+        duration = time.perf_counter() - start
 
-        logger.debug(f'Execution of {func.__name__} took {stop - start:.5}s.')
+        logger.debug(f'Execution of {func.__name__} took {duration:.5f}s.')
 
         return result
 
@@ -45,6 +69,16 @@ def measure_runtime(func: Callable[Param, ReturnType]) -> Callable[Param, Return
 
 
 def measure_memory_usage(func: Callable[Param, ReturnType]) -> Callable[Param, ReturnType]:
+    """Measure and log the memory usage of a function.
+
+    Args:
+        func: Function to measure
+
+    Returns:
+        Wrapped function that logs memory usage
+
+    """
+
     @functools.wraps(func)
     def wrapper_measure_memory_usage(*args: Param.args, **kwargs: Param.kwargs) -> ReturnType:
         process = psutil.Process()
@@ -59,23 +93,46 @@ def measure_memory_usage(func: Callable[Param, ReturnType]) -> Callable[Param, R
 
 @measure_runtime
 def load_data(config: DatasetConfig) -> tuple[Tensor, Tensor, Tensor]:
-    X = torch.from_numpy(h5py.File(config.X, 'r')['emb'][: config.dataset_size])  # type: ignore
-    Q = torch.from_numpy(h5py.File(config.Q, 'r')['emb'][:])  # type: ignore
-    GT = torch.from_numpy(h5py.File(config.GT, 'r')['knns'][:])  # type: ignore
+    """Load dataset tensors from HDF5 files.
 
-    assert X.dtype == torch.float16
-    assert Q.dtype == torch.float32
-    assert GT.dtype == torch.int32
+    Args:
+        config: Dataset configuration containing file paths
+
+    Returns:
+        Tuple of (X, Q, GT) tensors
+
+    """
+
+    def load_h5_tensor(path: str | Path, dataset: str, size: int | None = None) -> Tensor:
+        with h5py.File(path, 'r') as f:
+            data = f[dataset][:size] if size else f[dataset][:]  # type: ignore
+            return torch.from_numpy(data)
+
+    X = load_h5_tensor(config.X, 'emb', config.dataset_size)
+    Q = load_h5_tensor(config.Q, 'emb')
+    GT = load_h5_tensor(config.GT, 'knns')
+
+    assert X.dtype == torch.float16, f'Expected X dtype float16, got {X.dtype}'
+    assert Q.dtype == torch.float32, f'Expected Q dtype float32, got {Q.dtype}'
+    assert GT.dtype == torch.int32, f'Expected GT dtype int32, got {GT.dtype}'
 
     return X, Q, GT
 
 
 def obtain_commit_hash() -> str:
-    return subprocess.check_output(['git', 'describe', '--always']).strip().decode()  # noqa: S603, S607
+    """Get the current git commit hash."""
+    try:
+        return subprocess.check_output(['git', 'describe', '--always'], text=True).strip()  # noqa: S603, S607
+    except subprocess.CalledProcessError:
+        return 'unknown'
 
 
 def obtain_dirty_state() -> bool:
-    return subprocess.call(['git', 'diff', '--quiet']) != 0  # noqa: S603, S607
+    """Check if the git repository has uncommitted changes."""
+    try:
+        return subprocess.call(['git', 'diff', '--quiet']) != 0  # noqa: S603, S607
+    except subprocess.CalledProcessError:
+        return True
 
 
 def get_model_size(model: Sequential) -> int:
