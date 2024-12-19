@@ -3,7 +3,7 @@ from __future__ import annotations
 import functools
 import subprocess
 import time
-from typing import TYPE_CHECKING, Any, Callable, ParamSpec, TypeVar
+from typing import TYPE_CHECKING, Callable, ParamSpec, TypeVar
 
 import h5py
 import psutil
@@ -32,7 +32,7 @@ def sizeof_fmt(num: float, suffix: str = 'B') -> str:
 
 def measure_runtime(func: Callable[Param, ReturnType]) -> Callable[Param, ReturnType]:
     @functools.wraps(func)
-    def wrapper_measure_runtime(*args, **kwargs) -> Any:  # noqa: ANN401, ANN002, ANN003
+    def wrapper_measure_runtime(*args: Param.args, **kwargs: Param.kwargs) -> ReturnType:
         start = time.time()
         result = func(*args, **kwargs)
         stop = time.time()
@@ -46,12 +46,11 @@ def measure_runtime(func: Callable[Param, ReturnType]) -> Callable[Param, Return
 
 def measure_memory_usage(func: Callable[Param, ReturnType]) -> Callable[Param, ReturnType]:
     @functools.wraps(func)
-    def wrapper_measure_memory_usage(*args, **kwargs):  # noqa: ANN002, ANN003, ANN202
+    def wrapper_measure_memory_usage(*args: Param.args, **kwargs: Param.kwargs) -> ReturnType:
         process = psutil.Process()
         start = process.memory_info().rss
         result = func(*args, **kwargs)
         stop = process.memory_info().rss
-        # ? What if some objects are garbage collected during the function's execution?
         logger.debug(f'Function {func.__name__} allocated {sizeof_fmt(stop - start)}.')
         return result
 
@@ -80,12 +79,18 @@ def obtain_dirty_state() -> bool:
 
 
 def get_model_size(model: Sequential) -> int:
-    param_size = 0
-    for param in model.parameters():
-        param_size += param.nelement() * param.element_size()
+    """Calculate the total size in bytes of a PyTorch Sequential model.
 
-    buffer_size = 0
-    for buffer in model.buffers():
-        buffer_size += buffer.nelement() * buffer.element_size()
+    Includes both parameters and buffers.
+
+    Args:
+        model: PyTorch Sequential model to analyze
+
+    Returns:
+        Total size of model in bytes
+
+    """
+    param_size = sum(p.nelement() * p.element_size() for p in model.parameters())
+    buffer_size = sum(b.nelement() * b.element_size() for b in model.buffers())
 
     return param_size + buffer_size
