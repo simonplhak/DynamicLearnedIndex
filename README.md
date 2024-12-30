@@ -43,6 +43,16 @@ python3 main.py --compaction-strategy=leveling
 python3 -OO main.py --compaction-strategy=leveling
 ```
 
+## Notes
+
+- The LAION dataset is converted from `float16` to `float32` to take advantage of the `float32` arithmetic capabilities of existing CPUs, otherwise a significant performance loss will be observed.
+
+## TODO: Folder Structure
+
+- `data`: Contains the datasets used in the local experiments.
+
 ## Resources
 
 - https://github.com/psu-db/dynamic-extension
+- https://cstheory.stackexchange.com/questions/7642/i-dreamt-of-a-data-structure-does-it-exist
+- https://cstheory.stackexchange.com/questions/17328/optimal-insertion-times-in-insertion-only-data-structures-beyond-bentley-saxe
