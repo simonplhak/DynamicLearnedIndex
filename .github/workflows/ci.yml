@@ -2,30 +2,30 @@ name: CI
 
 on:
   push:
-    branches: '*'
-    tags: '*'
+    branches: "*"
+    tags: "*"
 
 jobs:
   build-linux:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v4
-    - name: Set up Python 3.12
-      uses: actions/setup-python@v3
-      with:
-        python-version: '3.12'
-    - name: Add conda to system path
-      run: |
-        # $CONDA is an environment variable pointing to the root of the miniconda directory
-        echo $CONDA/bin >> $GITHUB_PATH
-    - name: Install dependencies
-      run: |
-        conda env update --file environment.yml --name base
-    - name: Install dev dependencies
-      run: |
-        pip install -r requirements-dev.txt
-        pre-commit install
-    - name: Run ruff via pre-commit
-      run: |
-        pre-commit run --all-files
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.12"
+      - name: Add conda to system path
+        run: |
+          # $CONDA is an environment variable pointing to the root of the miniconda directory
+          echo $CONDA/bin >> $GITHUB_PATH
+      - name: Install dependencies
+        run: |
+          conda env update --file environment.yml --name base
+      - name: Install dev dependencies
+        run: |
+          pip install -e .
+          pre-commit install
+      - name: Run ruff via pre-commit
+        run: |
+          pre-commit run --all-files
