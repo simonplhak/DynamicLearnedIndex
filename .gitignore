@@ -1,4 +1,5 @@
 *.h5
 __pycache__/
 .idea/
-experimental_results/
+experiments/results/*/
+*.egg-info

@@ -20,3 +20,7 @@ dependencies:
   # Visualization
   - seaborn
   - pandas
+  
+  # Dev dependencies
+  - ruff
+  - pre-commit

@@ -8,44 +8,37 @@
 
 This project uses [conda](https://docs.conda.io/projects/conda/en/latest/user-guide/install/) to manage the environment.
 
-### Production
-
 ```shell
 # Setup the environment and install the dependencies
 conda env create --file environment.yml
 conda activate DynamicLearnedIndex
+pip install -e .
+
+# Development only
+pre-commit install # Install the pre-commit hooks to check for code style problems
 ```
-
-### Development
-
-In addition to the production dependencies, install these development dependencies using the following commands:
-
-```shell
-pip install -r requirements-dev.txt
-pre-commit install
-```
-
-#### Tips & Tricks
-
-During development, you can use the following command `pre-commit run --all-files` to run the pre-commit hooks. It will run the `ruff` linter and formatter to check for code style problems.
 
 ## Running Experiments
 
 ```shell
 # Download the datasets
+cd data
 wget 'https://sisap-23-challenge.s3.amazonaws.com/SISAP23-Challenge/laion2B-en-clip768v2-n=300K.h5'
 wget 'http://ingeotec.mx/~sadit/sisap2024-data/public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
 wget 'http://ingeotec.mx/~sadit/sisap2024-data/gold-standard-dbsize=300K--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'
+cd ..
 
 # Run the experiments
-python3 main.py --compaction-strategy=leveling
-# Run the experiments with removed asserts and docstrings 
-python3 -OO main.py --compaction-strategy=leveling
+python3 experiments/run.py --compaction-strategy leveling
 ```
 
 ## Notes
 
+Implementation details:
 - The LAION dataset is converted from `float16` to `float32` to take advantage of the `float32` arithmetic capabilities of existing CPUs, otherwise a significant performance loss will be observed.
+
+Development tips:
+- During development, you can use the following command `pre-commit run --all-files` to run the pre-commit hooks. It will run the `ruff` linter and formatter to check for code style problems.
 
 ## TODO: Folder Structure
 
