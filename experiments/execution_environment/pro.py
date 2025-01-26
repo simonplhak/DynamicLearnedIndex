@@ -3,9 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, final, override
 
-from faiss import METRIC_INNER_PRODUCT
-
 from dli.config import DatasetConfig, DistanceConfig, DLIConfig, ExperimentConfig, SearchConfig
+from dli.faiss_facade import DistanceFunction
 from dli.learned_index import LearnedMetricIndex
 from dli.search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
 from execution_environment.environment import Environment
@@ -29,7 +28,7 @@ class Pro(Environment):
                 LearnedMetricIndex,
                 arity=3,
                 bucket_shape=(200, 768),
-                distance=DistanceConfig(METRIC_INNER_PRODUCT, keep_max=True),
+                distance=DistanceConfig(DistanceFunction.INNER_PRODUCT, keep_max=True),
                 sample_threshold=100_000,
                 compaction_strategy=args.compaction_strategy,
                 shrink_buckets_during_compaction=args.shrink_buckets_during_compaction,

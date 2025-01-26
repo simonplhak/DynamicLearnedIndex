@@ -5,13 +5,12 @@ from itertools import chain
 from statistics import mean, median
 from typing import TYPE_CHECKING
 
-import numpy as np
-import torch
-from faiss import merge_knn_results
 from loguru import logger
+from torch import empty, float32, int64
 from tqdm import tqdm
 
 from dli.bucket import StaticBucket
+from dli.faiss_facade import merge_knn_results
 from dli.result import BuildResult, ExperimentSearchResult
 from dli.search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
 from dli.statistic import FrameworkCompactionStatistics, FrameworkSearchStatistics
@@ -32,7 +31,11 @@ class DynamicLearnedIndex:
         self.config = config
 
         # Fundamental properties
-        self.buffer = StaticBucket(config.bucket_shape, config.distance.metric, config.shrink_buckets_during_compaction)
+        self.buffer = StaticBucket(
+            config.bucket_shape,
+            config.distance.distance_function,
+            config.shrink_buckets_during_compaction,
+        )
         self.levels: list[LearnedIndex] = []
         self.compaction_strategy = config.compaction_strategy(config, self)
 
@@ -63,7 +66,7 @@ class DynamicLearnedIndex:
     @measure_runtime
     def perform_search(self, db_size: int, config: SearchConfig, Q: Tensor, GT: Tensor) -> ExperimentSearchResult:
         sum_of_recalls = 0.0
-        n_candidates_per_query = torch.empty(len(Q), dtype=torch.float32)
+        n_candidates_per_query = empty(len(Q), dtype=float32)
         per_query_statistics: list[FrameworkSearchStatistics] = [None] * len(Q)  # type: ignore
 
         s = time.time()
@@ -100,7 +103,7 @@ class DynamicLearnedIndex:
         self,
         query: Tensor,
         config: SearchConfig,
-    ) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
+    ) -> tuple[Tensor, Tensor, FrameworkSearchStatistics]:
         """Search the index for k nearest neighbors.
 
         Parameters
@@ -112,7 +115,7 @@ class DynamicLearnedIndex:
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray, SearchStatistics]
+        tuple[Tensor, Tensor, SearchStatistics]
             A tuple containing the neighbor distances, neighbor indices, and the search statistics.
 
         """
@@ -130,7 +133,7 @@ class DynamicLearnedIndex:
         self,
         query: Tensor,
         config: SearchConfig,
-    ) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
+    ) -> tuple[Tensor, Tensor, FrameworkSearchStatistics]:
         """Search the index for k nearest neighbors.
 
         Parameters
@@ -142,7 +145,7 @@ class DynamicLearnedIndex:
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray, SearchStatistics]
+        tuple[Tensor, Tensor, SearchStatistics]
             A tuple containing the neighbor distances, neighbor indices, and the search statistics.
 
         """
@@ -161,8 +164,8 @@ class DynamicLearnedIndex:
         n_partial_results = len(searchable_levels)
 
         D_all, I_all = (
-            np.zeros((n_partial_results, 1, config.k), dtype=np.float32),
-            np.zeros((n_partial_results, 1, config.k), dtype=np.int64),
+            empty((n_partial_results, 1, config.k), dtype=float32),
+            empty((n_partial_results, 1, config.k), dtype=int64),
         )
         n_candidates_per_level = [0] * n_partial_results
         search_time_per_level_in_ms = [0.0] * n_partial_results
@@ -222,7 +225,7 @@ class DynamicLearnedIndex:
         self,
         query: Tensor,
         config: SearchConfig,
-    ) -> tuple[np.ndarray, np.ndarray, FrameworkSearchStatistics]:
+    ) -> tuple[Tensor, Tensor, FrameworkSearchStatistics]:
         """Search the index for k nearest neighbors.
 
         Parameters
@@ -234,7 +237,7 @@ class DynamicLearnedIndex:
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray, SearchStatistics]
+        tuple[Tensor, Tensor, SearchStatistics]
             A tuple containing the neighbor distances, neighbor indices, and the search statistics.
 
         """
@@ -266,8 +269,8 @@ class DynamicLearnedIndex:
         # Prepare helper variables
         n_partial_results = len(buckets_to_visit)
         D_all, I_all = (
-            np.zeros((n_partial_results, 1, config.k), dtype=np.float32),
-            np.zeros((n_partial_results, 1, config.k), dtype=np.int64),
+            empty((n_partial_results, 1, config.k), dtype=float32),
+            empty((n_partial_results, 1, config.k), dtype=int64),
         )
         n_candidates_per_level = [0] * n_partial_results
         search_time_per_level_in_ms = [0.0] * n_partial_results

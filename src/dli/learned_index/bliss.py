@@ -3,21 +3,19 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, override
 
-# import faiss
 import numpy as np
-import torch
-from faiss import METRIC_L2, knn, merge_knn_results
 from sklearn.preprocessing import MultiLabelBinarizer
-from torch import Tensor
+from torch import Tensor, empty, float32, from_numpy, int32, int64, no_grad
 from torch.nn import BCEWithLogitsLoss, Linear, ReLU, Sequential
 from torch.nn.functional import softmax
 from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 
 from dli.bucket import DynamicBucket
+from dli.faiss_facade import DistanceFunction, knn, merge_knn_results
 from dli.labeled_dataset import LabeledDataset
 from dli.learned_index.learned_index import LearnedIndex
-from dli.sampling import np_rng, take_sample
+from dli.sampling import take_sample
 from dli.utils import get_model_size, measure_runtime
 
 if TYPE_CHECKING:
@@ -26,6 +24,8 @@ if TYPE_CHECKING:
 
 
 class BLISSIndex(LearnedIndex):
+    """Note: Index is not properly implemented and should be refactored to use PyTorch instead of numpy."""
+
     def __init__(self, config: IndexConfig) -> None:
         super().__init__(config)
 
@@ -36,7 +36,11 @@ class BLISSIndex(LearnedIndex):
         self.n_redistributions: int = 2
         """Number of buckets."""
         self.buckets = {
-            i: DynamicBucket(config.bucket_shape, config.distance.metric, config.shrink_buckets_during_compaction)
+            i: DynamicBucket(
+                config.bucket_shape,
+                config.distance.distance_function,
+                config.shrink_buckets_during_compaction,
+            )
             for i in range(config.n_buckets)
         }
 
@@ -65,7 +69,7 @@ class BLISSIndex(LearnedIndex):
         total_n_objects = sum(b.get_n_objects() for b in buckets)
 
         # Randomly distribute the dataset into buckets
-        bucket_assignment = np_rng.choice(self.config.n_buckets, total_n_objects)
+        bucket_assignment = np.random.choice(self.config.n_buckets, total_n_objects)  # noqa: NPY002
 
         # Calculate kNN ground truth for the sample on the sample
         ground_truth = self._prepare_ground_truth(X_sample, self.k_training)
@@ -75,15 +79,15 @@ class BLISSIndex(LearnedIndex):
             bucket_assignment_for_sample = bucket_assignment[I_sample]
 
             # Calculate the labels for the training
-            labels = self._calculate_training_labels(bucket_assignment_for_sample, ground_truth)
+            labels = self._calculate_training_labels(bucket_assignment_for_sample, ground_truth.numpy())
 
             # Train the model
             self._train_model(X_sample, labels)
 
             offset = 0
-            bucket_predictions = torch.empty(
+            bucket_predictions = empty(
                 (total_n_objects, self.top_k_buckets_to_load_balance_between),
-                dtype=torch.int32,
+                dtype=int32,
             )
             for existing_bucket in buckets:
                 # Predict to which bucket each vector belongs
@@ -127,14 +131,14 @@ class BLISSIndex(LearnedIndex):
         return True  # Insertion successful
 
     @override
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[Tensor, Tensor, int]:
         nprobe = min(nprobe, self.config.n_buckets)
 
         bucket_ids = self._predict(query, nprobe)[1][0]
 
         D_all, I_all = (
-            np.zeros((nprobe, 1, k), dtype=np.float32),
-            np.zeros((nprobe, 1, k), dtype=np.int64),
+            empty((nprobe, 1, k), dtype=float32),
+            empty((nprobe, 1, k), dtype=int64),
         )
         n_candidates = 0
 
@@ -163,8 +167,8 @@ class BLISSIndex(LearnedIndex):
             offset += existing_bucket.get_n_objects()
 
     @measure_runtime
-    def _prepare_ground_truth(self, sample: Tensor, k: int) -> np.ndarray:
-        return knn(sample, sample, k, metric=METRIC_L2)[1]
+    def _prepare_ground_truth(self, sample: Tensor, k: int) -> Tensor:
+        return knn(sample, sample, k, distance_function=DistanceFunction.L2)[1]
 
     # For each sample object calculate whether one of the kNNs is contained in a particular bucket
     def _calculate_training_labels(self, bucket_assignment: np.ndarray, ground_truth: np.ndarray) -> np.ndarray:
@@ -211,7 +215,7 @@ class BLISSIndex(LearnedIndex):
     @measure_runtime
     def _train_model(self, X: Tensor, y: np.ndarray) -> None:
         train_loader = DataLoader(
-            dataset=LabeledDataset(X, torch.from_numpy(y.astype(np.float32))),
+            dataset=LabeledDataset(X, from_numpy(y.astype(np.float32))),
             batch_size=256,
             shuffle=True,
         )
@@ -247,7 +251,7 @@ class BLISSIndex(LearnedIndex):
         # Evaluate the model
         self.model.eval()
 
-        with torch.no_grad():
+        with no_grad():
             logits = self.model(X)
             # Compute probabilities from logits
             probs = softmax(logits, dim=1)

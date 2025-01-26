@@ -4,9 +4,9 @@ import pprint
 import time
 from pathlib import Path
 
-import torch
 from execution_environment import detect_environment
 from loguru import logger
+from torch import float32, manual_seed
 
 from dli.cli import parse_arguments
 from dli.dynamic_learned_index import DynamicLearnedIndex
@@ -23,7 +23,7 @@ from dli.visualization.plots import (
 )
 
 SEED = 42
-torch.manual_seed(SEED)
+manual_seed(SEED)
 
 EXPERIMENTAL_RESULTS_DIR = Path('experiments/results')
 
@@ -42,7 +42,7 @@ logger.info(experiment_config)
 X, Q, GT = load_data(experiment_config.dataset_config)
 logger.info(f'Loaded dataset of {len(X)} objects of size {(X.element_size() * X.nelement()) / 1024**2:.0f} MB')
 
-X = X.to(torch.float32)
+X = X.to(float32)
 
 # Create the index
 dli = DynamicLearnedIndex(experiment_config.dli_config)

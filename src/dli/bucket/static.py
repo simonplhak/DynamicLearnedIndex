@@ -5,16 +5,22 @@ from typing import TYPE_CHECKING, final, override
 from dli.bucket.bucket import Bucket
 
 if TYPE_CHECKING:
-    import numpy as np
     from torch import Tensor
+
+    from dli.faiss_facade import DistanceFunction
 
 
 @final
 class StaticBucket(Bucket):
     """A bucket with a fixed capacity."""
 
-    def __init__(self, bucket_shape: tuple[int, int], metric: int, shrink_buckets: bool) -> None:  # noqa: FBT001
-        super().__init__(bucket_shape, metric, shrink_buckets)
+    def __init__(
+        self,
+        bucket_shape: tuple[int, int],
+        distance_function: DistanceFunction,
+        shrink_buckets: bool,  # noqa: FBT001
+    ) -> None:
+        super().__init__(bucket_shape, distance_function, shrink_buckets)
 
     @override
     def insert_single(self, X: Tensor, I: int) -> None:
@@ -26,7 +32,7 @@ class StaticBucket(Bucket):
         self.n_objects += 1
 
     @override
-    def insert_bulk(self, X: Tensor, I: np.ndarray) -> None:
+    def insert_bulk(self, X: Tensor, I: Tensor) -> None:
         if len(X) == 0:
             return
 

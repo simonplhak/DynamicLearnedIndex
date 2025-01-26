@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numpy as np
-import torch
-from torch import Tensor
+from torch import Generator, Tensor, empty, float32, randperm
 
 if TYPE_CHECKING:
     from dli.bucket import Bucket
@@ -12,8 +10,7 @@ if TYPE_CHECKING:
 SEED = 42
 
 # Set seeds for reproducibility
-np_rng = np.random.default_rng(SEED)
-torch_rng = torch.Generator().manual_seed(SEED)
+torch_rng = Generator().manual_seed(SEED)
 
 
 def take_sample(buckets: list[Bucket], sample_threshold: int, dimensionality: int) -> tuple[Tensor, Tensor]:
@@ -21,10 +18,10 @@ def take_sample(buckets: list[Bucket], sample_threshold: int, dimensionality: in
     total_n_objects = sum(b.get_n_objects() for b in buckets)
     sample_size = min(sample_threshold, total_n_objects)
 
-    sample_indexes = torch.randperm(total_n_objects, generator=torch_rng)[:sample_size]
+    sample_indexes = randperm(total_n_objects, generator=torch_rng)[:sample_size]
 
     start, stop, result_offset = 0, 0, 0
-    result = torch.empty((sample_size, dimensionality), dtype=torch.float32)
+    result = empty((sample_size, dimensionality), dtype=float32)
 
     for bucket in buckets:
         stop += bucket.get_n_objects()

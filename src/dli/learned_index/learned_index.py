@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 from dli.bucket import Bucket
 
 if TYPE_CHECKING:
-    import numpy as np
     from torch import Tensor
 
     from dli.config import IndexConfig
@@ -38,7 +37,7 @@ class LearnedIndex(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[Tensor, Tensor, int]:
         """Search for the k nearest neighbors of the given query in the index.
 
         Parameters
@@ -52,7 +51,7 @@ class LearnedIndex(ABC):
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray, int]
+        tuple[Tensor, Tensor, int]
             A tuple containing the neighbor distances, neighbor indices, and the size of the candidate set.
 
         Raises

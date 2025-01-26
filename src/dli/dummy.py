@@ -3,9 +3,7 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING
 
-import numpy as np
-import torch
-from torch import Tensor
+from torch import Tensor, bincount, randint
 
 from dli.bucket import DynamicBucket
 from dli.learned_index.learned_index import LearnedIndex
@@ -23,7 +21,11 @@ class DummyIndex(LearnedIndex):
 
         """Number of buckets."""
         self.buckets = {
-            i: DynamicBucket(config.bucket_shape, config.distance.metric, config.shrink_buckets_during_compaction)
+            i: DynamicBucket(
+                config.bucket_shape,
+                config.distance.distance_function,
+                config.shrink_buckets_during_compaction,
+            )
             for i in range(config.n_buckets)
         }
 
@@ -38,10 +40,10 @@ class DummyIndex(LearnedIndex):
             bucket_indexes = existing_bucket.get_ids()
 
             # Randomly assign vectors to buckets
-            classes = torch.randint(self.config.n_buckets, (existing_bucket.get_n_objects(),))
+            classes = randint(self.config.n_buckets, (existing_bucket.get_n_objects(),))
 
             for i, new_child_bucket in self.buckets.items():
-                new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[np.where(classes == i)])
+                new_child_bucket.insert_bulk(bucket_data[classes == i], bucket_indexes[classes == i])
 
         return time.time() - s
 
@@ -49,10 +51,10 @@ class DummyIndex(LearnedIndex):
         total_n_objects = sum(b.get_n_objects() for b in buckets)
 
         # Predict to which bucket each vector belongs
-        bucket_ids = torch.randint(self.config.n_buckets, (total_n_objects,))
+        bucket_ids = randint(self.config.n_buckets, (total_n_objects,))
 
         # Check that buckets do not overflow
-        for i, n_objects_in_bucket in enumerate(torch.bincount(bucket_ids, minlength=self.config.n_buckets)):
+        for i, n_objects_in_bucket in enumerate(bincount(bucket_ids, minlength=self.config.n_buckets)):
             if n_objects_in_bucket + self.buckets[i].get_n_objects() > self.bucket_size:
                 # Overflow detected, try to fix it
                 offset = 0
@@ -62,7 +64,7 @@ class DummyIndex(LearnedIndex):
                 break
 
         # Check that buckets do not overflow
-        for i, n_objects_in_bucket in enumerate(torch.bincount(bucket_ids, minlength=self.config.n_buckets)):
+        for i, n_objects_in_bucket in enumerate(bincount(bucket_ids, minlength=self.config.n_buckets)):
             if n_objects_in_bucket + self.buckets[i].get_n_objects() > self.bucket_size:
                 return False  # Overflow detected
 
@@ -87,7 +89,7 @@ class DummyIndex(LearnedIndex):
 
             offset += existing_bucket.get_n_objects()
 
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[Tensor, Tensor, int]:
         _ = nprobe  # We do not use nprobe
-        bucket_id = int(torch.randint(self.config.n_buckets, (1,)))
+        bucket_id = int(randint(self.config.n_buckets, (1,)))
         return self.buckets[bucket_id].search(query, k, nprobe)

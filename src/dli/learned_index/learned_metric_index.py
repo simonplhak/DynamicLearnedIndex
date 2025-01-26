@@ -3,17 +3,15 @@ from __future__ import annotations
 import time
 from typing import TYPE_CHECKING, override
 
-import numpy as np
-import torch
-from faiss import Kmeans, merge_knn_results
 from loguru import logger
-from torch import Tensor
+from torch import Tensor, empty, float32, int64, no_grad
 from torch.nn import CrossEntropyLoss, Linear, ReLU, Sequential
 from torch.nn.functional import softmax
 from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 
 from dli.bucket import DynamicBucket
+from dli.faiss_facade import merge_knn_results, obtain_labels_via_kmeans
 from dli.labeled_dataset import LabeledDataset
 from dli.learned_index.learned_index import LearnedIndex
 from dli.sampling import take_sample
@@ -31,7 +29,11 @@ class LearnedMetricIndex(LearnedIndex):
         super().__init__(config)
 
         self.buckets = {
-            i: DynamicBucket(config.bucket_shape, config.distance.metric, config.shrink_buckets_during_compaction)
+            i: DynamicBucket(
+                config.bucket_shape,
+                config.distance.distance_function,
+                config.shrink_buckets_during_compaction,
+            )
             for i in range(config.n_buckets)
         }
 
@@ -69,15 +71,7 @@ class LearnedMetricIndex(LearnedIndex):
         X_sample, _ = take_sample(buckets, self.config.sample_threshold, self.config.bucket_shape[1])
 
         # Run k-means to obtain training labels
-        kmeans = Kmeans(
-            d=self.config.bucket_shape[1],
-            k=self.config.n_buckets,
-            verbose=False,
-            seed=42,
-            spherical=True,
-        )
-        kmeans.train(X_sample)
-        y = torch.from_numpy(kmeans.index.search(X_sample, 1)[1].T[0])  # type: ignore
+        y = obtain_labels_via_kmeans(X_sample, self.config.n_buckets)
 
         # Prepare the data loader for training
         train_loader = DataLoader(dataset=LabeledDataset(X_sample, y), batch_size=256, shuffle=True)
@@ -102,14 +96,14 @@ class LearnedMetricIndex(LearnedIndex):
         return time.time() - s
 
     @override
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[Tensor, Tensor, int]:
         nprobe = min(nprobe, self.config.n_buckets)
 
         bucket_ids = self._predict(query, nprobe)[1][0]
 
         D_all, I_all = (
-            np.zeros((nprobe, 1, k), dtype=np.float32),
-            np.zeros((nprobe, 1, k), dtype=np.int64),
+            empty((nprobe, 1, k), dtype=float32),
+            empty((nprobe, 1, k), dtype=int64),
         )
         n_candidates = 0
 
@@ -128,7 +122,7 @@ class LearnedMetricIndex(LearnedIndex):
             bucket_ids = self._predict(X, 1)[1].reshape(-1)
 
             for i, child_bucket in self.buckets.items():
-                child_bucket.insert_bulk(X[bucket_ids == i], I[np.where(bucket_ids == i)])
+                child_bucket.insert_bulk(X[bucket_ids == i], I[bucket_ids == i])
 
         return True
 
@@ -139,7 +133,7 @@ class LearnedMetricIndex(LearnedIndex):
         # Evaluate the model
         self.model.eval()
 
-        with torch.no_grad():
+        with no_grad():
             logits = self.model(X)
             # Compute probabilities from logits
             probabilities = softmax(logits, dim=1)
@@ -164,7 +158,7 @@ class LearnedMetricIndex(LearnedIndex):
         # Evaluate the model
         self.model.eval()
 
-        with torch.no_grad():
+        with no_grad():
             logits = self.model(X)
             # Compute probabilities from logits
             probs = softmax(logits, dim=1)

@@ -1,27 +1,35 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
-import numpy as np
-import torch
-from faiss import knn
-from torch import Tensor
+from torch import Tensor, empty, float32, int64
+
+from dli.faiss_facade import knn
+
+if TYPE_CHECKING:
+    from dli.faiss_facade import DistanceFunction
 
 
 class Bucket(ABC):
     """An abstract class representing a bucket."""
 
-    def __init__(self, bucket_shape: tuple[int, int], metric: int, shrink_buckets: bool) -> None:  # noqa: FBT001
+    def __init__(
+        self,
+        bucket_shape: tuple[int, int],
+        distance_function: DistanceFunction,
+        shrink_buckets: bool,  # noqa: FBT001
+    ) -> None:
         self.default_bucket_size = bucket_shape[0]
         """The default size of the bucket before resizing."""
         self.bucket_size, self.dimensionality = bucket_shape
-        self.metric = metric
+        self.distance_function = distance_function
         self.shrink_buckets: bool = shrink_buckets
         """Whether to shrink the buckets when calling the empty method."""
 
-        self.data: Tensor = torch.empty(bucket_shape, dtype=torch.float32)
+        self.data: Tensor = empty(bucket_shape, dtype=float32)
         """Objects stored in the bucket."""
-        self.ids: np.ndarray = np.empty(self.bucket_size, dtype=np.int64)
+        self.ids: Tensor = empty(self.bucket_size, dtype=int64)
         """Global index of each object in the bucket."""
         self.n_objects: int = 0
         """Current number of objects in the bucket."""
@@ -31,10 +39,10 @@ class Bucket(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def insert_bulk(self, X: Tensor, I: np.ndarray) -> None:
+    def insert_bulk(self, X: Tensor, I: Tensor) -> None:
         raise NotImplementedError
 
-    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[np.ndarray, np.ndarray, int]:
+    def search(self, query: Tensor, k: int, nprobe: int) -> tuple[Tensor, Tensor, int]:
         """Search for the k nearest neighbors of the given query in the bucket.
 
         Parameters
@@ -48,7 +56,7 @@ class Bucket(ABC):
 
         Returns
         -------
-        tuple[np.ndarray, np.ndarray, int]
+        tuple[Tensor, Tensor, int]
             A tuple containing the neighbor distances, neighbor indices, and the size of the candidate set.
 
         """
@@ -56,7 +64,7 @@ class Bucket(ABC):
 
         assert query.shape == (1, self.dimensionality)
 
-        D, I = knn(query, self.data[: self.n_objects], k, metric=self.metric)
+        D, I = knn(query, self.data[: self.n_objects], k, distance_function=self.distance_function)
         n_candidates = self.n_objects
 
         return D[0], self.ids[I[0]], n_candidates  # Convert local indexes back to the global IDs
@@ -82,8 +90,8 @@ class Bucket(ABC):
             deallocated_spaces = self.bucket_size - self.default_bucket_size
 
             self.bucket_size = self.default_bucket_size
-            self.data = torch.empty((self.bucket_size, self.dimensionality), dtype=torch.float32)
-            self.ids = np.empty(self.bucket_size, dtype=np.int64)
+            self.data = empty((self.bucket_size, self.dimensionality), dtype=float32)
+            self.ids = empty(self.bucket_size, dtype=int64)
 
             return deallocated_spaces
 
@@ -107,7 +115,7 @@ class Bucket(ABC):
     def get_data(self) -> Tensor:
         return self.data[: self.n_objects]
 
-    def get_ids(self) -> np.ndarray:
+    def get_ids(self) -> Tensor:
         return self.ids[: self.n_objects]
 
     def get_allocated_memory(self) -> int:

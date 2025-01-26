@@ -7,9 +7,8 @@ from typing import TYPE_CHECKING, Callable, ParamSpec, TypeVar
 
 import h5py
 import psutil
-import torch
 from loguru import logger
-from torch import Tensor
+from torch import Tensor, float16, float32, from_numpy, int32
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -106,15 +105,15 @@ def load_data(config: DatasetConfig) -> tuple[Tensor, Tensor, Tensor]:
     def load_h5_tensor(path: str | Path, dataset: str, size: int | None = None) -> Tensor:
         with h5py.File(path, 'r') as f:
             data = f[dataset][:size] if size else f[dataset][:]  # type: ignore
-            return torch.from_numpy(data)
+            return from_numpy(data)
 
     X = load_h5_tensor(config.X, 'emb', config.dataset_size)
     Q = load_h5_tensor(config.Q, 'emb')
     GT = load_h5_tensor(config.GT, 'knns')
 
-    assert X.dtype == torch.float16, f'Expected X dtype float16, got {X.dtype}'
-    assert Q.dtype == torch.float32, f'Expected Q dtype float32, got {Q.dtype}'
-    assert GT.dtype == torch.int32, f'Expected GT dtype int32, got {GT.dtype}'
+    assert X.dtype == float16, f'Expected X dtype float16, got {X.dtype}'
+    assert Q.dtype == float32, f'Expected Q dtype float32, got {Q.dtype}'
+    assert GT.dtype == int32, f'Expected GT dtype int32, got {GT.dtype}'
 
     return X, Q, GT
 
