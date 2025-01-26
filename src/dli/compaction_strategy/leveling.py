@@ -39,7 +39,7 @@ class Leveling:
             index = self.dli.config.index_class(
                 IndexConfig(
                     n_buckets=pow(self.dli.config.arity, 1),
-                    distance=self.dli.config.distance,
+                    distance_function=self.dli.config.distance_function,
                     bucket_shape=self.dli.config.bucket_shape,
                     sample_threshold=self.dli.config.sample_threshold,
                     shrink_buckets_during_compaction=self.dli.config.shrink_buckets_during_compaction,
@@ -82,7 +82,7 @@ class Leveling:
                 index = self.dli.config.index_class(
                     IndexConfig(
                         n_buckets=pow(self.dli.config.arity, i + 1),
-                        distance=self.dli.config.distance,
+                        distance_function=self.dli.config.distance_function,
                         bucket_shape=self.dli.config.bucket_shape,
                         sample_threshold=self.dli.config.sample_threshold,
                         shrink_buckets_during_compaction=self.dli.config.shrink_buckets_during_compaction,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, final, override
 
-from dli.config import DatasetConfig, DistanceConfig, DLIConfig, ExperimentConfig, SearchConfig
+from dli.config import DatasetConfig, DLIConfig, ExperimentConfig, SearchConfig
 from dli.faiss_facade import DistanceFunction
 from dli.learned_index import LearnedMetricIndex
 from dli.search_strategy import KNNSearchStrategy, ModelDrivenSearchStrategy
@@ -28,7 +28,7 @@ class Pro(Environment):
                 LearnedMetricIndex,
                 arity=3,
                 bucket_shape=(200, 768),
-                distance=DistanceConfig(DistanceFunction.INNER_PRODUCT, keep_max=True),
+                distance_function=DistanceFunction.INNER_PRODUCT,
                 sample_threshold=100_000,
                 compaction_strategy=args.compaction_strategy,
                 shrink_buckets_during_compaction=args.shrink_buckets_during_compaction,

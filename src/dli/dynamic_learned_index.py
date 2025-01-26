@@ -33,7 +33,7 @@ class DynamicLearnedIndex:
         # Fundamental properties
         self.buffer = StaticBucket(
             config.bucket_shape,
-            config.distance.distance_function,
+            config.distance_function,
             config.shrink_buckets_during_compaction,
         )
         self.levels: list[LearnedIndex] = []
@@ -184,7 +184,7 @@ class DynamicLearnedIndex:
 
         # Merge step
         s = time.time()
-        D, I = merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max)
+        D, I = merge_knn_results(D_all, I_all, keep_max=self.config.distance_function.keep_max_values)
         merge_time_in_ms = (time.time() - s) * SEC_TO_MSEC
 
         # Collect statistics
@@ -288,7 +288,7 @@ class DynamicLearnedIndex:
 
         # Merge step
         s = time.time()
-        D, I = merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max)
+        D, I = merge_knn_results(D_all, I_all, keep_max=self.config.distance_function.keep_max_values)
         merge_time_in_ms = (time.time() - s) * SEC_TO_MSEC
 
         # Collect statistics

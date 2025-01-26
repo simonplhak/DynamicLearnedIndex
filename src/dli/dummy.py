@@ -23,7 +23,7 @@ class DummyIndex(LearnedIndex):
         self.buckets = {
             i: DynamicBucket(
                 config.bucket_shape,
-                config.distance.distance_function,
+                config.distance_function,
                 config.shrink_buckets_during_compaction,
             )
             for i in range(config.n_buckets)

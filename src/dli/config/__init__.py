@@ -2,7 +2,6 @@
 
 from dli.config.bucket_shape import BucketShape
 from dli.config.dataset import DatasetConfig
-from dli.config.distance import DistanceConfig
 from dli.config.dli import DLIConfig
 from dli.config.experiment import ExperimentConfig
 from dli.config.index import IndexConfig
@@ -12,7 +11,6 @@ __all__ = [
     'BucketShape',
     'DLIConfig',
     'DatasetConfig',
-    'DistanceConfig',
     'ExperimentConfig',
     'IndexConfig',
     'SearchConfig',

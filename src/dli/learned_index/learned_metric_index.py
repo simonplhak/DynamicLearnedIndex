@@ -31,7 +31,7 @@ class LearnedMetricIndex(LearnedIndex):
         self.buckets = {
             i: DynamicBucket(
                 config.bucket_shape,
-                config.distance.distance_function,
+                config.distance_function,
                 config.shrink_buckets_during_compaction,
             )
             for i in range(config.n_buckets)
@@ -112,7 +112,7 @@ class LearnedMetricIndex(LearnedIndex):
             D_all[i, :, :], I_all[i, :, :], n_level_candidates = self.buckets[bucket_id].search(query, k, nprobe)
             n_candidates += n_level_candidates
 
-        return *merge_knn_results(D_all, I_all, keep_max=self.config.distance.keep_max), n_candidates
+        return *merge_knn_results(D_all, I_all, keep_max=self.config.distance_function.keep_max_values), n_candidates
 
     @override
     def insert(self, buckets: list[Bucket]) -> bool:
