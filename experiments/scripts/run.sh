@@ -8,11 +8,12 @@ export OMP_NUM_THREADS=$PBS_NUM_PPN
 git config --global --add safe.directory /auto/brno12-cerit/nfs4/projects/fi-lmi-data/personal/david/research/DynamicLearnedIndex || exit 1
 
 module add mambaforge || exit 2
-mamba activate /storage/brno12-cerit/home/prochazka/.conda/envs/DynamicLearnedIndex || exit 3
+mamba activate /storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/env || exit 3
 
-cd '/storage/brno12-cerit/home/prochazka/fi-lmi-data/personal/david/research/DynamicLearnedIndex' || exit 4
-python3 -OO main.py \
+cd '/storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex' || exit 4
+python3 experiments/run.py \
     --compaction-strategy='leveling' \
     --shrink-buckets-during-compaction \
-    &>"/storage/brno12-cerit/home/prochazka/fi-lmi-data/personal/david/research/DynamicLearnedIndex/metacentrum-logs/run-${PBS_JOBID}.log"
+    --dataset-identifier='300K' \
+    &>"/storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/experiments/metacentrum-logs/run-${PBS_JOBID}.log"
 exit $?
