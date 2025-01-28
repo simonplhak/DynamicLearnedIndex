@@ -10,6 +10,7 @@ This project uses [conda](https://docs.conda.io/projects/conda/en/latest/user-gu
 
 ```shell
 # Setup the environment and install the dependencies
+# NOTE: on metacentrum use `mamba` instead of `conda`
 conda env create --file environment.yml
 conda activate DynamicLearnedIndex
 pip install -e .
@@ -29,7 +30,7 @@ wget 'http://ingeotec.mx/~sadit/sisap2024-data/gold-standard-dbsize=300K--public
 cd ..
 
 # Run the experiments
-python3 experiments/run.py --compaction-strategy leveling
+python3 experiments/run.py --compaction-strategy leveling --dataset-identifier 300K
 ```
 
 ## Notes

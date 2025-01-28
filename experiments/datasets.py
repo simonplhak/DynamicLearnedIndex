@@ -29,7 +29,7 @@ SUPPORTED_DATASETS = {
     '300K': DatasetConfig(
         '300K',
         300_000,
-        Path('laion2B-en-clip768v2-n=300k.h5'),
+        Path('laion2B-en-clip768v2-n=300K.h5'),
         Path('public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
         Path('gold-standard-dbsize=300k--public-queries-2024-laion2B-en-clip768v2-n=10k.h5'),
     ),
