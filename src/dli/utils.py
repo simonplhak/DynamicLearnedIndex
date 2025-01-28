@@ -88,7 +88,7 @@ def obtain_commit_hash() -> str:
     """Get the current git commit hash."""
     try:
         return subprocess.check_output(['git', 'describe', '--always'], text=True).strip()  # noqa: S603, S607
-    except subprocess.CalledProcessError:
+    except Exception:  # noqa: BLE001
         return 'unknown'
 
 
@@ -96,7 +96,7 @@ def obtain_dirty_state() -> bool:
     """Check if the git repository has uncommitted changes."""
     try:
         return subprocess.call(['git', 'diff', '--quiet']) != 0  # noqa: S603, S607
-    except subprocess.CalledProcessError:
+    except Exception:  # noqa: BLE001
         return True
 
 
