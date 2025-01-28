@@ -19,6 +19,26 @@ pip install -e .
 pre-commit install # Install the pre-commit hooks to check for code style problems
 ```
 
+### Setting up the environment on metacentrum
+
+> Change the paths to your own!
+
+```shell
+# Clone the repository
+git clone git@github.com:Coda-Research-Group/DynamicLearnedIndex.git
+# Navigate to the cloned repository
+cd /storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex
+# Load the mambaforge module
+module add mambaforge
+# Create the environment – this will take a while
+mamba env create --prefix /storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/env --file environment.yml
+
+# Activate the environment
+mamba activate /storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/env
+# Install the package in editable mode
+pip install -e .
+```
+
 ## Running Experiments
 
 ```shell
