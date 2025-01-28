@@ -4,17 +4,14 @@ import pprint
 import time
 from pathlib import Path
 
+from cli import parse_arguments
+from datasets import load_data
 from execution_environment import detect_environment
 from loguru import logger
 from torch import float32, manual_seed
 
-from dli.cli import parse_arguments
 from dli.dynamic_learned_index import DynamicLearnedIndex
-from dli.utils import (
-    load_data,
-    obtain_commit_hash,
-    obtain_dirty_state,
-)
+from dli.utils import obtain_commit_hash, obtain_dirty_state
 from dli.visualization.plots import (
     plot_queries_per_second_vs_recall,
     plot_recall_vs_avg_time_per_query,
@@ -39,7 +36,7 @@ experiment_config = detect_environment().create_config(args, commit_hash, dirty_
 logger.info(f'Experiment ID: {experiment_id}')
 logger.info(experiment_config)
 
-X, Q, GT = load_data(experiment_config.dataset_config)
+X, Q, GT = load_data(experiment_config.dataset_config, experiment_config.dataset_path_prefix)
 logger.info(f'Loaded dataset of {len(X)} objects of size {(X.element_size() * X.nelement()) / 1024**2:.0f} MB')
 
 X = X.to(float32)

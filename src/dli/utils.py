@@ -5,17 +5,11 @@ import subprocess
 import time
 from typing import TYPE_CHECKING, Callable, ParamSpec, TypeVar
 
-import h5py
 import psutil
 from loguru import logger
-from torch import Tensor, float16, float32, from_numpy, int32
 
 if TYPE_CHECKING:
-    from pathlib import Path
-
     from torch.nn import Sequential
-
-    from dli.config import DatasetConfig
 
 
 Param = ParamSpec('Param')
@@ -88,34 +82,6 @@ def measure_memory_usage(func: Callable[Param, ReturnType]) -> Callable[Param, R
         return result
 
     return wrapper_measure_memory_usage
-
-
-@measure_runtime
-def load_data(config: DatasetConfig) -> tuple[Tensor, Tensor, Tensor]:
-    """Load dataset tensors from HDF5 files.
-
-    Args:
-        config: Dataset configuration containing file paths
-
-    Returns:
-        Tuple of (X, Q, GT) tensors
-
-    """
-
-    def load_h5_tensor(path: str | Path, dataset: str, size: int | None = None) -> Tensor:
-        with h5py.File(path, 'r') as f:
-            data = f[dataset][:size] if size else f[dataset][:]  # type: ignore
-            return from_numpy(data)
-
-    X = load_h5_tensor(config.X, 'emb', config.dataset_size)
-    Q = load_h5_tensor(config.Q, 'emb')
-    GT = load_h5_tensor(config.GT, 'knns')
-
-    assert X.dtype == float16, f'Expected X dtype float16, got {X.dtype}'
-    assert Q.dtype == float32, f'Expected Q dtype float32, got {Q.dtype}'
-    assert GT.dtype == int32, f'Expected GT dtype int32, got {GT.dtype}'
-
-    return X, Q, GT
 
 
 def obtain_commit_hash() -> str:
