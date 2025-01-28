@@ -71,7 +71,7 @@ class LearnedMetricIndex(LearnedIndex):
         X_sample, _ = take_sample(buckets, self.config.sample_threshold, self.config.bucket_shape[1])
 
         # Run k-means to obtain training labels
-        y = obtain_labels_via_kmeans(X_sample, self.config.n_buckets)
+        y = obtain_labels_via_kmeans(X_sample, self.config.n_buckets, self.config.distance_function.normalize_centroids)
 
         # Prepare the data loader for training
         train_loader = DataLoader(dataset=LabeledDataset(X_sample, y), batch_size=256, shuffle=True)
