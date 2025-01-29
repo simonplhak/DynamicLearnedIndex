@@ -2,6 +2,10 @@
 #PBS -q elixircz@pbs-m1.metacentrum.cz
 #PBS -l select=1:ncpus=2:mem=20gb:cluster=elwe
 #PBS -l walltime=2:00:00
+#PBS -o /storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/experiments/metacentrum-logs
+#PBS -e /storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/experiments/metacentrum-logs
+#PBS -m ae
+#PBS -M davidprochazka@mail.muni.cz
 
 export OMP_NUM_THREADS=$PBS_NUM_PPN
 
@@ -13,5 +17,5 @@ python3 experiments/run.py \
     --compaction-strategy='leveling' \
     --shrink-buckets-during-compaction \
     --dataset-identifier='300K' \
-    &>"/storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/experiments/metacentrum-logs/run-${PBS_JOBID}.log"
+    &>"/storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/experiments/metacentrum-logs/${PBS_JOBID}.LOG"
 exit $?
