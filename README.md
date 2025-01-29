@@ -53,6 +53,10 @@ cd ..
 python3 experiments/run.py --compaction-strategy leveling --dataset-identifier 300K
 ```
 
+## Evaluation Results
+
+The results of the experiments are available at [Evaluation Results | GitHub Issues](https://github.com/Coda-Research-Group/DynamicLearnedIndex/issues?q=is%3Aissue%20state%3Aopen%20label%3A%22Evaluation%20Results%22).
+
 ## Notes
 
 Implementation details:
@@ -60,10 +64,6 @@ Implementation details:
 
 Development tips:
 - During development, you can use the following command `pre-commit run --all-files` to run the pre-commit hooks. It will run the `ruff` linter and formatter to check for code style problems.
-
-## TODO: Folder Structure
-
-- `data`: Contains the datasets used in the local experiments.
 
 ## Resources
 
