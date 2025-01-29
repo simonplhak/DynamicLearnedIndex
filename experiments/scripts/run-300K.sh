@@ -1,0 +1,17 @@
+#!/bin/bash
+#PBS -q elixircz@pbs-m1.metacentrum.cz
+#PBS -l select=1:ncpus=2:mem=20gb:cluster=elwe
+#PBS -l walltime=2:00:00
+
+export OMP_NUM_THREADS=$PBS_NUM_PPN
+
+module add mambaforge || exit 2
+mamba activate /storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/env || exit 3
+
+cd '/storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex' || exit 4
+python3 experiments/run.py \
+    --compaction-strategy='leveling' \
+    --shrink-buckets-during-compaction \
+    --dataset-identifier='300K' \
+    &>"/storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/experiments/metacentrum-logs/run-${PBS_JOBID}.log"
+exit $?
