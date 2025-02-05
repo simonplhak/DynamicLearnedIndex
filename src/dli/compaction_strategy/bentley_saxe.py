@@ -82,10 +82,20 @@ class BentleySaxe:
         current_index = self.dli.levels[current_level - 1]
 
         ## Option 2.1 -- The index does not exist at this level, we have to create it
-        ##            -- Actually, we are just training it because we have not thrown out the old one...
+        ##            -- We could reuse the existing model here without creating a new one...
         if current_index.is_empty():  # ~ the index does not exist
-            # TODO: reset the model's weights first
-            model_training_time = current_index.train(self.dli.get_buckets(current_level - 1))
+            new_index = self.dli.config.index_class(
+                IndexConfig(
+                    n_buckets=pow(self.dli.config.arity, current_level),
+                    distance_function=self.dli.config.distance_function,
+                    bucket_shape=self.dli.config.bucket_shape,
+                    sample_threshold=self.dli.config.sample_threshold,
+                    shrink_buckets_during_compaction=self.dli.config.shrink_buckets_during_compaction,
+                    n_training_samples=sum(map(Bucket.get_n_objects, self.dli.get_buckets(current_level - 1))),
+                ),
+            )
+            model_training_time = new_index.train(self.dli.get_buckets(current_level - 1))
+            self.dli.levels[current_level - 1] = new_index
             deallocated_spaces = self._empty_upper_levels(current_level)
             return FrameworkCompactionStatistics(
                 total_model_training_time=model_training_time,
@@ -100,10 +110,7 @@ class BentleySaxe:
             map(Bucket.get_n_objects, self.dli.get_buckets(current_level - 1)),
         )
 
-        # is_successfully_inserted = current_index.insert(self.dli.get_buckets(current_level - 1))
-
-        ### Option 2.2.1 -- All data has been stored at this level
-        # if is_successfully_inserted:
+        ### Option 2.2.1 -- All data can be stored at this level
         if can_be_inserted:
             current_index.insert(self.dli.get_buckets(current_level - 1))
             deallocated_spaces = self._empty_upper_levels(current_level)
