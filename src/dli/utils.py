@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import functools
 import subprocess
 import time
@@ -35,6 +36,19 @@ def sizeof_fmt(num: float, suffix: str = 'B') -> str:
             return f'{num:3.1f}{unit}{suffix}'
         num /= 1024.0
     return f'{num:.1f}Yi{suffix}'
+
+
+def time_fmt(seconds: float) -> str:
+    """Format a time in seconds to a human readable string.
+
+    Args:
+        seconds: Time in seconds
+
+    Returns:
+        Formatted string like '1 day, 18:20:07.732870'
+
+    """
+    return str(datetime.timedelta(seconds=seconds))
 
 
 def measure_runtime(func: Callable[Param, ReturnType]) -> Callable[Param, ReturnType]:
