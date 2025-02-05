@@ -20,6 +20,15 @@ class DistanceFunctionConfigMixin:
     """Whether to L2 normalize the centroids after each iteration during k-means training."""
 
 
+def get_num_threads() -> int:
+    return faiss.omp_get_max_threads()
+
+
+def set_num_threads(num_threads: int | None) -> None:
+    if num_threads is not None:
+        faiss.omp_set_num_threads(num_threads)
+
+
 class DistanceFunction(DistanceFunctionConfigMixin, Enum):
     INNER_PRODUCT = faiss.METRIC_INNER_PRODUCT, True, True
     L2 = faiss.METRIC_L2, False, False

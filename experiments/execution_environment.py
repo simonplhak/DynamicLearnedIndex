@@ -55,6 +55,8 @@ class Metacentrum(Environment):
                     k=30,
                     search_strategy=search_strategy,
                     nprobe=nprobe,
+                    faiss_max_threads=2,
+                    python_max_workers=4,
                 )
                 for search_strategy in [KNNSearchStrategy, ModelDrivenSearchStrategy]
                 for nprobe in [5, 10, 15, 20, 25, 30, 35, 40, 45, 50]
@@ -85,6 +87,8 @@ class Pro(Environment):
                     k=10,
                     search_strategy=search_strategy,
                     nprobe=nprobe,
+                    faiss_max_threads=None,
+                    python_max_workers=None,
                 )
                 for search_strategy in [KNNSearchStrategy, ModelDrivenSearchStrategy]
                 for nprobe in [1, 5, 10]

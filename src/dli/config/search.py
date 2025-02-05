@@ -1,6 +1,10 @@
-from dataclasses import dataclass
+from __future__ import annotations
 
-from dli.search_strategy import SearchStrategy
+from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from dli.search_strategy import SearchStrategy
 
 
 @dataclass
@@ -8,6 +12,8 @@ class SearchConfig:
     search_strategy: type[SearchStrategy]
     k: int
     nprobe: int
+    python_max_workers: int | None
+    faiss_max_threads: int | None
 
     def __post_init__(self) -> None:
         assert self.k > 0

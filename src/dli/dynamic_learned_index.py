@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
 from statistics import mean, median
 from typing import TYPE_CHECKING
@@ -9,6 +10,7 @@ from loguru import logger
 from torch import empty, float32, int64
 from tqdm import tqdm
 
+from dli import faiss_facade
 from dli.bucket import StaticBucket
 from dli.faiss_facade import merge_knn_results
 from dli.result import BuildResult, ExperimentSearchResult
@@ -64,7 +66,13 @@ class DynamicLearnedIndex:
         return BuildResult(build_time, self.collect_stats(), per_objects_insertion_statistics)
 
     @measure_runtime
-    def perform_search(self, db_size: int, config: SearchConfig, Q: Tensor, GT: Tensor) -> ExperimentSearchResult:
+    def perform_search_sequential(
+        self,
+        db_size: int,
+        config: SearchConfig,
+        Q: Tensor,
+        GT: Tensor,
+    ) -> ExperimentSearchResult:
         sum_of_recalls = 0.0
         n_candidates_per_query = empty(len(Q), dtype=float32)
         per_query_statistics: list[FrameworkSearchStatistics] = [None] * len(Q)  # type: ignore
@@ -85,6 +93,49 @@ class DynamicLearnedIndex:
             db_size,
             len(Q),
             sum_of_recalls,
+            n_candidates_per_query,
+            search_time,
+            per_query_statistics,
+        )
+
+    @measure_runtime
+    def perform_search_parallel(
+        self,
+        db_size: int,
+        config: SearchConfig,
+        Q: Tensor,
+        GT: Tensor,
+    ) -> ExperimentSearchResult:
+        n_candidates_per_query = empty(len(Q), dtype=float32)
+        per_query_statistics: list[FrameworkSearchStatistics] = [None] * len(Q)  # type: ignore
+
+        I = empty((len(Q), config.k), dtype=int64)
+        recalls = empty(len(Q), dtype=float32)
+
+        s = time.time()
+
+        faiss_facade.set_num_threads(config.faiss_max_threads)
+
+        with ThreadPoolExecutor(max_workers=config.python_max_workers) as executor:
+            results = executor.map(
+                lambda i: (i, self.search_single(Q[i], config)),
+                range(len(Q)),
+            )
+            for i, (_, I_query, statistics) in tqdm(results, total=len(Q)):
+                I[i, :] = I_query
+                recalls[i] = (
+                    len(set((I_query[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
+                )
+                n_candidates_per_query[i] = statistics.total_n_candidates
+                per_query_statistics[i] = statistics
+
+        search_time = time.time() - s
+
+        return ExperimentSearchResult(
+            config,
+            db_size,
+            len(Q),
+            recalls.sum().item(),
             n_candidates_per_query,
             search_time,
             per_query_statistics,
