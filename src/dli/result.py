@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from statistics import mean, median, stdev
 from typing import TYPE_CHECKING
 
+from dli.utils import time_fmt
+
 if TYPE_CHECKING:
     from torch import Tensor
 
@@ -41,8 +43,12 @@ class ExperimentSearchResult:
     n_queries: int
     sum_of_recalls: float
     n_candidates_per_query: Tensor
-    total_search_time: float
     per_query_statistics: list[FrameworkSearchStatistics]
+
+    # Time measurements of all steps of the search method
+    bucket_selection_time: float
+    search_time: float
+    total_search_time: float
 
     def avg_recall(self) -> float:
         return self.sum_of_recalls / self.n_queries * TO_PERCENTAGE
@@ -146,6 +152,9 @@ class ExperimentSearchResult:
 
             return f'{name}: {min_time:>{25 - len(name)}.2f}ms, {mean_time:.2f}ms ±{std_time:.2f}ms, {max_time:.2f}ms'
 
+        def format_time(name: str, time: float) -> str:
+            return f'{name}: {time_fmt(time):>{40 - len(name)}}'
+
         avg_recall = self.avg_recall()
         mean_n_candidates = self.mean_n_candidates()
         candidates_percentage = self.candidates_percentage()
@@ -159,9 +168,14 @@ class ExperimentSearchResult:
             f'{avg_recall:.2f}%, '
             f'{mean_n_candidates:.2f} candidates ({candidates_percentage:.2f}%), '
             f'{avg_time_per_query_in_ms:.2f}ms per query\n'
+            f'-----------------\n'
+            f'{format_time("Bucket selection time", self.bucket_selection_time)}\n'
+            f'{format_time("Bucket search time", self.search_time)}\n'
+            f'{format_time("Total search time", self.total_search_time)}\n'
+            f'-----------------\n'
+            f'Per query statistics:\n'
             f'{preparation_time_str}\n'
             f'{search_time_str}\n'
             f'{merge_time_str}\n'
-            f'-----------------\n'
             f'{total_search_time_str}\n'
         )

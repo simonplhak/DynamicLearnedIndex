@@ -63,18 +63,37 @@ class LearnedIndex(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def predict_bucket_scores(self, X: Tensor) -> list[tuple[int, float]]:
-        """Predict score of each bucket for the given query.
+    def predict_bucket_probabilities(self, Q: Tensor) -> Tensor:
+        """Predict probabilities of buckets for the given queries.
 
         Parameters
         ----------
-        X : Tensor
-            Single query vector of shape (1, dimensionality).
+        Q : Tensor
+            Query vectors of shape (n_queries, dimensionality).
 
         Returns
         -------
-        list[tuple[int, float]]
-            A list of tuples containing the bucket index and the score.
+        Tensor
+            A tensor of shape (n_queries, n_buckets) containing the probabilities that the query belongs to each bucket.
+
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def predict_top_k_bucket_probabilities(self, Q: Tensor, k: int) -> Tensor:
+        """Predict the top k bucket probabilities for the given queries.
+
+        Parameters
+        ----------
+        Q : Tensor
+            Query vectors of shape (n_queries, dimensionality).
+        k : int
+            Number of top bucket probabilities to predict.
+
+        Returns
+        -------
+        Tensor
+            A tensor of shape (n_queries, k) containing the top k bucket probabilities.
 
         """
         raise NotImplementedError

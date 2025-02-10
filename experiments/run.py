@@ -72,8 +72,7 @@ experiment_dir.mkdir(exist_ok=True, parents=True)
 search_results = []
 for config in experiment_config.search_configs:
     logger.info(config)
-    # result = dli.perform_search_sequential(len(X), config, Q, GT)
-    result = dli.perform_search_parallel(len(X), config, Q, GT)
+    result = dli.perform_search(len(X), config, Q, GT)
     logger.info(result.get_stats())
     logger.info(f'Search throughput: {int(len(Q) / result.total_search_time)} QPS')  # TODO: store persistently?
 

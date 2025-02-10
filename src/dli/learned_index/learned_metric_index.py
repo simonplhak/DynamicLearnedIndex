@@ -126,18 +126,20 @@ class LearnedMetricIndex(LearnedIndex):
         return True
 
     @override
-    def predict_bucket_scores(self, X: Tensor) -> list[tuple[int, float]]:
+    def predict_bucket_probabilities(self, Q: Tensor) -> Tensor:
         assert self.model is not None, 'Model is not trained yet.'
 
         # Evaluate the model
         self.model.eval()
 
         with no_grad():
-            logits = self.model(X)
+            logits = self.model(Q)
             # Compute probabilities from logits
-            probabilities = softmax(logits, dim=1)
+            return softmax(logits, dim=1)
 
-        return [(i, probabilities[0][i].item()) for i in range(self.config.n_buckets)]
+    @override
+    def predict_top_k_bucket_probabilities(self, Q: Tensor, k: int) -> Tensor:
+        return self._predict(Q, k)[1]
 
     @override
     def measure_total_allocated_memory(self) -> int:
@@ -162,6 +164,4 @@ class LearnedMetricIndex(LearnedIndex):
             # Compute probabilities from logits
             probs = softmax(logits, dim=1)
             # Select the top k most probable classes and their probabilities
-            probabilities, classes = probs.topk(top_k)
-
-        return probabilities, classes
+            return probs.topk(top_k)
