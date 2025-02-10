@@ -55,8 +55,8 @@ class Metacentrum(Environment):
                     k=30,
                     search_strategy=search_strategy,
                     nprobe=nprobe,
-                    faiss_max_threads=2,
-                    python_max_workers=4,
+                    faiss_max_threads=4,
+                    python_max_workers=8,
                     verbose=False,
                 )
                 for search_strategy in [KNNSearchStrategy, ModelDrivenSearchStrategy]
