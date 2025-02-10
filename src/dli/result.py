@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from statistics import mean, median, stdev
 from typing import TYPE_CHECKING
 
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 class BuildResult:
     time: float
     stats: dict
-    per_objects_insertion_statistics: list[FrameworkCompactionStatistics]
+    per_objects_insertion_statistics: list[FrameworkCompactionStatistics] = field(repr=False)
 
     def total_model_training_time(self) -> float:
         return sum(x.total_model_training_time for x in self.per_objects_insertion_statistics)
