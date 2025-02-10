@@ -11,7 +11,7 @@ from loguru import logger
 from torch import float32, manual_seed
 
 from dli.dynamic_learned_index import DynamicLearnedIndex
-from dli.utils import obtain_commit_hash, obtain_dirty_state, time_fmt
+from dli.utils import obtain_commit_hash, obtain_dirty_state, obtain_metacentrum_experiment_id, time_fmt
 from dli.visualization.plots import (
     plot_queries_per_second_vs_recall,
     plot_recall_vs_avg_time_per_query,
@@ -25,7 +25,10 @@ manual_seed(SEED)
 EXPERIMENTAL_RESULTS_DIR = Path('experiments/results')
 
 commit_hash, dirty_state = obtain_commit_hash(), obtain_dirty_state()
-experiment_id = f'{time.strftime("%Y%m%d-%H%M%S")}-{commit_hash}{"-dirty" if dirty_state else ""}'
+experiment_id = (
+    f'{obtain_metacentrum_experiment_id()}-{time.strftime("%Y%m%d-%H%M%S")}'
+    f'-{commit_hash}{"-dirty" if dirty_state else ""}'
+)
 
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
 logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)

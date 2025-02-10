@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import functools
+import os
 import subprocess
 import time
 from typing import TYPE_CHECKING, Callable, ParamSpec, TypeVar
@@ -112,6 +113,11 @@ def obtain_dirty_state() -> bool:
         return subprocess.call(['git', 'diff', '--quiet']) != 0  # noqa: S603, S607
     except Exception:  # noqa: BLE001
         return True
+
+
+def obtain_metacentrum_experiment_id() -> str:
+    """Obtain the experiment ID for Metacentrum."""
+    return os.environ.get('PBS_JOBID', 'unknown')
 
 
 def get_model_size(model: Sequential) -> int:
