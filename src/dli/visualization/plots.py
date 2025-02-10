@@ -8,8 +8,8 @@ import seaborn as sns
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from config import ExperimentConfig
-    from result import BuildResult, ExperimentSearchResult
+    from dli.result import BuildResult, ExperimentSearchResult
+    from experiments.config import ExperimentConfig
 
 
 def save_relevant_results_to_csv(
@@ -59,7 +59,7 @@ def create_lineplot(
     plt.set_ylabel(ylabel)
     fig = plt.get_figure()
     assert fig
-    fig.savefig(output_path)
+    fig.savefig(output_path)  # type: ignore
     fig.clear()
 
 
