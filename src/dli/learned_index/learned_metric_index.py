@@ -15,7 +15,7 @@ from dli.faiss_facade import merge_knn_results, obtain_labels_via_kmeans
 from dli.labeled_dataset import LabeledDataset
 from dli.learned_index.learned_index import LearnedIndex
 from dli.sampling import take_sample
-from dli.utils import get_model_size, measure_runtime
+from dli.utils import get_model_size
 
 if TYPE_CHECKING:
     from dli.bucket import Bucket
@@ -49,7 +49,7 @@ class LearnedMetricIndex(LearnedIndex):
             if n_hidden_neurons < min(n_input_neurons, n_output_neurons)
             else n_hidden_neurons
         )
-        logger.debug(f"LMI's model architecture: {n_input_neurons}-{n_hidden_neurons}-{n_output_neurons}")
+        # logger.debug(f"LMI's model architecture: {n_input_neurons}-{n_hidden_neurons}-{n_output_neurons}")
 
         # Create a model
         self.model = Sequential(
@@ -64,7 +64,6 @@ class LearnedMetricIndex(LearnedIndex):
         self.loss_fn = CrossEntropyLoss()
         self.optimizer = Adam(params=self.model.parameters(), lr=self.lr)
 
-    @measure_runtime
     @override
     def train(self, buckets: list[Bucket]) -> float:
         s = time.time()
