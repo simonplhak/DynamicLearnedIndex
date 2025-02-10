@@ -11,6 +11,10 @@ if TYPE_CHECKING:
     from dli.statistic import FrameworkCompactionStatistics, FrameworkSearchStatistics
 
 
+SEC_TO_MSEC = 1_000
+TO_PERCENTAGE = 100
+
+
 @dataclass
 class BuildResult:
     time: float
@@ -41,7 +45,7 @@ class ExperimentSearchResult:
     per_query_statistics: list[FrameworkSearchStatistics]
 
     def avg_recall(self) -> float:
-        return self.sum_of_recalls / self.n_queries * 100
+        return self.sum_of_recalls / self.n_queries * TO_PERCENTAGE
 
     # Number of candidates
     def min_n_candidates(self) -> int:
@@ -59,40 +63,105 @@ class ExperimentSearchResult:
     def std_n_candidates(self) -> float:
         return float(self.n_candidates_per_query.std())
 
-    # Search time
-    def min_search_time(self) -> float:
+    # Total search time
+    def min_total_search_time(self) -> float:
         return min(self.per_query_statistics, key=lambda x: x.total_search_time_in_ms).total_search_time_in_ms
 
-    def mean_search_time(self) -> float:
+    def mean_total_search_time(self) -> float:
         return mean(x.total_search_time_in_ms for x in self.per_query_statistics)
 
-    def median_search_time(self) -> float:
+    def median_total_search_time(self) -> float:
         return median(x.total_search_time_in_ms for x in self.per_query_statistics)
 
-    def max_search_time(self) -> float:
+    def max_total_search_time(self) -> float:
         return max(self.per_query_statistics, key=lambda x: x.total_search_time_in_ms).total_search_time_in_ms
 
-    def std_search_time(self) -> float:
+    def std_total_search_time(self) -> float:
         return stdev(x.total_search_time_in_ms for x in self.per_query_statistics)
+
+    # Preparation time
+    def min_preparation_time(self) -> float:
+        return min(self.per_query_statistics, key=lambda x: x.preparation_time_in_ms).preparation_time_in_ms
+
+    def mean_preparation_time(self) -> float:
+        return mean(x.preparation_time_in_ms for x in self.per_query_statistics)
+
+    def median_preparation_time(self) -> float:
+        return median(x.preparation_time_in_ms for x in self.per_query_statistics)
+
+    def max_preparation_time(self) -> float:
+        return max(self.per_query_statistics, key=lambda x: x.preparation_time_in_ms).preparation_time_in_ms
+
+    def std_preparation_time(self) -> float:
+        return stdev(x.preparation_time_in_ms for x in self.per_query_statistics)
+
+    # Search time
+    def min_search_time(self) -> float:
+        return min(self.per_query_statistics, key=lambda x: x.search_time_in_ms).search_time_in_ms
+
+    def mean_search_time(self) -> float:
+        return mean(x.search_time_in_ms for x in self.per_query_statistics)
+
+    def median_search_time(self) -> float:
+        return median(x.search_time_in_ms for x in self.per_query_statistics)
+
+    def max_search_time(self) -> float:
+        return max(self.per_query_statistics, key=lambda x: x.search_time_in_ms).search_time_in_ms
+
+    def std_search_time(self) -> float:
+        return stdev(x.search_time_in_ms for x in self.per_query_statistics)
+
+    # Merge time
+    def min_merge_time(self) -> float:
+        return min(self.per_query_statistics, key=lambda x: x.merge_time_in_ms).merge_time_in_ms
+
+    def mean_merge_time(self) -> float:
+        return mean(x.merge_time_in_ms for x in self.per_query_statistics)
+
+    def median_merge_time(self) -> float:
+        return median(x.merge_time_in_ms for x in self.per_query_statistics)
+
+    def max_merge_time(self) -> float:
+        return max(self.per_query_statistics, key=lambda x: x.merge_time_in_ms).merge_time_in_ms
+
+    def std_merge_time(self) -> float:
+        return stdev(x.merge_time_in_ms for x in self.per_query_statistics)
 
     # Other
     def candidates_percentage(self) -> float:
-        return self.mean_n_candidates() / self.database_size * 100
+        return self.mean_n_candidates() / self.database_size * TO_PERCENTAGE
 
     def avg_time_per_query_in_ms(self) -> float:
-        return self.total_search_time / self.n_queries * 1_000
+        return self.total_search_time / self.n_queries * SEC_TO_MSEC
 
     def queries_per_second(self) -> float:
         return self.n_queries / self.total_search_time
 
     def get_stats(self) -> str:
+        def collect_statistics(name: str, method_prefix: str) -> str:
+            min_time = getattr(self, f'min_{method_prefix}_time')()
+            mean_time = getattr(self, f'mean_{method_prefix}_time')()
+            max_time = getattr(self, f'max_{method_prefix}_time')()
+            std_time = getattr(self, f'std_{method_prefix}_time')()
+
+            return f'{name}: {min_time:>{25 - len(name)}.2f}ms, {mean_time:.2f}ms ±{std_time:.2f}ms, {max_time:.2f}ms'
+
         avg_recall = self.avg_recall()
         mean_n_candidates = self.mean_n_candidates()
         candidates_percentage = self.candidates_percentage()
         avg_time_per_query_in_ms = self.avg_time_per_query_in_ms()
+        preparation_time_str = collect_statistics('Preparation time', 'preparation')
+        search_time_str = collect_statistics('Search time', 'search')
+        merge_time_str = collect_statistics('Merge time', 'merge')
+        total_search_time_str = collect_statistics('Total search time', 'total_search')
 
         return (
             f'{avg_recall:.2f}%, '
             f'{mean_n_candidates:.2f} candidates ({candidates_percentage:.2f}%), '
-            f'{avg_time_per_query_in_ms:.2f}ms per query'
+            f'{avg_time_per_query_in_ms:.2f}ms per query\n'
+            f'{preparation_time_str}\n'
+            f'{search_time_str}\n'
+            f'{merge_time_str}\n'
+            f'-----------------\n'
+            f'{total_search_time_str}\n'
         )
