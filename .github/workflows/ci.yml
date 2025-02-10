@@ -26,6 +26,6 @@ jobs:
         run: |
           pip install -e .
           pre-commit install
-      - name: Run ruff via pre-commit
+      - name: Run pre-commit
         run: |
           pre-commit run --all-files

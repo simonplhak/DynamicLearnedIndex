@@ -7,3 +7,9 @@ repos:
       - id: ruff
       # Run the formatter.
       - id: ruff-format
+  # We use a custom shellcheck pre-commit hook that does not require a running Docker daemon.
+  # See https://github.com/koalaman/shellcheck/issues/2495
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
