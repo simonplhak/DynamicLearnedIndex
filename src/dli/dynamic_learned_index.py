@@ -78,7 +78,9 @@ class DynamicLearnedIndex:
         per_query_statistics: list[FrameworkSearchStatistics] = [None] * len(Q)  # type: ignore
 
         s = time.time()
-        for i in tqdm(range(len(Q))):
+
+        iterator = tqdm(range(len(Q))) if config.verbose else range(len(Q))
+        for i in iterator:
             _, I, statistics = self.search_single(Q[i], config)
 
             recall = len(set((I[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k
@@ -86,6 +88,7 @@ class DynamicLearnedIndex:
             sum_of_recalls += recall
             n_candidates_per_query[i] = statistics.total_n_candidates
             per_query_statistics[i] = statistics
+
         search_time = time.time() - s
 
         return ExperimentSearchResult(
@@ -121,7 +124,9 @@ class DynamicLearnedIndex:
                 lambda i: (i, self.search_single(Q[i], config)),
                 range(len(Q)),
             )
-            for i, (_, I_query, statistics) in tqdm(results, total=len(Q)):
+
+            iterator = tqdm(results, total=len(Q)) if config.verbose else results
+            for i, (_, I_query, statistics) in iterator:
                 I[i, :] = I_query
                 recalls[i] = (
                     len(set((I_query[0] + 1).tolist()).intersection(set(GT[i, : config.k].tolist()))) / config.k

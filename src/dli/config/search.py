@@ -14,6 +14,7 @@ class SearchConfig:
     nprobe: int
     python_max_workers: int | None
     faiss_max_threads: int | None
+    verbose: bool
 
     def __post_init__(self) -> None:
         assert self.k > 0
