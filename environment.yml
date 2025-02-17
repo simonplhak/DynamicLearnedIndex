@@ -20,7 +20,10 @@ dependencies:
   # Visualization
   - seaborn
   - pandas
-  
+
+  # Other indexes
+  - hnswlib
+
   # Dev dependencies
   - ruff
   - pre-commit
