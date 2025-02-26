@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+from pathlib import Path
 
 from cli import parse_arguments
 from datasets import load_data
@@ -14,13 +15,23 @@ from dli.utils import (
     measure_runtime,
     obtain_commit_hash,
     obtain_dirty_state,
+    obtain_metacentrum_experiment_id,
     time_fmt,
 )
 
 SEED = 42
 manual_seed(SEED)
 
+EXPERIMENTAL_RESULTS_DIR = Path('experiments/results')
+
 commit_hash, dirty_state = obtain_commit_hash(), obtain_dirty_state()
+experiment_id = (
+    f'{obtain_metacentrum_experiment_id()}-{time.strftime("%Y%m%d-%H%M%S")}'
+    f'-{commit_hash}{"-dirty" if dirty_state else ""}'
+)
+
+logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'experiment.log', backtrace=True, diagnose=True)
+logger.add(EXPERIMENTAL_RESULTS_DIR / experiment_id / 'serialized.log', backtrace=True, diagnose=True, serialize=True)
 
 args = parse_arguments()
 experiment_config = detect_environment().create_config(args, commit_hash, dirty_state)
