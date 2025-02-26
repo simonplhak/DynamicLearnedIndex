@@ -1,6 +1,6 @@
 #!/bin/bash
 #PBS -q elixircz@pbs-m1.metacentrum.cz
-#PBS -l select=1:ncpus=32:mem=1000gb:cluster=elwe
+#PBS -l select=1:ncpus=32:mem=950gb:cluster=elwe
 #PBS -l walltime=96:00:00
 #PBS -o /storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/experiments/metacentrum-logs
 #PBS -e /storage/brno12-cerit/home/prochazka/projects/DynamicLearnedIndex/experiments/metacentrum-logs
