@@ -58,8 +58,9 @@ def search_index(index: Index, ef_search: int, Q: Tensor, k: int) -> Tensor:
     return I
 
 
-M = 8  # number of connections each vertex will have
-ef_construction = 100  # depth of layers explored during index construction
+# https://link.springer.com/chapter/10.1007/978-3-031-46994-7_25
+M = 20  # number of connections each vertex will have
+ef_construction = 800  # depth of layers explored during index construction
 
 k = 30
 
