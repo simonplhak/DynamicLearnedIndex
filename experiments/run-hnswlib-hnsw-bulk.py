@@ -71,7 +71,7 @@ logger.info(f'Insert throughput: {int(len(X) / (time.time() - start))} IPS')
 logger.info(f'Searching for {len(Q)} queries')
 logger.info('ef_search,search_time,search_throughput,recall')
 
-for ef_search in [40, 50, 60, 70, 80, 90, 100]:
+for ef_search in [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000]:
     assert ef_search > k  # ef should always be > k
 
     start = time.time()
