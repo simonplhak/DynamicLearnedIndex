@@ -44,7 +44,7 @@ X = X.to(float32)
 
 @measure_memory_usage
 @measure_runtime
-def create_index(X: Tensor, ef_construction: int, M: int) -> Index:
+def create_index_incremental(X: Tensor, ef_construction: int, M: int) -> Index:
     index = Index(space='ip', dim=X.shape[1])  # possible options are l2, cosine or ip
     index.init_index(max_elements=len(X), ef_construction=ef_construction, M=M)
     for i in range(len(X)):
@@ -65,7 +65,7 @@ k = 30
 
 logger.info(f'Adding {len(X)} objects to index')
 start = time.time()
-index = create_index(X, ef_construction, M)  # ! Requires max_elements to be set before adding elements!
+index = create_index_incremental(X, ef_construction, M)  # ! Requires max_elements to be set before adding elements!
 logger.info(f'Index construction time: {time_fmt(time.time() - start)}')
 logger.info(f'Insert throughput: {int(len(X) / (time.time() - start))} IPS')
 
