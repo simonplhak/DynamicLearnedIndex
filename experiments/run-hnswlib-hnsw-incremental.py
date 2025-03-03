@@ -9,6 +9,7 @@ from execution_environment import detect_environment
 from hnswlib import Index
 from loguru import logger
 from torch import Tensor, empty, float32, manual_seed
+from tqdm import tqdm
 
 from dli.utils import (
     measure_memory_usage,
@@ -47,7 +48,7 @@ X = X.to(float32)
 def create_index_incremental(X: Tensor, ef_construction: int, M: int) -> Index:
     index = Index(space='ip', dim=X.shape[1])  # possible options are l2, cosine or ip
     index.init_index(max_elements=len(X), ef_construction=ef_construction, M=M)
-    for i in range(len(X)):
+    for i in tqdm(range(len(X))):
         index.add_items(X[i], i)
     return index
 
