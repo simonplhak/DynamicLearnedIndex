@@ -1,8 +1,0 @@
-[project]
-name = "dli"
-version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-authors = [{ name = "David Procházka", email = "david@prochazka.dev" }]
-requires-python = ">=3.12"
-dependencies = []
