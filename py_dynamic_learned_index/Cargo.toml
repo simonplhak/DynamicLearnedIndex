@@ -10,4 +10,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 dynamic_learned_index = { path = "../dynamic_learned_index" }
-pyo3 = "0.24.0"
+pyo3 = { version = "0.24.0" }

@@ -1,5 +1,13 @@
+use tch::Tensor;
+
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
+}
+
+pub fn print_tensor() {
+    let t = Tensor::from_slice(&[3, 1, 4, 1, 5]);
+    let t = t * 2;
+    t.print();
 }
 
 #[cfg(test)]
