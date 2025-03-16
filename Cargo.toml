@@ -1,3 +1,7 @@
 [workspace]
 resolver = "2"
-members = [ "dynamic_learned_index","py_dynamic_learned_index"]
+members = [
+    "cli_dynamic_learned_index", 
+    "dynamic_learned_index",
+    "py_dynamic_learned_index"
+]

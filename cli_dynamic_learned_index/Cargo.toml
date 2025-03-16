@@ -1,0 +1,7 @@
+[package]
+name = "cli_dynamic_learned_index"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+dynamic_learned_index = { path = "../dynamic_learned_index" }
