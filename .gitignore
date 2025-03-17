@@ -5,3 +5,4 @@ experiments/results/*/
 *.egg-info
 env/
 target/
+experiments_data/*
