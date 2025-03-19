@@ -1,0 +1,15 @@
+device: cpu
+input_shape: 128
+arity: 2
+bucket:
+  bucket_type: static
+levels:
+  0:  # 0 should denote a buffer?? fix later
+    model:
+      layers:
+      - type: Linear
+        value: 2
+      - type: Linear
+        value: 2
+
+
