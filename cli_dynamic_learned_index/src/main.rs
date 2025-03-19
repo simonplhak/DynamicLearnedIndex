@@ -1,7 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use dynamic_learned_index::{self, Index};
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf};
+use std::{collections::HashMap, fs, path::PathBuf};
+use tch::{IndexOp, Tensor};
 mod config;
 mod dataset;
 
@@ -15,6 +17,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     Experiment(ExperimentConfig),
+    Test,
 }
 
 #[derive(Parser, Debug, Serialize, Deserialize)]
@@ -53,10 +56,30 @@ fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
     Ok(())
 }
 
+fn test() -> Result<()> {
+    let tensor = Tensor::zeros([3, 4, 5], tch::kind::FLOAT_CPU);
+    println!("shape: {:?}", tensor.size());
+    tensor.print();
+    let slice = tensor.i((.., 1, ..));
+    println!("Slice: {:?}", slice);
+
+    let single_element = tensor.i((0, 1, 2));
+    println!("Single element: {:?}", single_element);
+    let path = PathBuf::from("configs/example.yaml");
+    let config_content = fs::read_to_string(path)?;
+    let mut index = serde_yaml::from_str::<dynamic_learned_index::Index>(&config_content)?;
+    index.validate()?;
+    print!("{:?}", index);
+    let tensor = Tensor::zeros([128], tch::kind::FLOAT_CPU);
+    index.insert(tensor);
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match &cli.command {
         Commands::Experiment(config) => experiment(config),
+        Commands::Test => test(),
     }
 }
