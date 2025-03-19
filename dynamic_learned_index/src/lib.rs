@@ -1,5 +1,11 @@
 use tch::Tensor;
 
+pub(crate) mod bucket;
+mod errors;
+pub mod index;
+pub mod model;
+pub use index::{Index, LevelIndex};
+
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }
