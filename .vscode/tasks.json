@@ -1,0 +1,14 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "cargo",
+			"command": "run",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"args": ["-p", "cli_dynamic_learned_index", "experiment", "example", "--dataset", "k300", "--force"],
+			"label": "rust: run simple test example"
+		}
+	]
+}
