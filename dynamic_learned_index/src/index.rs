@@ -173,7 +173,13 @@ impl LevelIndexBuilder {
     }
 
     fn build_buffer(&self) -> Result<Box<dyn LevelIndex>, BuildError> {
-        todo!()
+        let size = self.size.ok_or(BuildError::MissingAttribute)?;
+        let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
+        Ok(Box::new(Buffer {
+            records: Tensor::zeros([size, input_shape], tch::kind::FLOAT_CPU),
+            ids: Tensor::zeros([size], tch::kind::INT64_CPU),
+            pointer: 0,
+        }))
     }
 }
 
@@ -189,6 +195,29 @@ trait LevelIndex {
 impl fmt::Debug for dyn LevelIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Bucket") // todo
+    }
+}
+
+#[derive(Debug)]
+pub struct Buffer {
+    records: Tensor, // (size, ..dim)
+    ids: Tensor,     // (size,)
+    pointer: i64,
+}
+
+impl Buffer {
+    fn has_space(&self) -> bool {
+        self.pointer < self.records.size()[0]
+    }
+}
+
+impl LevelIndex for Buffer {
+    fn search(&self, key: &Tensor) -> Tensor {
+        todo!()
+    }
+
+    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), LevelIndexError> {
+        todo!()
     }
 }
 
