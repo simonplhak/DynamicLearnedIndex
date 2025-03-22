@@ -24,6 +24,7 @@ pub(crate) enum BucketType {
 pub(crate) trait Bucket {
     fn search(&self, key: &Tensor) -> (Tensor, Tensor);
     fn insert(&mut self, value: Tensor, id: Id) -> Result<(), BucketError>;
+    fn has_space(&self) -> bool;
 }
 
 impl fmt::Debug for dyn Bucket {
@@ -68,7 +69,8 @@ impl BucketBuilder {
 
         Ok(StaticBucket {
             records: Tensor::zeros([size, input_shape], kind::FLOAT_CPU),
-            ids: Tensor::zeros(&[size], kind::INT64_CPU),
+            ids: Tensor::zeros([size], kind::INT64_CPU),
+            pointer: 0,
         })
     }
 }
@@ -77,6 +79,7 @@ impl BucketBuilder {
 pub(crate) struct StaticBucket {
     records: Tensor, // (size, ..dim)
     ids: Tensor,     // (size,)
+    pointer: i64,
 }
 
 impl Bucket for StaticBucket {
@@ -86,5 +89,9 @@ impl Bucket for StaticBucket {
 
     fn insert(&mut self, value: Tensor, id: Id) -> Result<(), BucketError> {
         todo!()
+    }
+
+    fn has_space(&self) -> bool {
+        self.pointer == self.records.size()[0]
     }
 }

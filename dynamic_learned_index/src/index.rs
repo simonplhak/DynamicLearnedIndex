@@ -50,14 +50,10 @@ impl Index {
     }
 
     pub fn insert(&mut self, value: Tensor) {
-        if !self.has_space() {
-            self.add_level();
-        }
+        // if !self.has_space() {
+        //     self.add_level();
+        // }
         // todo!()
-    }
-
-    fn has_space(&self) -> bool {
-        false
     }
 
     fn get_level_index_config(&self) -> LevelIndexConfig {
@@ -166,5 +162,9 @@ impl LevelIndex {
 
     pub fn insert(&mut self, value: Tensor, id: Id) {
         todo!()
+    }
+
+    fn has_space(&self) -> bool {
+        self.buckets.iter().any(|bucket| bucket.has_space())
     }
 }
