@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 use tch::{nn, Device, Tensor};
@@ -17,8 +17,16 @@ pub enum ModelDevice {
     Cpu,
 }
 
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub enum Levelling {
+    #[default]
+    #[serde(rename = "bentley_saxe")]
+    BentleySaxe,
+}
+
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Index {
+    levelling: Levelling,
     #[serde(rename = "levels")]
     levels_config: HashMap<usize, LevelIndexConfig>,
     #[serde(rename = "bucket")]
@@ -27,7 +35,7 @@ pub struct Index {
     arity: i64,
     device: ModelDevice,
     #[serde(skip)]
-    levels: Vec<LevelIndex>,
+    levels: Vec<Box<dyn LevelIndex>>,
 }
 
 impl Index {
@@ -94,6 +102,8 @@ pub struct LevelIndexBuilder {
     model_config: Option<ModelConfig>,
     bucket_config: Option<bucket::BucketConfig>,
     input_shape: Option<i64>,
+    levelling: Option<Levelling>,
+    is_buffer: Option<bool>,
 }
 
 impl LevelIndexBuilder {
@@ -117,7 +127,20 @@ impl LevelIndexBuilder {
         self
     }
 
-    pub fn build(&self) -> Result<LevelIndex, BuildError> {
+    pub fn levelling(&mut self, levelling: Levelling) -> &mut Self {
+        self.levelling = Some(levelling);
+        self
+    }
+
+    pub fn is_buffer(&mut self, is_buffer: bool) -> &mut Self {
+        self.is_buffer = Some(is_buffer);
+        self
+    }
+
+    pub fn build(&self) -> Result<Box<dyn LevelIndex>, BuildError> {
+        if self.is_buffer.unwrap_or(false) {
+            return self.build_buffer();
+        }
         let size = self.size.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         let model_config = self
@@ -142,29 +165,50 @@ impl LevelIndexBuilder {
         let buckets = (0..size)
             .map(|_| bucket_builder.build())
             .collect::<Result<Vec<_>, _>>()?;
-        Ok(LevelIndex { model, buckets })
+        let level_index = match self.levelling {
+            Some(Levelling::BentleySaxe) => BentleySaxe { model, buckets },
+            None => return Err(BuildError::MissingAttribute),
+        };
+        Ok(Box::new(level_index))
+    }
+
+    fn build_buffer(&self) -> Result<Box<dyn LevelIndex>, BuildError> {
+        todo!()
+    }
+}
+
+trait LevelIndex {
+    fn search(&self, key: &Tensor) -> Tensor;
+    fn insert(&mut self, value: Tensor, id: Id);
+}
+
+impl fmt::Debug for dyn LevelIndex {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Bucket") // todo
     }
 }
 
 #[derive(Debug)]
-pub struct LevelIndex {
+pub struct BentleySaxe {
     model: Box<dyn nn::Module>,
     buckets: Vec<Box<dyn bucket::Bucket>>,
 }
 
-impl LevelIndex {
-    pub fn search(&self, key: &Tensor) -> Tensor {
+impl BentleySaxe {
+    fn has_space(&self) -> bool {
+        self.buckets.iter().any(|bucket| bucket.has_space())
+    }
+}
+
+impl LevelIndex for BentleySaxe {
+    fn search(&self, key: &Tensor) -> Tensor {
         let bucket_idx = self.model.forward(key).argmax(0, true).int64_value(&[]) as usize;
         self.buckets[bucket_idx].search(key);
         // self.model.forward(&key)
         todo!()
     }
 
-    pub fn insert(&mut self, value: Tensor, id: Id) {
+    fn insert(&mut self, value: Tensor, id: Id) {
         todo!()
-    }
-
-    fn has_space(&self) -> bool {
-        self.buckets.iter().any(|bucket| bucket.has_space())
     }
 }
