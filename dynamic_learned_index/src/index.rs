@@ -7,6 +7,7 @@ use crate::{
     bucket::{self, StaticBucket},
     errors::BuildError,
     model::{self, ModelConfig},
+    Id,
 };
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -163,7 +164,7 @@ impl LevelIndex {
         todo!()
     }
 
-    pub fn insert(&mut self, value: Tensor) {
+    pub fn insert(&mut self, value: Tensor, id: Id) {
         todo!()
     }
 }

@@ -4,7 +4,9 @@ pub(crate) mod bucket;
 mod errors;
 pub mod index;
 pub mod model;
+pub mod types;
 pub use index::{Index, LevelIndex};
+pub use types::Id;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

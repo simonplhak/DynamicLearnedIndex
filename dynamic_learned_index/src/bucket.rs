@@ -3,7 +3,7 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 use tch::{kind, Tensor};
 
-use crate::errors::BuildError;
+use crate::{errors::BuildError, Id};
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
 pub struct BucketConfig {
@@ -23,7 +23,7 @@ pub(crate) enum BucketType {
 
 pub(crate) trait Bucket {
     fn search(&self, key: &Tensor) -> (Tensor, Tensor);
-    fn insert(&mut self, value: Tensor, id: i64) -> Result<(), BucketError>;
+    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), BucketError>;
 }
 
 impl fmt::Debug for dyn Bucket {
@@ -84,7 +84,7 @@ impl Bucket for StaticBucket {
         todo!()
     }
 
-    fn insert(&mut self, value: Tensor, id: i64) -> Result<(), BucketError> {
+    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), BucketError> {
         todo!()
     }
 }
