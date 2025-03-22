@@ -69,7 +69,7 @@ impl BucketBuilder {
 
         Ok(StaticBucket {
             records: Tensor::zeros([size, input_shape], kind::FLOAT_CPU),
-            ids: Tensor::zeros([size], kind::INT64_CPU),
+            ids: vec![0; size as usize],
             pointer: 0,
         })
     }
@@ -78,8 +78,18 @@ impl BucketBuilder {
 #[derive(Debug)]
 pub(crate) struct StaticBucket {
     records: Tensor, // (size, ..dim)
-    ids: Tensor,     // (size,)
+    ids: Vec<Id>,    // (size,)
     pointer: i64,
+}
+
+impl StaticBucket {
+    pub fn new(size: i64, input_shape: i64) -> Self {
+        Self {
+            records: Tensor::zeros([size, input_shape], kind::FLOAT_CPU),
+            ids: vec![0; size as usize],
+            pointer: 0,
+        }
+    }
 }
 
 impl Bucket for StaticBucket {

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tch::{nn, Device, Tensor};
 
 use crate::{
-    bucket::{self, StaticBucket},
+    bucket::{self, BucketBuilder, StaticBucket},
     errors::BuildError,
     model::{self, ModelConfig},
     Id,
@@ -40,15 +40,10 @@ impl IndexConfig {
         if self.levels.is_empty() {
             return Err(BuildError::MissingAttribute);
         }
-        if !self.levels.contains_key(&1) {
+        if !self.levels.contains_key(&0) {
             return Err(BuildError::MissingAttribute);
         }
-        let buffer = LevelIndexBuilder::default()
-            .size(self.buffer_size)
-            .input_shape(self.input_shape)
-            .is_buffer(true)
-            .build()?;
-        let levels = vec![buffer];
+        let buffer = StaticBucket::new(self.buffer_size, self.input_shape);
         let index = Index {
             levelling: self.levelling,
             levels_config: self.levels,
@@ -56,13 +51,14 @@ impl IndexConfig {
             input_shape: self.input_shape,
             arity: self.arity,
             device: self.device,
-            levels,
+            levels: Vec::new(),
+            buffer,
         };
         Ok(index)
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Index {
     levelling: Levelling,
     levels_config: HashMap<usize, LevelIndexConfig>,
@@ -71,6 +67,7 @@ pub struct Index {
     arity: i64,
     device: ModelDevice,
     levels: Vec<Box<dyn LevelIndex>>,
+    buffer: StaticBucket,
 }
 
 impl Index {
@@ -84,6 +81,7 @@ impl Index {
     }
 
     pub fn insert(&mut self, value: Tensor) {
+
         // if !self.has_space() {
         //     self.add_level();
         // }
@@ -129,7 +127,6 @@ pub struct LevelIndexBuilder {
     bucket_config: Option<bucket::BucketConfig>,
     input_shape: Option<i64>,
     levelling: Option<Levelling>,
-    is_buffer: Option<bool>,
 }
 
 impl LevelIndexBuilder {
@@ -158,15 +155,7 @@ impl LevelIndexBuilder {
         self
     }
 
-    pub fn is_buffer(&mut self, is_buffer: bool) -> &mut Self {
-        self.is_buffer = Some(is_buffer);
-        self
-    }
-
     pub fn build(&self) -> Result<Box<dyn LevelIndex>, BuildError> {
-        if self.is_buffer.unwrap_or(false) {
-            return self.build_buffer();
-        }
         let size = self.size.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         let model_config = self
@@ -197,16 +186,6 @@ impl LevelIndexBuilder {
         };
         Ok(Box::new(level_index))
     }
-
-    fn build_buffer(&self) -> Result<Box<dyn LevelIndex>, BuildError> {
-        let size = self.size.ok_or(BuildError::MissingAttribute)?;
-        let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
-        Ok(Box::new(Buffer {
-            records: Tensor::zeros([size, input_shape], tch::kind::FLOAT_CPU),
-            ids: vec![0; size as usize],
-            pointer: 0,
-        }))
-    }
 }
 
 enum LevelIndexError {
@@ -221,29 +200,6 @@ trait LevelIndex {
 impl fmt::Debug for dyn LevelIndex {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Bucket") // todo
-    }
-}
-
-#[derive(Debug)]
-pub struct Buffer {
-    records: Tensor, // (size, ..dim)
-    ids: Vec<Id>,
-    pointer: i64,
-}
-
-impl Buffer {
-    fn has_space(&self) -> bool {
-        self.pointer < self.records.size()[0]
-    }
-}
-
-impl LevelIndex for Buffer {
-    fn search(&self, key: &Tensor) -> Tensor {
-        todo!()
-    }
-
-    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), LevelIndexError> {
-        todo!()
     }
 }
 
