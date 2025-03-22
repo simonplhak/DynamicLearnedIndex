@@ -6,11 +6,11 @@ use tch::{kind, Tensor};
 use crate::{errors::BuildError, Id};
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub struct BucketConfig {
+pub(crate) struct BucketConfig {
     pub bucket_type: BucketType,
 }
 
-enum BucketError {
+pub(crate) enum BucketError {
     Overflow,
 }
 
