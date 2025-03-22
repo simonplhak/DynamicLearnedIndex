@@ -25,29 +25,55 @@ pub enum Levelling {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
+pub struct IndexConfig {
+    levelling: Levelling,
+    levels: HashMap<usize, LevelIndexConfig>,
+    buffer_size: i64,
+    bucket: bucket::BucketConfig,
+    input_shape: i64,
+    arity: i64,
+    device: ModelDevice,
+}
+
+impl IndexConfig {
+    pub fn build(self) -> Result<Index, BuildError> {
+        if self.levels.is_empty() {
+            return Err(BuildError::MissingAttribute);
+        }
+        if !self.levels.contains_key(&1) {
+            return Err(BuildError::MissingAttribute);
+        }
+        let buffer = LevelIndexBuilder::default()
+            .size(self.buffer_size)
+            .input_shape(self.input_shape)
+            .is_buffer(true)
+            .build()?;
+        let levels = vec![buffer];
+        let index = Index {
+            levelling: self.levelling,
+            levels_config: self.levels,
+            bucket_config: self.bucket,
+            input_shape: self.input_shape,
+            arity: self.arity,
+            device: self.device,
+            levels,
+        };
+        Ok(index)
+    }
+}
+
+#[derive(Debug, Default)]
 pub struct Index {
     levelling: Levelling,
-    #[serde(rename = "levels")]
     levels_config: HashMap<usize, LevelIndexConfig>,
-    #[serde(rename = "bucket")]
     bucket_config: bucket::BucketConfig,
     input_shape: i64,
     arity: i64,
     device: ModelDevice,
-    #[serde(skip)]
     levels: Vec<Box<dyn LevelIndex>>,
 }
 
 impl Index {
-    pub fn validate(&self) -> Result<(), BuildError> {
-        if self.levels_config.is_empty() {
-            return Err(BuildError::MissingAttribute);
-        }
-        if !self.levels_config.contains_key(&0) {
-            return Err(BuildError::MissingAttribute);
-        }
-        Ok(())
-    }
     pub fn search(&self, key: &Tensor) -> Tensor {
         let res = self
             .levels
@@ -177,7 +203,7 @@ impl LevelIndexBuilder {
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         Ok(Box::new(Buffer {
             records: Tensor::zeros([size, input_shape], tch::kind::FLOAT_CPU),
-            ids: Tensor::zeros([size], tch::kind::INT64_CPU),
+            ids: vec![0; size as usize],
             pointer: 0,
         }))
     }
@@ -201,7 +227,7 @@ impl fmt::Debug for dyn LevelIndex {
 #[derive(Debug)]
 pub struct Buffer {
     records: Tensor, // (size, ..dim)
-    ids: Tensor,     // (size,)
+    ids: Vec<Id>,
     pointer: i64,
 }
 

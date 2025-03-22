@@ -3,9 +3,9 @@ use tch::Tensor;
 pub(crate) mod bucket;
 mod errors;
 pub mod index;
-pub mod model;
+mod model;
 pub mod types;
-pub use index::{Index, LevelIndex};
+pub use index::{Index, IndexConfig};
 pub use types::Id;
 
 pub fn add(left: u64, right: u64) -> u64 {

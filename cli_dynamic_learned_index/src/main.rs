@@ -67,8 +67,8 @@ fn test() -> Result<()> {
     println!("Single element: {:?}", single_element);
     let path = PathBuf::from("configs/example.yaml");
     let config_content = fs::read_to_string(path)?;
-    let mut index = serde_yaml::from_str::<dynamic_learned_index::Index>(&config_content)?;
-    index.validate()?;
+    let index_config = serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?;
+    let mut index = index_config.build()?;
     print!("{:?}", index);
     let tensor = Tensor::zeros([128], tch::kind::FLOAT_CPU);
     index.insert(tensor);
