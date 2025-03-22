@@ -177,9 +177,13 @@ impl LevelIndexBuilder {
     }
 }
 
+enum LevelIndexError {
+    Overflow,
+}
+
 trait LevelIndex {
     fn search(&self, key: &Tensor) -> Tensor;
-    fn insert(&mut self, value: Tensor, id: Id);
+    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), LevelIndexError>;
 }
 
 impl fmt::Debug for dyn LevelIndex {
@@ -208,7 +212,7 @@ impl LevelIndex for BentleySaxe {
         todo!()
     }
 
-    fn insert(&mut self, value: Tensor, id: Id) {
+    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), LevelIndexError> {
         todo!()
     }
 }
