@@ -27,10 +27,14 @@ pub(crate) fn load_dataset(config: &DatasetConfig) -> Result<Tensor> {
 fn load_hdf5(path: &PathBuf, dataset_name: &str) -> Result<Tensor> {
     let emb = hdf5::File::open(path)?.dataset(dataset_name)?;
     let data = emb.read_2d::<f32>()?;
-    let x = Tensor::from_slice(data.as_slice().unwrap()).to_kind(Kind::Float);
+    let x = Tensor::from_slice(
+        data.as_slice()
+            .ok_or_else(|| anyhow::anyhow!("Failed to convert data to slice"))?,
+    )
+    .to_kind(Kind::Float);
     let x = x.reshape([
-        i64::try_from(emb.shape()[0]).unwrap(),
-        i64::try_from(emb.shape()[1]).unwrap(),
+        i64::try_from(emb.shape()[0])?,
+        i64::try_from(emb.shape()[1])?,
     ]);
 
     Ok(x)
