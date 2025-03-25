@@ -1,10 +1,15 @@
 device: cpu
-input_shape: 128
+input_shape: 768
+label_method: random
 arity: 2
+levelling: bentley_saxe
+buffer_size: 5
 bucket:
-  bucket_type: static
+  type: static
+  value: 5
+
 levels:
-  0:  # 0 should denote a buffer?? fix later
+  0:
     model:
       layers:
       - type: Linear
