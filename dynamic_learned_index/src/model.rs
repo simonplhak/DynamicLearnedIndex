@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use tch::{nn, Device};
+use tch::{nn, Device, Tensor};
 
 use crate::errors::BuildError;
 
@@ -48,7 +48,7 @@ impl ModelBuilder {
         self
     }
 
-    pub fn build(&self) -> Result<Box<dyn nn::Module>, BuildError> {
+    pub fn build(&self) -> Result<Model, BuildError> {
         let vs = nn::VarStore::new(self.device);
         let vs_root = vs.root();
         let input_nodes = self.input_nodes.ok_or(BuildError::MissingAttribute)?;
@@ -70,6 +70,66 @@ impl ModelBuilder {
                 (model, output_nodes)
             },
         );
-        Ok(Box::new(model))
+        let model = Model {
+            model: Box::new(model),
+            vs,
+        };
+        Ok(model)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Model {
+    model: Box<dyn nn::Module>,
+    vs: nn::VarStore,
+}
+
+impl Model {
+    pub fn predict(&self, xs: &tch::Tensor) -> usize {
+        self.model.forward(xs).argmax(0, false).int64_value(&[]) as usize
+    }
+
+    pub fn train(&mut self, queries: &[Tensor], labels: &Tensor) {
+        // todo
+        // let mut opt = nn::Adam::default().build(&vs, 1e-3)?;
+        // for epoch in 1..200 {
+        //     let loss = *self
+        //         .model
+        //         .forward(&m.train_images)
+        //         .cross_entropy_for_logits(&m.train_labels);
+        //     opt.backward_step(&loss);
+        //     let test_accuracy = net
+        //         .forward(&m.test_images)
+        //         .accuracy_for_logits(&m.test_labels);
+        //     println!(
+        //         "epoch: {:4} train loss: {:8.5} test acc: {:5.2}%",
+        //         epoch,
+        //         f64::from(&loss),
+        //         100. * f64::from(&test_accuracy),
+        //     );
+        // }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub(crate) enum LabelMethod {
+    #[default]
+    #[serde(rename = "knn")]
+    Knn,
+    #[serde(rename = "random")]
+    Random,
+}
+
+pub(crate) fn compute_labels(data: &[Tensor], label_method: &LabelMethod, k: i64) -> Tensor {
+    debug_assert!(!data.is_empty());
+    match label_method {
+        LabelMethod::Knn => {
+            todo!()
+            // let knn_index = index_factory(d, description, metric)
+        }
+        LabelMethod::Random => {
+            let shape = data[0].size();
+            Tensor::randint(k, &shape, tch::kind::INT64_CPU)
+        } // todo handle device
     }
 }

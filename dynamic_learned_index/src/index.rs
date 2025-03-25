@@ -1,12 +1,12 @@
 use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
-use tch::{nn, Device, Tensor};
+use tch::{Device, Tensor};
 
 use crate::{
-    bucket::{self, BucketBuilder, StaticBucket},
+    bucket::{self, Bucket, StaticBucket},
     errors::BuildError,
-    model::{self, ModelConfig},
+    model::{self, compute_labels, LabelMethod, Model, ModelConfig},
     Id,
 };
 
@@ -28,15 +28,16 @@ pub enum Levelling {
 pub struct IndexConfig {
     levelling: Levelling,
     levels: HashMap<usize, LevelIndexConfig>,
-    buffer_size: i64,
-    bucket: bucket::BucketConfig,
+    buffer_size: usize,
+    bucket: bucket::BucketType,
     input_shape: i64,
     arity: i64,
+    label_method: LabelMethod,
     device: ModelDevice,
 }
 
 impl IndexConfig {
-    pub fn build(self) -> Result<Index, BuildError> {
+    pub fn build(self) -> Result<Box<dyn Index>, BuildError> {
         if self.levels.is_empty() {
             return Err(BuildError::MissingAttribute);
         }
@@ -44,55 +45,65 @@ impl IndexConfig {
             return Err(BuildError::MissingAttribute);
         }
         let buffer = StaticBucket::new(self.buffer_size, self.input_shape);
-        let index = Index {
-            levelling: self.levelling,
-            levels_config: self.levels,
-            bucket_config: self.bucket,
-            input_shape: self.input_shape,
-            arity: self.arity,
-            device: self.device,
-            levels: Vec::new(),
-            buffer,
+        let index = match self.levelling {
+            Levelling::BentleySaxe => BentleySaxeIndex {
+                levels_config: self.levels,
+                bucket_type: self.bucket,
+                input_shape: self.input_shape,
+                arity: self.arity,
+                device: self.device,
+                levels: Vec::new(),
+                label_method: self.label_method,
+                buffer,
+            },
         };
-        Ok(index)
+        Ok(Box::new(index))
+    }
+}
+
+pub trait Index {
+    fn search(&self, key: &Tensor) -> Tensor;
+    fn insert(&mut self, value: Tensor, id: Id);
+    fn display(&self) -> String;
+}
+
+impl fmt::Debug for dyn Index {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.display()) // todo
     }
 }
 
 #[derive(Debug)]
-pub struct Index {
-    levelling: Levelling,
+pub struct BentleySaxeIndex {
     levels_config: HashMap<usize, LevelIndexConfig>,
-    bucket_config: bucket::BucketConfig,
+    bucket_type: bucket::BucketType,
     input_shape: i64,
     arity: i64,
-    device: ModelDevice,
-    levels: Vec<Box<dyn LevelIndex>>,
+    label_method: LabelMethod,
+    device: ModelDevice, // todo propagate to model
+    levels: Vec<LevelIndex>,
     buffer: StaticBucket,
 }
 
-impl Index {
-    pub fn search(&self, key: &Tensor) -> Tensor {
-        let res = self
-            .levels
+impl BentleySaxeIndex {
+    fn available_level(&self) -> Option<usize> {
+        let mut count = self.buffer.size();
+        self.levels
             .iter()
-            .map(|level_index| level_index.search(key))
-            .collect::<Vec<_>>();
-        todo!()
-    }
-
-    pub fn insert(&mut self, value: Tensor) {
-
-        // if !self.has_space() {
-        //     self.add_level();
-        // }
-        // todo!()
+            .enumerate()
+            .find(|(_, level)| {
+                let occupied = level.occupied();
+                let fits = level.size() - occupied >= count;
+                if !fits {
+                    count += occupied;
+                }
+                fits
+            })
+            .map(|(i, _)| i)
     }
 
     fn get_level_index_config(&self) -> LevelIndexConfig {
         let curr_level = self.levels.len();
-        // self.levels_config.iter().find_map(|level_config| {
-        //     level_config.get(&curr_level).map(|config| config.clone())
-        // })
         self.levels_config
             .iter()
             .take_while(|(level, _)| **level <= curr_level)
@@ -101,17 +112,76 @@ impl Index {
             .unwrap()
     }
 
-    fn add_level(&mut self) {
+    fn add_level(&mut self) -> usize {
         let level_index_config = self.get_level_index_config();
         let level_index = LevelIndexBuilder::default()
-            .size(self.arity)
-            .input_shape(self.input_shape) // todo this should be self.artity ** level, but waiting for buffer specification
+            .n_buckets(self.arity.pow(self.levels.len() as u32 + 1))
+            .input_shape(self.input_shape)
             .model(level_index_config.model.clone())
-            .bucket(self.bucket_config.clone())
+            .bucket(self.bucket_type)
             .build()
             .unwrap();
         self.levels.push(level_index);
-        println!("Added level");
+        self.levels.len() - 1
+    }
+
+    fn lower_level_data(&mut self, level_idx: usize) -> (Vec<Tensor>, Vec<Id>) {
+        let (data, ids): (Vec<Vec<Tensor>>, Vec<Vec<Id>>) = self
+            .levels
+            .iter_mut()
+            .take(level_idx)
+            .map(|level| level.get_data())
+            .unzip();
+        let (buffer_data, buffer_ids) = self.buffer.get_data();
+        let data = data
+            .into_iter()
+            .flatten()
+            .chain(buffer_data)
+            .collect::<Vec<_>>();
+        let ids = ids
+            .into_iter()
+            .flatten()
+            .chain(buffer_ids)
+            .collect::<Vec<_>>();
+        (data, ids)
+    }
+}
+
+impl Index for BentleySaxeIndex {
+    fn search(&self, key: &Tensor) -> Tensor {
+        let res = self
+            .levels
+            .iter()
+            .map(|level_index| level_index.search(key))
+            .collect::<Vec<_>>();
+        todo!()
+    }
+
+    fn insert(&mut self, value: Tensor, id: Id) {
+        if self.buffer.has_space(1) {
+            self.buffer.insert(value, id);
+            return; // value fits into buffer
+        }
+        match self.available_level() {
+            Some(level_idx) => {
+                let (data, ids) = self.lower_level_data(level_idx);
+                let level = &mut self.levels[level_idx];
+                level.insert(data, ids);
+            }
+            None => {
+                let level_idx = self.add_level();
+                let (data, ids) = self.lower_level_data(level_idx);
+                println!("data: {:?}", data);
+                let level = &mut self.levels[level_idx];
+                let labels = compute_labels(&data, &self.label_method, level.n_buckets() as i64);
+                level.train(&data, &labels);
+                level.insert(data, ids);
+            }
+        };
+    }
+
+    fn display(&self) -> String {
+        format!("{:?}", self)
     }
 }
 
@@ -121,17 +191,16 @@ pub struct LevelIndexConfig {
 }
 
 #[derive(Debug, Default)]
-pub struct LevelIndexBuilder {
-    size: Option<i64>,
+pub(crate) struct LevelIndexBuilder {
+    n_buckets: Option<i64>,
     model_config: Option<ModelConfig>,
-    bucket_config: Option<bucket::BucketConfig>,
+    bucket_type: Option<bucket::BucketType>,
     input_shape: Option<i64>,
-    levelling: Option<Levelling>,
 }
 
 impl LevelIndexBuilder {
-    pub fn size(&mut self, size: i64) -> &mut Self {
-        self.size = Some(size);
+    pub fn n_buckets(&mut self, size: i64) -> &mut Self {
+        self.n_buckets = Some(size);
         self
     }
 
@@ -140,8 +209,8 @@ impl LevelIndexBuilder {
         self
     }
 
-    pub fn bucket(&mut self, bucket: bucket::BucketConfig) -> &mut Self {
-        self.bucket_config = Some(bucket);
+    pub fn bucket(&mut self, bucket: bucket::BucketType) -> &mut Self {
+        self.bucket_type = Some(bucket);
         self
     }
 
@@ -150,20 +219,11 @@ impl LevelIndexBuilder {
         self
     }
 
-    pub fn levelling(&mut self, levelling: Levelling) -> &mut Self {
-        self.levelling = Some(levelling);
-        self
-    }
-
-    pub fn build(&self) -> Result<Box<dyn LevelIndex>, BuildError> {
-        let size = self.size.ok_or(BuildError::MissingAttribute)?;
+    pub fn build(&self) -> Result<LevelIndex, BuildError> {
+        let n_buckets = self.n_buckets.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         let model_config = self
             .model_config
-            .as_ref()
-            .ok_or(BuildError::MissingAttribute)?;
-        let bucket_config = self
-            .bucket_config
             .as_ref()
             .ok_or(BuildError::MissingAttribute)?;
         let mut model_builder = model::ModelBuilder::default();
@@ -173,57 +233,68 @@ impl LevelIndexBuilder {
         });
         let model = model_builder.build()?;
         let mut bucket_builder = bucket::BucketBuilder::default();
+        let bucket_type = self
+            .bucket_type
+            .as_ref()
+            .ok_or(BuildError::MissingAttribute)?;
         bucket_builder
             .input_shape(input_shape)
-            .size(size)
-            .bucket_type(bucket_config.bucket_type);
-        let buckets = (0..size)
+            .bucket_type(*bucket_type);
+        let buckets = (0..n_buckets)
             .map(|_| bucket_builder.build())
             .collect::<Result<Vec<_>, _>>()?;
-        let level_index = match self.levelling {
-            Some(Levelling::BentleySaxe) => BentleySaxe { model, buckets },
-            None => return Err(BuildError::MissingAttribute),
-        };
-        Ok(Box::new(level_index))
-    }
-}
-
-enum LevelIndexError {
-    Overflow,
-}
-
-trait LevelIndex {
-    fn search(&self, key: &Tensor) -> Tensor;
-    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), LevelIndexError>;
-}
-
-impl fmt::Debug for dyn LevelIndex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Bucket") // todo
+        let level_index = LevelIndex { model, buckets };
+        Ok(level_index)
     }
 }
 
 #[derive(Debug)]
-pub struct BentleySaxe {
-    model: Box<dyn nn::Module>,
+pub struct LevelIndex {
+    model: Model,
     buckets: Vec<Box<dyn bucket::Bucket>>,
 }
 
-impl BentleySaxe {
-    fn has_space(&self) -> bool {
-        self.buckets.iter().any(|bucket| bucket.has_space())
+impl LevelIndex {
+    fn size(&self) -> usize {
+        self.buckets.iter().map(|bucket| bucket.size()).sum()
     }
-}
 
-impl LevelIndex for BentleySaxe {
-    fn search(&self, key: &Tensor) -> Tensor {
-        let bucket_idx = self.model.forward(key).argmax(0, true).int64_value(&[]) as usize;
-        self.buckets[bucket_idx].search(key);
+    fn occupied(&self) -> usize {
+        self.buckets.iter().map(|bucket| bucket.occupied()).sum()
+    }
+
+    fn search(&self, query: &Tensor) -> Tensor {
+        let bucket_idx = self.model.predict(query);
+        self.buckets[bucket_idx].search(query);
         // self.model.forward(&key)
         todo!()
     }
 
-    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), LevelIndexError> {
-        todo!()
+    fn train(&mut self, queries: &[Tensor], labels: &Tensor) {
+        self.model.train(queries, labels);
+    }
+
+    fn insert(&mut self, data: Vec<Tensor>, ids: Vec<Id>) {
+        data.into_iter().zip(ids).for_each(|(data, id)| {
+            let bucket_idx = self.model.predict(&data);
+            self.buckets[bucket_idx].insert(data, id);
+        });
+    }
+
+    fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>) {
+        let (data, ids): (Vec<Vec<Tensor>>, Vec<Vec<Id>>) = self
+            .buckets
+            .iter_mut()
+            .filter(|bucket| bucket.occupied() > 0)
+            .map(|bucket| bucket.get_data())
+            .unzip();
+        (
+            data.into_iter().flatten().collect(),
+            ids.into_iter().flatten().collect(),
+        )
+    }
+
+    fn n_buckets(&self) -> usize {
+        self.buckets.len()
     }
 }

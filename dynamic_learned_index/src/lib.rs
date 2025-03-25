@@ -1,3 +1,4 @@
+// use faiss::index_factory;
 use tch::Tensor;
 
 pub(crate) mod bucket;
@@ -16,6 +17,10 @@ pub fn print_tensor() {
     let t = Tensor::from_slice(&[3, 1, 4, 1, 5]);
     let t = t * 2;
     t.print();
+}
+
+pub fn test() {
+    // let knn_index = index_factory(d, description, metric)
 }
 
 #[cfg(test)]

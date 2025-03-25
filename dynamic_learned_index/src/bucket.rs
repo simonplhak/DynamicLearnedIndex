@@ -1,30 +1,30 @@
 use std::fmt;
 
 use serde::{Deserialize, Serialize};
-use tch::{kind, Tensor};
+use tch::Tensor;
 
 use crate::{errors::BuildError, Id};
 
-#[derive(Debug, Default, Serialize, Deserialize, Clone)]
-pub(crate) struct BucketConfig {
-    pub bucket_type: BucketType,
-}
-
-pub(crate) enum BucketError {
-    Overflow,
-}
-
-#[derive(Debug, Default, Serialize, Deserialize, Clone, Copy)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
+#[serde(tag = "type", content = "value")]
 pub(crate) enum BucketType {
-    #[default]
     #[serde(rename = "static")]
-    Static,
+    Static(usize),
+}
+
+impl Default for BucketType {
+    fn default() -> Self {
+        BucketType::Static(10)
+    }
 }
 
 pub(crate) trait Bucket {
-    fn search(&self, key: &Tensor) -> (Tensor, Tensor);
-    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), BucketError>;
-    fn has_space(&self) -> bool;
+    fn search(&self, query: &Tensor) -> (Tensor, Tensor);
+    fn insert(&mut self, value: Tensor, id: Id);
+    fn size(&self) -> usize;
+    fn has_space(&self, count: usize) -> bool;
+    fn occupied(&self) -> usize;
+    fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>);
 }
 
 impl fmt::Debug for dyn Bucket {
@@ -35,17 +35,11 @@ impl fmt::Debug for dyn Bucket {
 
 #[derive(Debug, Default)]
 pub(crate) struct BucketBuilder {
-    size: Option<i64>,
     input_shape: Option<i64>,
     bucket_type: BucketType,
 }
 
 impl BucketBuilder {
-    pub fn size(&mut self, size: i64) -> &mut Self {
-        self.size = Some(size);
-        self
-    }
-
     pub fn input_shape(&mut self, input_shape: i64) -> &mut Self {
         self.input_shape = Some(input_shape);
         self
@@ -58,50 +52,66 @@ impl BucketBuilder {
 
     pub fn build(&self) -> Result<Box<dyn Bucket>, BuildError> {
         let bucket = match self.bucket_type {
-            BucketType::Static => self.build_static_bucket(),
+            BucketType::Static(size) => self.build_static_bucket(size),
         };
         bucket.map(|bucket| Box::new(bucket) as Box<dyn Bucket>)
     }
 
-    fn build_static_bucket(&self) -> Result<StaticBucket, BuildError> {
-        let size = self.size.ok_or(BuildError::MissingAttribute)?;
+    fn build_static_bucket(&self, size: usize) -> Result<StaticBucket, BuildError> {
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
-
-        Ok(StaticBucket {
-            records: Tensor::zeros([size, input_shape], kind::FLOAT_CPU),
-            ids: vec![0; size as usize],
-            pointer: 0,
-        })
+        Ok(StaticBucket::new(size as usize, input_shape))
     }
 }
 
 #[derive(Debug)]
 pub(crate) struct StaticBucket {
-    records: Tensor, // (size, ..dim)
-    ids: Vec<Id>,    // (size,)
-    pointer: i64,
+    records: Vec<Tensor>,
+    ids: Vec<Id>,
+    size: usize,
+    input_shape: i64,
 }
 
 impl StaticBucket {
-    pub fn new(size: i64, input_shape: i64) -> Self {
+    pub fn new(size: usize, input_shape: i64) -> Self {
+        let records = Vec::with_capacity(size);
+        let ids = Vec::with_capacity(size);
         Self {
-            records: Tensor::zeros([size, input_shape], kind::FLOAT_CPU),
-            ids: vec![0; size as usize],
-            pointer: 0,
+            records,
+            ids,
+            size,
+            input_shape,
         }
     }
 }
 
 impl Bucket for StaticBucket {
-    fn search(&self, key: &Tensor) -> (Tensor, Tensor) {
+    fn search(&self, query: &Tensor) -> (Tensor, Tensor) {
         todo!()
     }
 
-    fn insert(&mut self, value: Tensor, id: Id) -> Result<(), BucketError> {
-        todo!()
+    fn insert(&mut self, value: Tensor, id: Id) {
+        debug_assert!(self.has_space(1), "Bucket is full size={}", self.size);
+        debug_assert_eq!(value.size()[0], self.input_shape);
+        println!("Inserting value: {:?}", value);
+        self.records.push(value);
+        self.ids.push(id);
     }
 
-    fn has_space(&self) -> bool {
-        self.pointer == self.records.size()[0]
+    fn has_space(&self, count: usize) -> bool {
+        self.records.len() + count <= self.size
+    }
+
+    fn occupied(&self) -> usize {
+        self.records.len()
+    }
+    fn size(&self) -> usize {
+        self.size
+    }
+
+    fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>) {
+        let size = self.size();
+        let records = std::mem::replace(&mut self.records, Vec::with_capacity(size));
+        let ids = std::mem::replace(&mut self.ids, Vec::with_capacity(size));
+        (records, ids)
     }
 }
