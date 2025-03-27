@@ -1,8 +1,9 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use dynamic_learned_index::{self, Index};
+use dataset::{config_from_yaml, load_dataset};
+use dynamic_learned_index::{self};
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 use tch::{IndexOp, Tensor};
 mod config;
 mod dataset;
@@ -23,16 +24,15 @@ enum Commands {
 #[derive(Parser, Debug, Serialize, Deserialize)]
 struct ExperimentConfig {
     experiment_name: PathBuf,
-    #[arg(short, long, default_value_t = dataset::Dataset::K300)]
-    dataset: dataset::Dataset,
+    #[arg(short, long)]
+    dataset_config: PathBuf,
     #[arg(short, long)]
     force: bool,
 }
 
 fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
     let config = config::Config::new();
-
-    let dataset_config = experiment_config.dataset.config();
+    let dataset_config = config_from_yaml(&experiment_config.dataset_config)?;
     let experiment_dir = config
         .experiments_dir
         .join(&experiment_config.experiment_name);
@@ -47,7 +47,7 @@ fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
         }
     }
     fs::create_dir(experiment_dir.clone())?;
-    let ds = dataset::load_dataset(&dataset_config)?;
+    let ds = dataset::load_dataset(&dataset_config.dataset)?;
     let config_yaml = serde_yaml::to_string(&experiment_config)?;
     fs::write(experiment_dir.join("config.yaml"), config_yaml)?;
 
@@ -70,13 +70,23 @@ fn test() -> Result<()> {
     let index_config = serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?;
     let mut index = index_config.build()?;
     print!("{:?}", index);
-    let tensor = Tensor::zeros([128], tch::kind::FLOAT_CPU);
-    index.insert(tensor);
+    // let tensor = Tensor::zeros([768], tch::kind::FLOAT_CPU);
+    let dataset_config = config_from_yaml(&PathBuf::from("data/example/config.yaml"))?;
+    let ds = load_dataset(&dataset_config.dataset)?;
+    let limit = 10;
+    (0..limit).for_each(|i| {
+        let tensor = ds.i((i, ..));
+        println!("Inserting tensor: {} shape={:?}", i, tensor.size());
+        index.insert(tensor, i as u32);
+    });
+    println!("{:?}", ds.size());
     Ok(())
 }
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    structured_logger::Builder::default().init();
 
     match &cli.command {
         Commands::Experiment(config) => experiment(config),
