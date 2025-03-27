@@ -1,0 +1,15 @@
+dataset:
+  type: h5
+  value:
+    path: data/example/data.h5
+    dataset_name: emb
+queries:
+  type: h5
+  value:
+    path: data/example/queries.h5
+    dataset_name: emb
+ground_truth:
+  type: h5
+  value:
+    path: data/example/gt.h5
+    dataset_name: knns

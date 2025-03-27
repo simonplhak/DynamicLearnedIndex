@@ -1,4 +1,7 @@
-*.h5
+/data/*
+!/data/example
+!/data/example/*
+!.gitkeep
 __pycache__/
 .idea/
 experiments/results/*/
