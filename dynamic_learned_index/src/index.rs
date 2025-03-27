@@ -1,14 +1,14 @@
 use std::{collections::HashMap, fmt};
 
-use serde::{Deserialize, Serialize};
-use tch::{Device, Tensor};
-
 use crate::{
     bucket::{self, Bucket, StaticBucket},
     errors::BuildError,
     model::{self, compute_labels, LabelMethod, Model, ModelConfig},
     Id,
 };
+use log::info;
+use serde::{Deserialize, Serialize};
+use tch::{Device, Tensor};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub enum ModelDevice {
@@ -44,7 +44,7 @@ impl IndexConfig {
         if !self.levels.contains_key(&0) {
             return Err(BuildError::MissingAttribute);
         }
-        let buffer = StaticBucket::new(self.buffer_size, self.input_shape);
+        let buffer = Bucket::Static(StaticBucket::new(self.buffer_size, self.input_shape));
         let index = match self.levelling {
             Levelling::BentleySaxe => BentleySaxeIndex {
                 levels_config: self.levels,
@@ -57,6 +57,7 @@ impl IndexConfig {
                 buffer,
             },
         };
+        info!(index:? = index; "index built");
         Ok(Box::new(index))
     }
 }
@@ -73,7 +74,7 @@ impl fmt::Debug for dyn Index {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct BentleySaxeIndex {
     levels_config: HashMap<usize, LevelIndexConfig>,
     bucket_type: bucket::BucketType,
@@ -82,7 +83,7 @@ pub struct BentleySaxeIndex {
     label_method: LabelMethod,
     device: ModelDevice, // todo propagate to model
     levels: Vec<LevelIndex>,
-    buffer: StaticBucket,
+    buffer: Bucket,
 }
 
 impl BentleySaxeIndex {
@@ -181,7 +182,7 @@ impl Index for BentleySaxeIndex {
     }
 
     fn display(&self) -> String {
-        format!("{:?}", self)
+        serde_json::to_string(self).map_err(|_| fmt::Error).unwrap()
     }
 }
 
@@ -248,10 +249,11 @@ impl LevelIndexBuilder {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub struct LevelIndex {
+    #[serde(skip)]
     model: Model,
-    buckets: Vec<Box<dyn bucket::Bucket>>,
+    buckets: Vec<Bucket>,
 }
 
 impl LevelIndex {

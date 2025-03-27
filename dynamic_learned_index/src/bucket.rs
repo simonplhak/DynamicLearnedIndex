@@ -1,4 +1,4 @@
-use std::fmt;
+use std::fmt::Debug;
 
 use serde::{Deserialize, Serialize};
 use tch::Tensor;
@@ -18,18 +18,46 @@ impl Default for BucketType {
     }
 }
 
-pub(crate) trait Bucket {
-    fn search(&self, query: &Tensor) -> (Tensor, Tensor);
-    fn insert(&mut self, value: Tensor, id: Id);
-    fn size(&self) -> usize;
-    fn has_space(&self, count: usize) -> bool;
-    fn occupied(&self) -> usize;
-    fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>);
+#[derive(Debug, Serialize)]
+pub(crate) enum Bucket {
+    Static(StaticBucket),
 }
 
-impl fmt::Debug for dyn Bucket {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Bucket") // todo
+impl Bucket {
+    pub fn search(&self, query: &Tensor) -> (Tensor, Tensor) {
+        match self {
+            Bucket::Static(bucket) => bucket.search(query),
+        }
+    }
+
+    pub fn insert(&mut self, value: Tensor, id: Id) {
+        match self {
+            Bucket::Static(bucket) => bucket.insert(value, id),
+        }
+    }
+
+    pub fn size(&self) -> usize {
+        match self {
+            Bucket::Static(bucket) => bucket.size(),
+        }
+    }
+
+    pub fn has_space(&self, count: usize) -> bool {
+        match self {
+            Bucket::Static(bucket) => bucket.has_space(count),
+        }
+    }
+
+    pub fn occupied(&self) -> usize {
+        match self {
+            Bucket::Static(bucket) => bucket.occupied(),
+        }
+    }
+
+    pub fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>) {
+        match self {
+            Bucket::Static(bucket) => bucket.get_data(),
+        }
     }
 }
 
@@ -50,22 +78,24 @@ impl BucketBuilder {
         self
     }
 
-    pub fn build(&self) -> Result<Box<dyn Bucket>, BuildError> {
+    pub fn build(&self) -> Result<Bucket, BuildError> {
         let bucket = match self.bucket_type {
-            BucketType::Static(size) => self.build_static_bucket(size),
+            BucketType::Static(size) => Bucket::Static(self.build_static_bucket(size)?),
         };
-        bucket.map(|bucket| Box::new(bucket) as Box<dyn Bucket>)
+        Ok(bucket)
     }
 
     fn build_static_bucket(&self, size: usize) -> Result<StaticBucket, BuildError> {
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
-        Ok(StaticBucket::new(size as usize, input_shape))
+        Ok(StaticBucket::new(size, input_shape))
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize)]
 pub(crate) struct StaticBucket {
+    #[serde(skip)]
     records: Vec<Tensor>,
+    #[serde(skip)]
     ids: Vec<Id>,
     size: usize,
     input_shape: i64,
@@ -82,9 +112,7 @@ impl StaticBucket {
             input_shape,
         }
     }
-}
 
-impl Bucket for StaticBucket {
     fn search(&self, query: &Tensor) -> (Tensor, Tensor) {
         todo!()
     }
@@ -92,7 +120,6 @@ impl Bucket for StaticBucket {
     fn insert(&mut self, value: Tensor, id: Id) {
         debug_assert!(self.has_space(1), "Bucket is full size={}", self.size);
         debug_assert_eq!(value.size()[0], self.input_shape);
-        println!("Inserting value: {:?}", value);
         self.records.push(value);
         self.ids.push(id);
     }
