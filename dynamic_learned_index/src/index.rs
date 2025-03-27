@@ -60,7 +60,7 @@ impl IndexConfig {
                 Index::BentleySaxe(index)
             }
         };
-        info!(index:? = index; "index built");
+        info!(index:? = index; "index:build");
         Ok(index)
     }
 }
@@ -135,14 +135,16 @@ impl BentleySaxeIndex {
 
     fn add_level(&mut self) -> usize {
         let level_index_config = self.get_level_index_config();
+        let n_buckets = self.arity.pow(self.levels.len() as u32 + 1);
         let level_index = LevelIndexBuilder::default()
-            .n_buckets(self.arity.pow(self.levels.len() as u32 + 1))
+            .n_buckets(n_buckets)
             .input_shape(self.input_shape)
             .model(level_index_config.model.clone())
             .bucket(self.bucket_type)
             .build()
             .unwrap();
         self.levels.push(level_index);
+        info!(level:? = self.levels.len() - 1, n_buckets:? = n_buckets; "index:new level");
         self.levels.len() - 1
     }
 
@@ -190,7 +192,6 @@ impl BentleySaxeIndex {
             None => {
                 let level_idx = self.add_level();
                 let (data, ids) = self.lower_level_data(level_idx);
-                println!("data: {:?}", data);
                 let level = &mut self.levels[level_idx];
                 let labels = compute_labels(&data, &self.label_method, level.n_buckets() as i64);
                 level.train(&data, &labels);

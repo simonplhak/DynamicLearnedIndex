@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use dataset::{config_from_yaml, load_dataset};
 use dynamic_learned_index::{self};
+use log::info;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use tch::{IndexOp, Tensor};
@@ -50,27 +51,15 @@ fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
     let ds = dataset::load_dataset(&dataset_config.dataset)?;
     let config_yaml = serde_yaml::to_string(&experiment_config)?;
     fs::write(experiment_dir.join("config.yaml"), config_yaml)?;
-
-    println!("{:?}, {:?}, {:?}", experiment_config, dataset_config, ds);
-
+    info!(dataset_size:? = ds.size(); "experiment");
     Ok(())
 }
 
 fn test() -> Result<()> {
-    let tensor = Tensor::zeros([3, 4, 5], tch::kind::FLOAT_CPU);
-    println!("shape: {:?}", tensor.size());
-    tensor.print();
-    let slice = tensor.i((.., 1, ..));
-    println!("Slice: {:?}", slice);
-
-    let single_element = tensor.i((0, 1, 2));
-    println!("Single element: {:?}", single_element);
     let path = PathBuf::from("configs/example.yaml");
     let config_content = fs::read_to_string(path)?;
     let index_config = serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?;
     let mut index = index_config.build()?;
-    print!("{:?}", index);
-    // let tensor = Tensor::zeros([768], tch::kind::FLOAT_CPU);
     let dataset_config = config_from_yaml(&PathBuf::from("data/example/config.yaml"))?;
     let ds = load_dataset(&dataset_config.dataset)?;
     let limit = 10;
