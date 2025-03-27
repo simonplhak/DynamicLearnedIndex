@@ -5,7 +5,7 @@ use dynamic_learned_index::{self};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
-use tch::{IndexOp, Tensor};
+use tch::IndexOp;
 mod config;
 mod dataset;
 
