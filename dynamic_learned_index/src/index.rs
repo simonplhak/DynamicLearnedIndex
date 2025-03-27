@@ -37,7 +37,7 @@ pub struct IndexConfig {
 }
 
 impl IndexConfig {
-    pub fn build(self) -> Result<Box<dyn Index>, BuildError> {
+    pub fn build(self) -> Result<Index, BuildError> {
         if self.levels.is_empty() {
             return Err(BuildError::MissingAttribute);
         }
@@ -46,31 +46,51 @@ impl IndexConfig {
         }
         let buffer = Bucket::Static(StaticBucket::new(self.buffer_size, self.input_shape));
         let index = match self.levelling {
-            Levelling::BentleySaxe => BentleySaxeIndex {
-                levels_config: self.levels,
-                bucket_type: self.bucket,
-                input_shape: self.input_shape,
-                arity: self.arity,
-                device: self.device,
-                levels: Vec::new(),
-                label_method: self.label_method,
-                buffer,
-            },
+            Levelling::BentleySaxe => {
+                let index = BentleySaxeIndex {
+                    levels_config: self.levels,
+                    bucket_type: self.bucket,
+                    input_shape: self.input_shape,
+                    arity: self.arity,
+                    device: self.device,
+                    levels: Vec::new(),
+                    label_method: self.label_method,
+                    buffer,
+                };
+                Index::BentleySaxe(index)
+            }
         };
         info!(index:? = index; "index built");
-        Ok(Box::new(index))
+        Ok(index)
     }
 }
 
-pub trait Index {
-    fn search(&self, key: &Tensor) -> Tensor;
-    fn insert(&mut self, value: Tensor, id: Id);
-    fn display(&self) -> String;
+#[derive(Serialize)]
+pub enum Index {
+    BentleySaxe(BentleySaxeIndex),
 }
 
-impl fmt::Debug for dyn Index {
+impl fmt::Debug for Index {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.display()) // todo
+        write!(
+            f,
+            "{}",
+            serde_json::to_string(self).map_err(|_| fmt::Error)?
+        )
+    }
+}
+
+impl Index {
+    pub fn search(&self, key: &Tensor) -> Tensor {
+        match self {
+            Index::BentleySaxe(index) => index.search(key),
+        }
+    }
+
+    pub fn insert(&mut self, value: Tensor, id: Id) {
+        match self {
+            Index::BentleySaxe(index) => index.insert(value, id),
+        }
     }
 }
 
@@ -146,9 +166,7 @@ impl BentleySaxeIndex {
             .collect::<Vec<_>>();
         (data, ids)
     }
-}
 
-impl Index for BentleySaxeIndex {
     fn search(&self, key: &Tensor) -> Tensor {
         let res = self
             .levels
@@ -179,10 +197,6 @@ impl Index for BentleySaxeIndex {
                 level.insert(data, ids);
             }
         };
-    }
-
-    fn display(&self) -> String {
-        serde_json::to_string(self).map_err(|_| fmt::Error).unwrap()
     }
 }
 
