@@ -5,6 +5,7 @@ use dynamic_learned_index::{self};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
+use structured_logger::json::new_writer;
 use tch::IndexOp;
 mod config;
 mod dataset;
@@ -48,6 +49,13 @@ fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
         }
     }
     fs::create_dir(experiment_dir.clone())?;
+    structured_logger::Builder::default()
+        .with_target_writer("*", new_writer(std::io::stdout()))
+        .with_target_writer(
+            "*",
+            new_writer(fs::File::create(experiment_dir.join("logs.json"))?),
+        )
+        .init();
     let ds = dataset::load_dataset(&dataset_config.dataset)?;
     let config_yaml = serde_yaml::to_string(&experiment_config)?;
     fs::write(experiment_dir.join("config.yaml"), config_yaml)?;
@@ -56,6 +64,17 @@ fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
 }
 
 fn test() -> Result<()> {
+    let experiment_dir = PathBuf::from("experiments_data/example");
+    if !experiment_dir.exists() {
+        fs::create_dir_all(&experiment_dir)?;
+    }
+    structured_logger::Builder::default()
+        .with_target_writer("*", new_writer(std::io::stdout()))
+        .with_target_writer(
+            "*",
+            new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
+        )
+        .init();
     let path = PathBuf::from("configs/example.yaml");
     let config_content = fs::read_to_string(path)?;
     let index_config = serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?;
@@ -74,8 +93,6 @@ fn test() -> Result<()> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-
-    structured_logger::Builder::default().init();
 
     match &cli.command {
         Commands::Experiment(config) => experiment(config),
