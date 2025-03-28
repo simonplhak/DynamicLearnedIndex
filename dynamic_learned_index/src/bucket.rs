@@ -114,7 +114,15 @@ impl StaticBucket {
     }
 
     fn search(&self, query: &Tensor) -> (Tensor, Tensor) {
-        todo!()
+        // todo implement search, this is just for ilustration
+        (
+            Tensor::randint(
+                self.records.len() as i64,
+                [self.records.len() as i64],
+                tch::kind::INT64_CPU,
+            ),
+            Tensor::rand([self.records.len() as i64], (tch::kind::FLOAT_CPU)),
+        )
     }
 
     fn insert(&mut self, value: Tensor, id: Id) {

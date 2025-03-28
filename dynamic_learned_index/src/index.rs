@@ -81,7 +81,7 @@ impl fmt::Debug for Index {
 }
 
 impl Index {
-    pub fn search(&self, key: &Tensor) -> Tensor {
+    pub fn search(&self, key: &Tensor) -> (Tensor, Tensor) {
         match self {
             Index::BentleySaxe(index) => index.search(key),
         }
@@ -169,12 +169,20 @@ impl BentleySaxeIndex {
         (data, ids)
     }
 
-    fn search(&self, key: &Tensor) -> Tensor {
-        let res = self
-            .levels
+    fn buckets2visit(&self, query: &Tensor) -> Vec<&Bucket> {
+        self.levels
             .iter()
-            .map(|level_index| level_index.search(key))
+            .map(|level| level.bucket2visit(query))
+            .collect()
+    }
+
+    fn search(&self, query: &Tensor) -> (Tensor, Tensor) {
+        let buckets2visit = self.buckets2visit(query);
+        let x = buckets2visit
+            .iter()
+            .map(|bucket| bucket.search(query))
             .collect::<Vec<_>>();
+        // todo: how to merge results?
         todo!()
     }
 
@@ -278,6 +286,11 @@ impl LevelIndex {
 
     fn occupied(&self) -> usize {
         self.buckets.iter().map(|bucket| bucket.occupied()).sum()
+    }
+
+    fn bucket2visit(&self, query: &Tensor) -> &Bucket {
+        let bucket_idx = self.model.predict(query);
+        &self.buckets[bucket_idx]
     }
 
     fn search(&self, query: &Tensor) -> Tensor {
