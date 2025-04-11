@@ -35,7 +35,7 @@ impl Bucket {
         // todo take from env varaible
         // log only every 10th insert to avoid flooding
         if self.occupied() % 5 == 0 {
-            info!(size=self.size(), occupied=self.occupied(); "bucket:insert");
+            info!(size=self.size(), occupied=self.occupied(), id=self.id(); "bucket:insert");
         }
         assert!(self.has_space(1), "Bucket is full size={}", self.size());
         match self {
@@ -44,7 +44,7 @@ impl Bucket {
     }
 
     pub fn insert_many(&mut self, values: Vec<Tensor>, ids: Vec<Id>) {
-        info!(size=self.size(), occupied=self.occupied(), values_len=values.len(); "bucket:insert_many");
+        info!(size=self.size(), occupied=self.occupied(), id=self.id(), values_len=values.len(); "bucket:insert_many");
         assert!(values.len() == ids.len());
         assert!(
             self.has_space(values.len()),
@@ -79,12 +79,19 @@ impl Bucket {
             Bucket::Static(bucket) => bucket.get_data(),
         }
     }
+
+    fn id(&self) -> &str {
+        match self {
+            Bucket::Static(bucket) => bucket.id(),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct BucketBuilder {
     input_shape: Option<i64>,
     bucket_type: BucketType,
+    id: Option<String>,
 }
 
 impl BucketBuilder {
@@ -98,6 +105,11 @@ impl BucketBuilder {
         self
     }
 
+    pub fn id(&mut self, id: String) -> &mut Self {
+        self.id = Some(id);
+        self
+    }
+
     pub fn build(&self) -> Result<Bucket, BuildError> {
         let bucket = match self.bucket_type {
             BucketType::Static(size) => Bucket::Static(self.build_static_bucket(size)?),
@@ -107,12 +119,14 @@ impl BucketBuilder {
 
     fn build_static_bucket(&self, size: usize) -> Result<StaticBucket, BuildError> {
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
-        Ok(StaticBucket::new(size, input_shape))
+        let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
+        Ok(StaticBucket::new(id, size, input_shape))
     }
 }
 
 #[derive(Debug, Serialize)]
 pub(crate) struct StaticBucket {
+    id: String,
     #[serde(skip)]
     records: Vec<Tensor>,
     #[serde(skip)]
@@ -122,10 +136,11 @@ pub(crate) struct StaticBucket {
 }
 
 impl StaticBucket {
-    pub fn new(size: usize, input_shape: i64) -> Self {
+    pub fn new(id: String, size: usize, input_shape: i64) -> Self {
         let records = Vec::with_capacity(size);
         let ids = Vec::with_capacity(size);
         Self {
+            id,
             records,
             ids,
             size,
@@ -172,5 +187,9 @@ impl StaticBucket {
         let records = std::mem::replace(&mut self.records, Vec::with_capacity(size));
         let ids = std::mem::replace(&mut self.ids, Vec::with_capacity(size));
         (records, ids)
+    }
+
+    fn id(&self) -> &str {
+        &self.id
     }
 }

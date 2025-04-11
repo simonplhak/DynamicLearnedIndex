@@ -45,7 +45,11 @@ impl IndexConfig {
         if !self.levels.contains_key(&0) {
             return Err(BuildError::MissingAttribute);
         }
-        let buffer = Bucket::Static(StaticBucket::new(self.buffer_size, self.input_shape));
+        let buffer = Bucket::Static(StaticBucket::new(
+            "buffer".to_string(),
+            self.buffer_size,
+            self.input_shape,
+        ));
         let index = match self.levelling {
             Levelling::BentleySaxe => {
                 let index = BentleySaxeIndex {
@@ -138,6 +142,7 @@ impl BentleySaxeIndex {
         let level_index_config = self.get_level_index_config();
         let n_buckets = self.arity.pow(self.levels.len() as u32 + 1);
         let level_index = LevelIndexBuilder::default()
+            .id(format!("{}", self.levels.len()))
             .n_buckets(n_buckets)
             .input_shape(self.input_shape)
             .model(level_index_config.model.clone())
@@ -221,6 +226,7 @@ pub struct LevelIndexConfig {
 
 #[derive(Debug, Default)]
 pub(crate) struct LevelIndexBuilder {
+    id: Option<String>,
     n_buckets: Option<i64>,
     model_config: Option<ModelConfig>,
     bucket_type: Option<bucket::BucketType>,
@@ -248,9 +254,15 @@ impl LevelIndexBuilder {
         self
     }
 
+    pub fn id(&mut self, id: String) -> &mut Self {
+        self.id = Some(id);
+        self
+    }
+
     pub fn build(&self) -> Result<LevelIndex, BuildError> {
         let n_buckets = self.n_buckets.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
+        let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
         let model_config = self
             .model_config
             .as_ref()
@@ -273,7 +285,7 @@ impl LevelIndexBuilder {
             .input_shape(input_shape)
             .bucket_type(*bucket_type);
         let buckets = (0..n_buckets)
-            .map(|_| bucket_builder.build())
+            .map(|bucket_id| bucket_builder.id(format!("{}:{}", id, bucket_id)).build())
             .collect::<Result<Vec<_>, _>>()?;
         let level_index = LevelIndex { model, buckets };
         Ok(level_index)
