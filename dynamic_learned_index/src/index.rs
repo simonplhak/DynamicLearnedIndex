@@ -342,7 +342,7 @@ impl LevelIndex {
                 .iter()
                 .enumerate()
                 .map(|(y, x)| {
-                    Tensor::full([x.len() as i64], y as i64, (tch::Kind::Float, Device::Cpu))
+                    Tensor::full([x.len() as i64], y as i64, (tch::Kind::Int64, Device::Cpu))
                 }) // todo use specified device
                 .collect::<Vec<_>>(),
             0,
