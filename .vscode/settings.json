@@ -1,0 +1,36 @@
+{
+  "rust-analyzer.server.extraEnv": {
+    // "LIBTORCH_USE_PYTORCH": "1",
+    // "LD_LIBRARY_PATH": "${workspaceFolder}/py_dynamic_learned_index/.venv/lib/python3.12/site-packages/torch/lib",
+    // "LIBTORCH": "${workspaceFolder}/py_dynamic_learned_index/.venv/lib/python3.12/site-packages/torch/lib",
+
+    // "LD_LIBRARY_PATH": "${workspaceFolder}/env/lib/python3.12/site-packages/torch/lib",
+    // "LIBTORCH": "${workspaceFolder}/env/lib/python3.12/site-packages/torch/lib",
+
+    "LD_LIBRARY_PATH": "/opt/libtorch/lib:$LD_LIBRARY_PATH",
+    "LIBTORCH": "/opt/libtorch",
+    "CARGO_PROFILE_DEV_BUILD_OVERRIDE_DEBUG": "true",
+  },
+  "terminal.integrated.env.linux": {
+    // "LIBTORCH_USE_PYTORCH": "1",
+    // "LD_LIBRARY_PATH": "${workspaceFolder}/py_dynamic_learned_index/.venv/lib/python3.12/site-packages/torch/lib",
+    // "LIBTORCH": "${workspaceFolder}/py_dynamic_learned_index/.venv/lib/python3.12/site-packages/torch/lib",
+    
+    // "LD_LIBRARY_PATH": "${workspaceFolder}/env/lib/python3.12/site-packages/torch/lib",
+    // "LIBTORCH": "${workspaceFolder}/env/lib/python3.12/site-packages/torch/lib",
+
+    "LD_LIBRARY_PATH": "/opt/libtorch/lib",
+    "LIBTORCH": "/opt/libtorch",
+    "RUST_BACKTRACE": "1",
+  },
+  // "rust-analyzer.cargo.buildScripts.overrideCommand": [
+  //   "bash", "-c", "source ${workspaceFolder}/py_dynamic_learned_index/.venv/bin/activate", "&&",
+  //   "cargo", "check", "--quiet", "--workspace", "--message-format=json", "--all-targets", "--keep-going"
+  // ],
+  // "rust-analyzer.check.overrideCommand": [
+  //   "bash", "-c", "source ${workspaceFolder}/py_dynamic_learned_index/.venv/bin/activate", "&&",
+  //   "cargo", "check", "--quiet", "--workspace", "--message-format=json", "--all-targets", "--keep-going"
+  // ],
+  // "rust-analyzer.cargo.features": ["all"],
+  // "rust-analyzer.procMacro.enable": true
+}
