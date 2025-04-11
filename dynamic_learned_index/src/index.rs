@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fmt};
 
 use crate::{
-    bucket::{self, Bucket, StaticBucket},
+    bucket::{self, Bucket, BucketBuilder, BucketType},
     clustering::{compute_labels, LabelMethod},
     errors::BuildError,
     model::{self, Model, ModelConfig},
@@ -30,7 +30,6 @@ pub struct IndexConfig {
     levelling: Levelling,
     levels: HashMap<usize, LevelIndexConfig>,
     buffer_size: usize,
-    bucket: bucket::BucketType,
     input_shape: i64,
     arity: i64,
     label_method: LabelMethod,
@@ -45,16 +44,16 @@ impl IndexConfig {
         if !self.levels.contains_key(&0) {
             return Err(BuildError::MissingAttribute);
         }
-        let buffer = Bucket::Static(StaticBucket::new(
-            "buffer".to_string(),
-            self.buffer_size,
-            self.input_shape,
-        ));
+        let buffer = BucketBuilder::default()
+            .id("buffer".to_string())
+            .input_shape(self.input_shape)
+            .size(self.buffer_size)
+            .bucket_type(BucketType::Static)
+            .build()?;
         let index = match self.levelling {
             Levelling::BentleySaxe => {
                 let index = BentleySaxeIndex {
                     levels_config: self.levels,
-                    bucket_type: self.bucket,
                     input_shape: self.input_shape,
                     arity: self.arity,
                     device: self.device,
@@ -102,7 +101,6 @@ impl Index {
 #[derive(Debug, Serialize)]
 pub struct BentleySaxeIndex {
     levels_config: HashMap<usize, LevelIndexConfig>,
-    bucket_type: bucket::BucketType,
     input_shape: i64,
     arity: i64,
     label_method: LabelMethod,
@@ -146,7 +144,7 @@ impl BentleySaxeIndex {
             .n_buckets(n_buckets)
             .input_shape(self.input_shape)
             .model(level_index_config.model.clone())
-            .bucket(self.bucket_type)
+            .bucket_size(level_index_config.bucket_size)
             .build()
             .unwrap();
         self.levels.push(level_index);
@@ -233,6 +231,7 @@ impl BentleySaxeIndex {
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct LevelIndexConfig {
     pub model: ModelConfig,
+    pub bucket_size: usize,
 }
 
 #[derive(Debug, Default)]
@@ -240,7 +239,7 @@ pub(crate) struct LevelIndexBuilder {
     id: Option<String>,
     n_buckets: Option<i64>,
     model_config: Option<ModelConfig>,
-    bucket_type: Option<bucket::BucketType>,
+    bucket_size: Option<usize>,
     input_shape: Option<i64>,
 }
 
@@ -255,8 +254,8 @@ impl LevelIndexBuilder {
         self
     }
 
-    pub fn bucket(&mut self, bucket: bucket::BucketType) -> &mut Self {
-        self.bucket_type = Some(bucket);
+    pub fn bucket_size(&mut self, bucket_size: usize) -> &mut Self {
+        self.bucket_size = Some(bucket_size);
         self
     }
 
@@ -274,6 +273,7 @@ impl LevelIndexBuilder {
         let n_buckets = self.n_buckets.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
+        let bucket_size = self.bucket_size.ok_or(BuildError::MissingAttribute)?;
         let model_config = self
             .model_config
             .as_ref()
@@ -288,13 +288,10 @@ impl LevelIndexBuilder {
         });
         let model = model_builder.build()?;
         let mut bucket_builder = bucket::BucketBuilder::default();
-        let bucket_type = self
-            .bucket_type
-            .as_ref()
-            .ok_or(BuildError::MissingAttribute)?;
         bucket_builder
             .input_shape(input_shape)
-            .bucket_type(*bucket_type);
+            .size(bucket_size)
+            .bucket_type(BucketType::Dynamic);
         let buckets = (0..n_buckets)
             .map(|bucket_id| bucket_builder.id(format!("{}:{}", id, bucket_id)).build())
             .collect::<Result<Vec<_>, _>>()?;
@@ -322,13 +319,6 @@ impl LevelIndex {
     fn bucket2visit(&self, query: &Tensor) -> &Bucket {
         let bucket_idx = self.model.predict(query);
         &self.buckets[bucket_idx]
-    }
-
-    fn search(&self, query: &Tensor, k: usize) -> Tensor {
-        let bucket_idx = self.model.predict(query);
-        self.buckets[bucket_idx].search(query, k);
-        // self.model.forward(&key)
-        todo!()
     }
 
     fn train(&mut self, queries: &[&[Tensor]]) {
