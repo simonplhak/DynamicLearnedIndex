@@ -94,6 +94,13 @@ fn test() -> Result<()> {
         println!("Inserting tensor: {} shape={:?}", i, tensor.size());
         index.insert(tensor, i as u32);
     });
+    println!("Insert finished");
+    (0..limit).for_each(|i| {
+        let tensor = ds.i((i, ..));
+        println!("Searching tensor: {} shape={:?}", i, tensor.size());
+        let result = index.search(&tensor, 1);
+        println!("Result: {:?}", result);
+    });
     println!("{:?}", ds.size());
     Ok(())
 }

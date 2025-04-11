@@ -25,9 +25,9 @@ pub(crate) enum Bucket {
 }
 
 impl Bucket {
-    pub fn search(&self, query: &Tensor) -> (Tensor, Tensor) {
+    pub fn search(&self, query: &Tensor, k: usize) -> (Vec<Id>, Vec<f64>) {
         match self {
-            Bucket::Static(bucket) => bucket.search(query),
+            Bucket::Static(bucket) => bucket.search(query, k),
         }
     }
 
@@ -148,16 +148,19 @@ impl StaticBucket {
         }
     }
 
-    fn search(&self, query: &Tensor) -> (Tensor, Tensor) {
-        // todo implement search, this is just for ilustration
-        (
-            Tensor::randint(
-                self.records.len() as i64,
-                [self.records.len() as i64],
-                tch::kind::INT64_CPU,
-            ),
-            Tensor::rand([self.records.len() as i64], (tch::kind::FLOAT_CPU)),
-        )
+    fn search(&self, query: &Tensor, k: usize) -> (Vec<Id>, Vec<f64>) {
+        assert!(self.occupied() > 0);
+        assert!(self.occupied() >= k);
+        assert!(self.size() > 0);
+        let mut distances = self
+            .records
+            .iter()
+            .zip(self.ids.iter())
+            .map(|(x, id)| (id, euclidean_distance(query, x)))
+            .collect::<Vec<_>>();
+        distances.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        distances.truncate(k);
+        distances.into_iter().unzip()
     }
 
     fn insert(&mut self, value: Tensor, id: Id) {
@@ -192,4 +195,10 @@ impl StaticBucket {
     fn id(&self) -> &str {
         &self.id
     }
+}
+
+fn euclidean_distance(a: &Tensor, b: &Tensor) -> f64 {
+    let diff = a - b;
+    let sum = diff.square().sum(tch::Kind::Float).double_value(&[]);
+    sum.sqrt()
 }

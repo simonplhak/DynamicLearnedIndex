@@ -86,9 +86,9 @@ impl fmt::Debug for Index {
 }
 
 impl Index {
-    pub fn search(&self, key: &Tensor) -> (Tensor, Tensor) {
+    pub fn search(&self, query: &Tensor, k: usize) -> Vec<Id> {
         match self {
-            Index::BentleySaxe(index) => index.search(key),
+            Index::BentleySaxe(index) => index.search(query, k),
         }
     }
 
@@ -181,10 +181,21 @@ impl BentleySaxeIndex {
             .collect()
     }
 
-    fn search(&self, query: &Tensor) -> (Tensor, Tensor) {
+    fn search(&self, query: &Tensor, k: usize) -> Vec<Id> {
         let buckets2visit = self.buckets2visit(query);
-        // todo: how to merge results?
-        todo!()
+        let (ids, distances): (Vec<_>, Vec<_>) = buckets2visit
+            .iter()
+            .map(|bucket| bucket.search(query, k))
+            .unzip();
+        let ids = ids.into_iter().flatten().collect::<Vec<_>>();
+        let distances = distances.into_iter().flatten().collect::<Vec<_>>();
+        let mut results = ids.into_iter().zip(distances.iter()).collect::<Vec<_>>();
+        results.sort_by(|(_, dist_a), (_, dist_b)| {
+            dist_a
+                .partial_cmp(dist_b)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        results.into_iter().take(k).map(|(id, _)| id).collect()
     }
 
     fn insert(&mut self, value: Tensor, id: Id) {
@@ -313,9 +324,9 @@ impl LevelIndex {
         &self.buckets[bucket_idx]
     }
 
-    fn search(&self, query: &Tensor) -> Tensor {
+    fn search(&self, query: &Tensor, k: usize) -> Tensor {
         let bucket_idx = self.model.predict(query);
-        self.buckets[bucket_idx].search(query);
+        self.buckets[bucket_idx].search(query, k);
         // self.model.forward(&key)
         todo!()
     }

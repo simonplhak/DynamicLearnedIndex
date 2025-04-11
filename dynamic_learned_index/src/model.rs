@@ -119,12 +119,19 @@ impl Model {
 
     pub fn train(&mut self, xs: Tensor, ys: Tensor) {
         info!(queries=xs.size()[0]; "model:train_started");
+        let batch_size = 8; // todo take from config
+        assert!(batch_size < xs.size()[0]);
         let dataset = self.dataset(xs, ys);
-        let batch_size = 32; // todo take from config
+        println!("dataset created");
         let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap(); // todo handle unwrap
+        println!("optimizer created");
         for _ in 1..3 {
-            for (xs, ys) in dataset.train_iter(batch_size) {
+            println!("epoch");
+            // todo take epochs from config
+            for (xs, ys) in dataset.train_iter(batch_size).shuffle() {
+                println!("batch, xs={:?}, ys={:?}", xs, ys);
                 let loss = self.model.forward(&xs).cross_entropy_for_logits(&ys);
+                println!("loss");
                 opt.backward_step(&loss);
             }
         }
