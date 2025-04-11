@@ -6,7 +6,7 @@ use log::info;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use structured_logger::json::new_writer;
-use tch::IndexOp;
+use tch::{IndexOp, Tensor};
 mod config;
 mod dataset;
 
@@ -22,6 +22,11 @@ enum Commands {
     Experiment(ExperimentConfig),
     Test,
 }
+#[derive(Parser, Debug, Serialize, Deserialize, Clone, clap::ValueEnum)]
+enum LogOuptut {
+    Stdout,
+    File,
+}
 
 #[derive(Parser, Debug, Serialize, Deserialize)]
 struct ExperimentConfig {
@@ -30,6 +35,8 @@ struct ExperimentConfig {
     dataset_config: PathBuf,
     #[arg(short, long)]
     force: bool,
+    #[arg(short, long, default_value = "stdout")]
+    log_output: LogOuptut,
 }
 
 fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
@@ -49,12 +56,12 @@ fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
         }
     }
     fs::create_dir(experiment_dir.clone())?;
-    structured_logger::Builder::default()
-        .with_target_writer("*", new_writer(std::io::stdout()))
-        .with_target_writer(
-            "*",
-            new_writer(fs::File::create(experiment_dir.join("logs.json"))?),
-        )
+    let log_writer = match experiment_config.log_output {
+        LogOuptut::Stdout => new_writer(std::io::stdout()),
+        LogOuptut::File => new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
+    };
+    structured_logger::Builder::with_level("info")
+        .with_target_writer("*", log_writer)
         .init();
     let ds = dataset::load_dataset(&dataset_config.dataset)?;
     let config_yaml = serde_yaml::to_string(&experiment_config)?;
@@ -68,12 +75,12 @@ fn test() -> Result<()> {
     if !experiment_dir.exists() {
         fs::create_dir_all(&experiment_dir)?;
     }
-    structured_logger::Builder::default()
+    structured_logger::Builder::with_level("info")
         .with_target_writer("*", new_writer(std::io::stdout()))
-        .with_target_writer(
-            "*",
-            new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
-        )
+        // .with_target_writer(
+        //     "*",
+        //     new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
+        // )
         .init();
     let path = PathBuf::from("configs/example.yaml");
     let config_content = fs::read_to_string(path)?;
@@ -81,7 +88,7 @@ fn test() -> Result<()> {
     let mut index = index_config.build()?;
     let dataset_config = config_from_yaml(&PathBuf::from("data/example/config.yaml"))?;
     let ds = load_dataset(&dataset_config.dataset)?;
-    let limit = 10;
+    let limit = 100;
     (0..limit).for_each(|i| {
         let tensor = ds.i((i, ..));
         println!("Inserting tensor: {} shape={:?}", i, tensor.size());
@@ -93,7 +100,22 @@ fn test() -> Result<()> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    // let matrix = Tensor::from_slice(&[1, 2, 3, 4, 5, 6]).reshape([2, 3]);
+    // Example vector: shape (3,)
+    // let result = {
+    //     let vector = Tensor::from_slice(&[10, 20, 30]);
+    //     let result = tch::Tensor::cat(matrix, vector);
+    //     &matrix + &vector
+    // };
+    // Broadcasting: add vector to each row
+    // result.print();
+    // let a = Tensor::from_slice(&[1, 2]).unsqueeze(0); // shape (1, 2)
+    // let b = Tensor::from_slice(&[3, 4]).unsqueeze(0);
 
+    // let result = Tensor::cat(&[a, b], 0); // concatenate along dimension 1
+
+    // result.print();
+    // Ok(())
     match &cli.command {
         Commands::Experiment(config) => experiment(config),
         Commands::Test => test(),
