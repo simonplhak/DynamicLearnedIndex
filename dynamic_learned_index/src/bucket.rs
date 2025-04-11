@@ -27,9 +27,7 @@ impl Bucket {
     }
 
     pub fn insert(&mut self, value: Tensor, id: Id) {
-        // todo take from env varaible
-        // log only every 10th insert to avoid flooding
-        if self.occupied() % 5 == 0 {
+        if self.occupied() % CONFIG.skip_insert_log == 0 {
             info!(size=self.size(), occupied=self.occupied(), id=self.id(); "bucket:insert");
         }
         match self {
