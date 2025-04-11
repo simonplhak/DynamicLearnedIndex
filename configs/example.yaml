@@ -1,20 +1,27 @@
 device: cpu
 input_shape: 768
-label_method: random
-arity: 2
+label_method:
+  type: knn
+  value:
+    max_iters: 10 
+#   - type: max_iters
+#     value: 10
+arity: 3
 levelling: bentley_saxe
-buffer_size: 5
+buffer_size: 20
 bucket:
   type: static
-  value: 5
+  value: 20
 
 levels:
   0:
     model:
       layers:
       - type: Linear
-        value: 2
+        value: 256
+      - type: ReLU
       - type: Linear
-        value: 2
+        value: 256
+      - type: ReLU
 
 
