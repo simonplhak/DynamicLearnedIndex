@@ -3,6 +3,7 @@ use tch::Tensor;
 
 pub(crate) mod bucket;
 mod clustering;
+mod config;
 mod errors;
 pub mod index;
 mod model;

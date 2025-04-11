@@ -4,7 +4,7 @@ use log::info;
 use serde::{Deserialize, Serialize};
 use tch::Tensor;
 
-use crate::{errors::BuildError, Id};
+use crate::{config::CONFIG, errors::BuildError, Id};
 
 #[derive(Debug)]
 pub(crate) enum BucketType {
@@ -264,8 +264,7 @@ impl DynamicBucket {
 
     fn resize(&mut self, minimal_size: usize) {
         assert!(minimal_size > 0);
-        let scaling_factor = 0.5; // todo take from env varaible
-        let new_size = (self.records.len() as f64) * scaling_factor;
+        let new_size = (self.records.len() as f64) * CONFIG.bucket_scaling_factor;
         let new_size = new_size.ceil() as usize;
         let new_size = new_size.max(minimal_size);
         info!(scale_size=new_size; "bucket:rescale");

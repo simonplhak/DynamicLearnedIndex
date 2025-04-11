@@ -9,3 +9,4 @@ experiments/results/*/
 env/
 target/
 experiments_data/*
+.env
