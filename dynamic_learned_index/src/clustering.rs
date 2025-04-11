@@ -77,11 +77,11 @@ fn k_means_clustering(
             // .flatten()
             .map(|point| {
                 assert!(centroids.len() == k);
-                assert!(centroids.len() > 0);
+                assert!(!centroids.is_empty());
                 centroids
                     .iter()
                     .enumerate()
-                    .min_by(|(_, a), (_, b)| cmp_vecs(point, *a, *b))
+                    .min_by(|(_, a), (_, b)| cmp_vecs(point, a, b))
                     .map(|(i, _)| i)
                     .unwrap()
             })
@@ -120,7 +120,7 @@ fn k_means_clustering(
             let cluster_idx = centroids
                 .iter()
                 .enumerate()
-                .min_by(|(_, a), (_, b)| cmp_vecs(point, *a, *b))
+                .min_by(|(_, a), (_, b)| cmp_vecs(point, a, b))
                 .map(|(i, _)| i)
                 .unwrap();
             capacities[cluster_idx] += 1;
