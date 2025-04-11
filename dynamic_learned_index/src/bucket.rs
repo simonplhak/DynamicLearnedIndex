@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 
+use log::info;
 use serde::{Deserialize, Serialize};
 use tch::Tensor;
 
@@ -31,8 +32,27 @@ impl Bucket {
     }
 
     pub fn insert(&mut self, value: Tensor, id: Id) {
+        // todo take from env varaible
+        // log only every 10th insert to avoid flooding
+        if self.occupied() % 5 == 0 {
+            info!(size=self.size(), occupied=self.occupied(); "bucket:insert");
+        }
+        assert!(self.has_space(1), "Bucket is full size={}", self.size());
         match self {
             Bucket::Static(bucket) => bucket.insert(value, id),
+        }
+    }
+
+    pub fn insert_many(&mut self, values: Vec<Tensor>, ids: Vec<Id>) {
+        info!(size=self.size(), occupied=self.occupied(), values_len=values.len(); "bucket:insert_many");
+        assert!(values.len() == ids.len());
+        assert!(
+            self.has_space(values.len()),
+            "Bucket is full size={}",
+            self.size()
+        );
+        match self {
+            Bucket::Static(bucket) => bucket.insert_many(values, ids),
         }
     }
 
@@ -126,10 +146,14 @@ impl StaticBucket {
     }
 
     fn insert(&mut self, value: Tensor, id: Id) {
-        debug_assert!(self.has_space(1), "Bucket is full size={}", self.size);
-        debug_assert_eq!(value.size()[0], self.input_shape);
+        assert_eq!(value.size()[0], self.input_shape);
         self.records.push(value);
         self.ids.push(id);
+    }
+
+    fn insert_many(&mut self, values: Vec<Tensor>, ids: Vec<Id>) {
+        self.records.extend(values);
+        self.ids.extend(ids);
     }
 
     fn has_space(&self, count: usize) -> bool {

@@ -2,8 +2,9 @@ use std::{collections::HashMap, fmt};
 
 use crate::{
     bucket::{self, Bucket, StaticBucket},
+    clustering::{compute_labels, LabelMethod},
     errors::BuildError,
-    model::{self, compute_labels, LabelMethod, Model, ModelConfig},
+    model::{self, Model, ModelConfig},
     Id,
 };
 use log::info;
@@ -144,7 +145,6 @@ impl BentleySaxeIndex {
             .build()
             .unwrap();
         self.levels.push(level_index);
-        info!(level:? = self.levels.len() - 1, n_buckets:? = n_buckets; "index:new level");
         self.levels.len() - 1
     }
 
@@ -178,10 +178,6 @@ impl BentleySaxeIndex {
 
     fn search(&self, query: &Tensor) -> (Tensor, Tensor) {
         let buckets2visit = self.buckets2visit(query);
-        let x = buckets2visit
-            .iter()
-            .map(|bucket| bucket.search(query))
-            .collect::<Vec<_>>();
         // todo: how to merge results?
         todo!()
     }
@@ -191,6 +187,7 @@ impl BentleySaxeIndex {
             self.buffer.insert(value, id);
             return; // value fits into buffer
         }
+        info!(buffer_size = self.buffer.size(); "index:buffer_flush");
         match self.available_level() {
             Some(level_idx) => {
                 let (data, ids) = self.lower_level_data(level_idx);
@@ -201,9 +198,17 @@ impl BentleySaxeIndex {
                 let level_idx = self.add_level();
                 let (data, ids) = self.lower_level_data(level_idx);
                 let level = &mut self.levels[level_idx];
-                let labels = compute_labels(&data, &self.label_method, level.n_buckets() as i64);
-                level.train(&data, &labels);
-                level.insert(data, ids);
+                let (data, ids) =
+                    compute_labels(data, ids, &self.label_method, level.n_buckets() as i64);
+                let cluster_shape = data
+                    .iter()
+                    .map(|x| x.len().to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                info!(cluster_shape = cluster_shape; "index:cluster_shape");
+                let data_refs: Vec<&[Tensor]> = data.iter().map(|inner| inner.as_slice()).collect();
+                level.train(&data_refs);
+                level.insert_many(data, ids);
             }
         };
     }
@@ -251,7 +256,10 @@ impl LevelIndexBuilder {
             .as_ref()
             .ok_or(BuildError::MissingAttribute)?;
         let mut model_builder = model::ModelBuilder::default();
-        model_builder.device(Device::Cpu).input_nodes(input_shape);
+        model_builder
+            .device(Device::Cpu)
+            .input_nodes(input_shape)
+            .labels(n_buckets);
         model_config.layers.iter().for_each(|layer| {
             model_builder.add_layer(*layer);
         });
@@ -300,8 +308,40 @@ impl LevelIndex {
         todo!()
     }
 
-    fn train(&mut self, queries: &[Tensor], labels: &Tensor) {
-        self.model.train(queries, labels);
+    fn train(&mut self, queries: &[&[Tensor]]) {
+        assert!(self.buckets.len() == queries.len());
+        let total_queries = queries.iter().map(|x| x.len()).sum::<usize>() as i64;
+        let xs: Tensor = Tensor::cat(
+            &queries
+                .iter()
+                .map(|xs| Tensor::cat(&xs.iter().map(|x| x.unsqueeze(0)).collect::<Vec<_>>(), 0))
+                .collect::<Vec<_>>(),
+            0,
+        );
+        assert!(
+            xs.size()[0] == total_queries,
+            "xs and buckets must have the same length: xs={:?}, queries={}",
+            xs.size(),
+            total_queries
+        );
+
+        let ys = Tensor::cat(
+            &queries
+                .iter()
+                .enumerate()
+                .map(|(y, x)| {
+                    Tensor::full([x.len() as i64], y as i64, (tch::Kind::Float, Device::Cpu))
+                }) // todo use specified device
+                .collect::<Vec<_>>(),
+            0,
+        );
+        assert!(
+            xs.size()[0] == ys.size()[0],
+            "xs and ys must have the same length: xs={:?}, ys={:?}",
+            xs.size(),
+            ys.size()
+        );
+        self.model.train(xs, ys);
     }
 
     fn insert(&mut self, data: Vec<Tensor>, ids: Vec<Id>) {
@@ -309,6 +349,18 @@ impl LevelIndex {
             let bucket_idx = self.model.predict(&data);
             self.buckets[bucket_idx].insert(data, id);
         });
+    }
+
+    fn insert_many(&mut self, data: Vec<Vec<Tensor>>, ids: Vec<Vec<Id>>) {
+        assert!(data.len() == self.buckets.len());
+        assert!(ids.len() == self.buckets.len());
+        data.into_iter()
+            .zip(ids)
+            .enumerate()
+            .for_each(|(bucket_idx, (data, ids))| {
+                assert!(data.len() == ids.len());
+                self.buckets[bucket_idx].insert_many(data, ids);
+            });
     }
 
     fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>) {

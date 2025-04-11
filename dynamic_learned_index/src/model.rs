@@ -1,5 +1,10 @@
+use log::info;
 use serde::{Deserialize, Serialize};
-use tch::{nn, Device, Tensor};
+use tch::{
+    nn::{self, OptimizerConfig},
+    vision::dataset::Dataset,
+    Device, Tensor,
+};
 
 use crate::errors::BuildError;
 
@@ -20,6 +25,7 @@ pub(crate) struct ModelBuilder {
     device: Device,
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,
+    labels: Option<i64>,
 }
 
 impl Default for ModelBuilder {
@@ -28,6 +34,7 @@ impl Default for ModelBuilder {
             device: Device::Cpu,
             layers: Vec::new(),
             input_nodes: None,
+            labels: None,
         }
     }
 }
@@ -48,11 +55,18 @@ impl ModelBuilder {
         self
     }
 
+    pub fn labels(&mut self, labels: i64) -> &mut Self {
+        self.labels = Some(labels);
+        self
+    }
+
     pub fn build(&self) -> Result<Model, BuildError> {
         let vs = nn::VarStore::new(self.device);
         let vs_root = vs.root();
         let input_nodes = self.input_nodes.ok_or(BuildError::MissingAttribute)?;
-        let (model, _) = self.layers.iter().enumerate().fold(
+        let labels = self.labels.ok_or(BuildError::MissingAttribute)?;
+        assert!(labels > 0, "labels must be greater than 0");
+        let (mut model, output_nodes) = self.layers.iter().enumerate().fold(
             (nn::seq(), input_nodes),
             |(model, input_nodes), (i, layer)| {
                 let (model, output_nodes) = match layer {
@@ -70,9 +84,16 @@ impl ModelBuilder {
                 (model, output_nodes)
             },
         );
+        model = model.add(nn::linear(
+            &vs_root / "output",
+            output_nodes,
+            labels,
+            Default::default(),
+        ));
         let model = Model {
             model: Box::new(model),
             vs,
+            labels,
         };
         Ok(model)
     }
@@ -82,54 +103,48 @@ impl ModelBuilder {
 pub(crate) struct Model {
     model: Box<dyn nn::Module>,
     vs: nn::VarStore,
+    labels: i64,
 }
 
 impl Model {
     pub fn predict(&self, xs: &tch::Tensor) -> usize {
-        self.model.forward(xs).argmax(0, false).int64_value(&[]) as usize
+        let label = self.model.forward(xs).argmax(0, false).int64_value(&[]);
+        assert!(
+            label >= 0 && label < self.labels,
+            "label out of range: {}",
+            label
+        );
+        label as usize
     }
 
-    pub fn train(&mut self, queries: &[Tensor], labels: &Tensor) {
-        // todo
-        // let mut opt = nn::Adam::default().build(&vs, 1e-3)?;
-        // for epoch in 1..200 {
-        //     let loss = *self
-        //         .model
-        //         .forward(&m.train_images)
-        //         .cross_entropy_for_logits(&m.train_labels);
-        //     opt.backward_step(&loss);
-        //     let test_accuracy = net
-        //         .forward(&m.test_images)
-        //         .accuracy_for_logits(&m.test_labels);
-        //     println!(
-        //         "epoch: {:4} train loss: {:8.5} test acc: {:5.2}%",
-        //         epoch,
-        //         f64::from(&loss),
-        //         100. * f64::from(&test_accuracy),
-        //     );
-        // }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub(crate) enum LabelMethod {
-    #[default]
-    #[serde(rename = "knn")]
-    Knn,
-    #[serde(rename = "random")]
-    Random,
-}
-
-pub(crate) fn compute_labels(data: &[Tensor], label_method: &LabelMethod, k: i64) -> Tensor {
-    debug_assert!(!data.is_empty());
-    match label_method {
-        LabelMethod::Knn => {
-            todo!()
-            // let knn_index = index_factory(d, description, metric)
+    pub fn train(&mut self, xs: Tensor, ys: Tensor) {
+        info!(queries=xs.size()[0]; "model:train_started");
+        let dataset = self.dataset(xs, ys);
+        let batch_size = 32; // todo take from config
+        let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap(); // todo handle unwrap
+        for _ in 1..3 {
+            for (xs, ys) in dataset.train_iter(batch_size) {
+                let loss = self.model.forward(&xs).cross_entropy_for_logits(&ys);
+                opt.backward_step(&loss);
+            }
         }
-        LabelMethod::Random => {
-            let shape = data[0].size();
-            Tensor::randint(k, &shape, tch::kind::INT64_CPU)
-        } // todo handle device
+        info!("model:train_finished");
+    }
+
+    fn dataset(&self, xs: Tensor, ys: Tensor) -> Dataset {
+        assert!(
+            xs.size()[0] == ys.size()[0],
+            "xs and ys must have the same size: {} != {}",
+            xs.size()[0],
+            ys.size()[0]
+        );
+        let options = (xs.kind(), xs.device());
+        Dataset {
+            train_images: xs,
+            train_labels: ys,
+            test_images: Tensor::empty(0, options),
+            test_labels: Tensor::empty(0, options),
+            labels: self.labels,
+        }
     }
 }
