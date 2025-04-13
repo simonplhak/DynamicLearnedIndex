@@ -250,6 +250,7 @@ dependencies = [
  "dynamic_learned_index",
  "hdf5-metno",
  "log",
+ "measure_time_macro",
  "serde",
  "serde_yaml",
  "structured-logger",

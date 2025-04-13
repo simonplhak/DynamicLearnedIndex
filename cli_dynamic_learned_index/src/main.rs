@@ -2,6 +2,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use dataset::{config_from_yaml, load_dataset};
 use dynamic_learned_index::{self};
+use eval::{eval_queries, insert_all_data};
 use log::info;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
@@ -9,6 +10,7 @@ use structured_logger::json::new_writer;
 use tch::{IndexOp, Tensor};
 mod config;
 mod dataset;
+mod eval;
 
 #[derive(Parser, Debug)]
 #[command(name = "cli_app", version = "1.0", about = "CLI tool as an entrypoint to dynamic_learned_index crate", long_about = None)]
@@ -33,6 +35,8 @@ struct ExperimentConfig {
     experiment_name: PathBuf,
     #[arg(short, long)]
     dataset_config: PathBuf,
+    #[arg(short, long)]
+    index_config: PathBuf,
     #[arg(short, long)]
     force: bool,
     #[arg(short, long, default_value = "stdout")]
@@ -63,15 +67,23 @@ fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
     structured_logger::Builder::with_level("info")
         .with_target_writer("*", log_writer)
         .init();
-    let ds = dataset::load_dataset(&dataset_config.dataset)?;
     let config_yaml = serde_yaml::to_string(&experiment_config)?;
     fs::write(experiment_dir.join("config.yaml"), config_yaml)?;
-    info!(dataset_size:? = ds.size(); "experiment");
+    let config_content = fs::read_to_string(&experiment_config.index_config)?;
+    let index_config = serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?;
+    fs::write(experiment_dir.join("index_config.yaml"), config_content)?;
+    let mut index = index_config.build()?;
+    let data = load_dataset(&dataset_config.dataset)?;
+    let gt = load_dataset(&dataset_config.ground_truth)?;
+    let queries = load_dataset(&dataset_config.queries)?;
+    insert_all_data(&mut index, data);
+    let metrics = eval_queries(&index, gt, queries);
+    info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }
 
 fn test() -> Result<()> {
-    let experiment_dir = PathBuf::from("experiments_data/example");
+    let experiment_dir = PathBuf::from("experiments_data/test");
     if !experiment_dir.exists() {
         fs::create_dir_all(&experiment_dir)?;
     }
@@ -86,22 +98,13 @@ fn test() -> Result<()> {
     let config_content = fs::read_to_string(path)?;
     let index_config = serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?;
     let mut index = index_config.build()?;
-    let dataset_config = config_from_yaml(&PathBuf::from("data/example/config.yaml"))?;
-    let ds = load_dataset(&dataset_config.dataset)?;
-    let limit = 100;
-    (0..limit).for_each(|i| {
-        let tensor = ds.i((i, ..));
-        println!("Inserting tensor: {} shape={:?}", i, tensor.size());
-        index.insert(tensor, i as u32);
-    });
-    println!("Insert finished");
-    (0..limit).for_each(|i| {
-        let tensor = ds.i((i, ..));
-        println!("Searching tensor: {} shape={:?}", i, tensor.size());
-        let result = index.search(&tensor, 1);
-        println!("Result: {:?}", result);
-    });
-    println!("{:?}", ds.size());
+    let dataset_config = config_from_yaml(&PathBuf::from("data/k300/config.yaml"))?;
+    let data = load_dataset(&dataset_config.dataset)?;
+    let gt = load_dataset(&dataset_config.ground_truth)?;
+    let queries = load_dataset(&dataset_config.queries)?;
+    insert_all_data(&mut index, data);
+    let metrics = eval_queries(&index, gt, queries);
+    info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }
 
