@@ -8,6 +8,7 @@ use crate::{
     Id,
 };
 use log::info;
+use measure_time_macro::log_time;
 use serde::{Deserialize, Serialize};
 use tch::{Device, Tensor};
 
@@ -136,6 +137,7 @@ impl BentleySaxeIndex {
             .unwrap()
     }
 
+    #[log_time]
     fn add_level(&mut self) -> usize {
         let level_index_config = self.get_level_index_config();
         let n_buckets = self.arity.pow(self.levels.len() as u32 + 1);
@@ -321,6 +323,7 @@ impl LevelIndex {
         &self.buckets[bucket_idx]
     }
 
+    #[log_time]
     fn train(&mut self, queries: &[&[Tensor]]) {
         assert!(self.buckets.len() == queries.len());
         let total_queries = queries.iter().map(|x| x.len()).sum::<usize>() as i64;

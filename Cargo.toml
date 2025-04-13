@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "cli_dynamic_learned_index", 
-    "dynamic_learned_index",
+    "dynamic_learned_index", 
+    "measure_time_macro", 
     "py_dynamic_learned_index"
 ]
