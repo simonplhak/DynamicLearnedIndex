@@ -4,15 +4,9 @@ label_method:
   type: knn
   value:
     max_iters: 10 
-#   - type: max_iters
-#     value: 10
 arity: 3
 levelling: bentley_saxe
-buffer_size: 20
-bucket:
-  type: static
-  value: 20
-
+buffer_size: 40
 levels:
   0:
     model:
@@ -23,5 +17,6 @@ levels:
       - type: Linear
         value: 256
       - type: ReLU
+    bucket_size: 30
 
 
