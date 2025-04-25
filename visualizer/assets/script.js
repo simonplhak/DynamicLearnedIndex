@@ -5,8 +5,21 @@ let batchSize = 10;  // default
 let processedCount = 0;
 let isPaused = false;
 
-eventSource.onmessage = function(event) {
+const ignoredEvents = [
+    'config:load', 
+    'index:built', 
+    'model:train_finished', 
+    'model:train_started', 
+    'clustering:compute_labels',
+    'index:buffer_flush',
+];
+
+eventSource.onmessage = (event) => {
     const eventData = JSON.parse(JSON.parse(event.data));
+    if (ignoredEvents.includes(event['message'])) {
+        // skip
+        return;
+    }
     eventQueue.push(eventData);
     processQueue();
 }
@@ -19,6 +32,7 @@ const processQueue = () => {
         evalEvent(event);
         processedCount++;
     }
+    renderBucketsByLevel();
     $('#queue-length').empty();
     $('#queue-length').append(`Event Queue Length: <span id="queue-length-value">${eventQueue.length}</span>`);
 
@@ -45,28 +59,15 @@ $('#process-all-btn').on('click', () => {
     processQueue();
 });
 
-
 const evalEvent = (event) => {
     console.log('Message from server', typeof event);
-    if (event['message'] in ['config:load']) {
-        // skip
-        return;
-    }
     switch (event['message']) {
         case 'bucket:insert':
             bucketInsert(event); break;
-        case 'index:buffer_flush':
-            bucketFlush(event); break;
         case 'time':
             timeEvent(event); break;
-        case 'clustering:compute_labels':
-            clusteringComputeLabels(event); break;
         case 'index:cluster_shape':
             indexClusterShape(event); break;
-        case 'model:train_started':
-            modelTrainStarted(event); break;
-        case 'model:train_finished':
-            modelTrainFinished(event); break;
         case 'bucket:insert_many':
             bucketInsertMany(event); break;
         case 'bucket:rescale':
@@ -74,7 +75,7 @@ const evalEvent = (event) => {
         case 'metrics':
             metrics(event); break;
         default:
-            console.warn("Unknown event", event);
+            console.warn("Unknown event", event['message']);
     }
 };
 
@@ -88,6 +89,7 @@ const getBucketHtml = (bucket) => {
                 <div class="${bucket.occupied / bucket.size > 1.0 ? 'bg-red-600' : 'bg-blue-500'} h-6 rounded" style="width: ${(Math.min(bucket.occupied / bucket.size, 1.0)) * 100}%;"></div>
             </div>
             <div class="text-xs text-gray-500 mt-1">Occupied: ${bucket.occupied} / ${bucket.size}</div>
+            <div class="text-xs text-gray-500 mt-1">Rescaled: ${bucket.rescaled}</div>
         </div>
     `;
 }
@@ -140,14 +142,17 @@ const bucketInsert = (event) => {
     if (!(level in bucketsByLevel)) {
         bucketsByLevel[level] = {};
     }
+    let rescaled = 0;
+    if (bucketIndex in bucketsByLevel[level]) {
+        rescaled = bucketsByLevel[level][bucketIndex].rescaled;
+    }
 
-    const bucket = {id, occupied, size};
+    const bucket = {id, occupied, size, rescaled};
     if (level === 'buffer') {
         bucketsByLevel[level] = bucket;
     } else {
         bucketsByLevel[level][bucketIndex] = bucket;
     }
-    renderBucketsByLevel();
 };
 
 
@@ -162,23 +167,25 @@ const bucketInsertMany = (event) => {
     if (!(level in bucketsByLevel)) {
         bucketsByLevel[level] = [];
     }
+    let rescaled = 0;
+    if (bucketIndex in bucketsByLevel[level]) {
+        rescaled = bucketsByLevel[level][bucketIndex].rescaled;
+    }
 
-    const bucket = {id, occupied, size};
+    const bucket = {id, occupied, size, rescaled};
     if (level === 'buffer') {
         bucketsByLevel[level] = bucket;
     } else {
         bucketsByLevel[level][bucketIndex] = bucket;
     }
-
-    renderBucketsByLevel();
 };
 
 const bucketRescale = (event) => {
-
-};
-
-const bucketFlush = (event) => {
-
+    const id = event.id;
+    const [level, bucketIndex] = id.split(":");
+    const bucket = bucketsByLevel[level][bucketIndex];
+    const rescaled = bucket.rescaled + 1;
+    bucketsByLevel[level][bucketIndex] = {...bucket, rescaled};
 };
 
 const functionTimings = {}; // key: function name, value: array of ms times
@@ -204,7 +211,6 @@ const timeEvent = (event) => {
     const fn = event.function;
     const timeStr = event.time;
 
-    // Extract numeric value (strip "ms" and convert to float)
     const timeMs = parseFloat(timeStr.replace("ms", ""));
 
     if (!functionTimings[fn]) {
@@ -216,17 +222,28 @@ const timeEvent = (event) => {
     renderFunctionTimings();
 };
 
-const clusteringComputeLabels = (event) => {
-
-};
-
 const trainingPhases = {};
 
+
+const clearLevels = () => {
+    const buffer = bucketsByLevel['buffer'];
+    const occupied = 0;
+    const rescaled = 0;
+    bucketsByLevel['buffer'] = {...buffer, occupied, rescaled};
+    Object.keys(bucketsByLevel).filter(level => level !== 'buffer').forEach(level => {
+        const levelBuckets = bucketsByLevel[level];
+        Object.keys(levelBuckets).forEach(bucketIdx => {
+            const bucket = levelBuckets[bucketIdx];
+            bucketsByLevel[level][bucketIdx] = {...bucket, occupied, rescaled};
+        });
+    });
+}
 
 const indexClusterShape = (event) => {
     const levelIdx = event.level_idx;
     const clusterShape = event.cluster_shape;
     trainingPhases[levelIdx] = {clusterShape, levelIdx};
+    clearLevels();
 };
 
 const metrics = (event) => {
@@ -234,7 +251,6 @@ const metrics = (event) => {
     const r5 = event.recall_top5 || 0;
     const r10 = event.recall_top10 || 0;
 
-    // Convert to percentage (max 100%)
     const scale = x => `${Math.min(x * 100, 100)}%`;
 
     $('#recall1').css('width', scale(r1));
