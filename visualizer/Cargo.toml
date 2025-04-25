@@ -1,0 +1,14 @@
+[package]
+name = "visualizer"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.98"
+async-stream = "0.3.6"
+axum = "0.8.3"
+axum-extra = { version = "0.10.1", features = ["typed-header"] }
+futures = "0.3.31"
+tokio = { version = "1.44.2", features = ["macros", "rt-multi-thread"] }
+tokio-stream = "0.1.17"
+tower-http = { version = "0.6.2", features = ["fs", "trace"] }
