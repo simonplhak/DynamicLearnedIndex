@@ -212,6 +212,7 @@ pub(crate) struct DynamicBucket {
     #[serde(skip)]
     ids: Vec<Id>,
     size: usize,
+    current_size: usize,
     input_shape: i64,
 }
 
@@ -224,14 +225,13 @@ impl DynamicBucket {
             records,
             ids,
             size,
+            current_size: size,
             input_shape,
         }
     }
 
     fn search(&self, query: &Tensor, k: usize) -> (Vec<Id>, Vec<f64>) {
-        assert!(self.occupied() > 0);
-        assert!(self.occupied() >= k);
-        assert!(self.size() > 0);
+        assert!(k > 0);
         let mut distances = self
             .records
             .iter()
@@ -260,14 +260,22 @@ impl DynamicBucket {
         self.ids.extend(ids);
     }
 
-    fn resize(&mut self, minimal_size: usize) {
-        assert!(minimal_size > 0);
-        let new_size = (self.records.len() as f64) * CONFIG.bucket_scaling_factor;
-        let new_size = new_size.ceil() as usize;
-        let new_size = new_size.max(minimal_size);
-        info!(scale_size=new_size; "bucket:rescale");
-        self.records.reserve(new_size);
-        self.ids.reserve(new_size);
+    fn resize(&mut self, new_n_objects: usize) {
+        assert!(new_n_objects > 0);
+        // return ceil((new_n_objects + self.bucket_size) / self.bucket_size)
+        let resize_factor =
+            ((new_n_objects + self.current_size) as f64 / self.current_size as f64).ceil() as usize;
+        assert!(resize_factor > 1);
+        let to_add_size = self.size * (resize_factor - 1);
+        assert!(to_add_size > 0);
+
+        // let new_size = (self.records.len() as f64) * CONFIG.bucket_scaling_factor;
+        // let new_size = new_size.ceil() as usize;
+        // let new_size = new_size.max(new_n_objects);
+        info!(to_add_size = to_add_size, id = self.id; "bucket:rescale");
+        self.records.reserve(to_add_size);
+        self.ids.reserve(to_add_size);
+        self.current_size += to_add_size;
     }
 
     fn has_space(&self, count: usize) -> bool {
