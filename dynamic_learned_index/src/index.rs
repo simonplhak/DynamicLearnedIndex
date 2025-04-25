@@ -221,7 +221,7 @@ impl BentleySaxeIndex {
                     .map(|x| x.len().to_string())
                     .collect::<Vec<_>>()
                     .join(",");
-                info!(cluster_shape = cluster_shape; "index:cluster_shape");
+                info!(cluster_shape = cluster_shape, level_idx = level_idx; "index:cluster_shape");
                 let data_refs: Vec<&[Tensor]> = data.iter().map(|inner| inner.as_slice()).collect();
                 level.train(&data_refs);
                 level.insert_many(data, ids);
