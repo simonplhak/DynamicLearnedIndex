@@ -76,7 +76,7 @@ fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
     let data = load_dataset(&dataset_config.dataset)?;
     let gt = load_dataset(&dataset_config.ground_truth)?;
     let queries = load_dataset(&dataset_config.queries)?;
-    insert_all_data(&mut index, data);
+    insert_all_data(&mut index, data, None);
     let metrics = eval_queries(&index, gt, queries);
     info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
@@ -88,11 +88,11 @@ fn test() -> Result<()> {
         fs::create_dir_all(&experiment_dir)?;
     }
     structured_logger::Builder::with_level("info")
-        .with_target_writer("*", new_writer(std::io::stdout()))
-        // .with_target_writer(
-        //     "*",
-        //     new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
-        // )
+        // .with_target_writer("*", new_writer(std::io::stdout()))
+        .with_target_writer(
+            "*",
+            new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
+        )
         .init();
     let path = PathBuf::from("configs/example.yaml");
     let config_content = fs::read_to_string(path)?;
@@ -102,7 +102,7 @@ fn test() -> Result<()> {
     let data = load_dataset(&dataset_config.dataset)?;
     let gt = load_dataset(&dataset_config.ground_truth)?;
     let queries = load_dataset(&dataset_config.queries)?;
-    insert_all_data(&mut index, data);
+    insert_all_data(&mut index, data, Some(200));
     let metrics = eval_queries(&index, gt, queries);
     info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())

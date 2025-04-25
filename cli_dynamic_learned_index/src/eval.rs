@@ -54,8 +54,9 @@ pub fn eval_queries(index: &Index, gt: Tensor, queries: Tensor) -> EvalMetrics {
 }
 
 #[log_time]
-pub fn insert_all_data(index: &mut Index, data: Tensor) {
-    (0..data.size()[0]).for_each(|i| {
+pub fn insert_all_data(index: &mut Index, data: Tensor, limit: Option<usize>) {
+    let limit = limit.map(|limit| limit as i64).unwrap_or(data.size()[0]);
+    (0..limit).for_each(|i| {
         let tensor = data.i((i, ..));
         index.insert(tensor, i as u32);
     });
