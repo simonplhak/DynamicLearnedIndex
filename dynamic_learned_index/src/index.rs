@@ -86,6 +86,7 @@ impl fmt::Debug for Index {
 }
 
 impl Index {
+    #[log_time]
     pub fn search(&self, query: &Tensor, k: usize) -> Vec<Id> {
         match self {
             Index::BentleySaxe(index) => index.search(query, k),
@@ -137,7 +138,6 @@ impl BentleySaxeIndex {
             .unwrap()
     }
 
-    #[log_time]
     fn add_level(&mut self) -> usize {
         let level_index_config = self.get_level_index_config();
         let n_buckets = self.arity.pow(self.levels.len() as u32 + 1);
@@ -181,6 +181,7 @@ impl BentleySaxeIndex {
             .collect()
     }
 
+    #[log_time]
     fn search(&self, query: &Tensor, k: usize) -> Vec<Id> {
         let buckets2visit = self.buckets2visit(query);
         let (ids, distances): (Vec<_>, Vec<_>) = buckets2visit
