@@ -22,7 +22,7 @@ pub enum ModelLayer {
 
 #[derive(Debug)]
 pub(crate) struct ModelBuilder {
-    device: Device,
+    device: Option<Device>,
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,
     labels: Option<i64>,
@@ -31,7 +31,7 @@ pub(crate) struct ModelBuilder {
 impl Default for ModelBuilder {
     fn default() -> Self {
         Self {
-            device: Device::Cpu,
+            device: None,
             layers: Vec::new(),
             input_nodes: None,
             labels: None,
@@ -41,7 +41,7 @@ impl Default for ModelBuilder {
 
 impl ModelBuilder {
     pub fn device(&mut self, device: Device) -> &mut Self {
-        self.device = device;
+        self.device = Some(device);
         self
     }
 
@@ -61,7 +61,8 @@ impl ModelBuilder {
     }
 
     pub fn build(&self) -> Result<Model, BuildError> {
-        let vs = nn::VarStore::new(self.device);
+        let device = self.device.ok_or(BuildError::MissingAttribute)?;
+        let vs = nn::VarStore::new(device);
         let vs_root = vs.root();
         let input_nodes = self.input_nodes.ok_or(BuildError::MissingAttribute)?;
         let labels = self.labels.ok_or(BuildError::MissingAttribute)?;
@@ -94,6 +95,7 @@ impl ModelBuilder {
             model: Box::new(model),
             vs,
             labels,
+            device,
         };
         Ok(model)
     }
@@ -104,6 +106,7 @@ pub(crate) struct Model {
     model: Box<dyn nn::Module>,
     vs: nn::VarStore,
     labels: i64,
+    device: Device,
 }
 
 impl Model {

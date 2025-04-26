@@ -12,11 +12,19 @@ use measure_time_macro::log_time;
 use serde::{Deserialize, Serialize};
 use tch::{Device, Tensor};
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub enum ModelDevice {
     #[default]
     #[serde(rename = "cpu")]
     Cpu,
+}
+
+impl ModelDevice {
+    pub fn to_tch_device(&self) -> Device {
+        match self {
+            ModelDevice::Cpu => Device::Cpu,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -146,6 +154,7 @@ impl BentleySaxeIndex {
             .n_buckets(n_buckets)
             .input_shape(self.input_shape)
             .model(level_index_config.model.clone())
+            .model_device(self.device.clone())
             .bucket_size(level_index_config.bucket_size)
             .build()
             .unwrap();
@@ -244,6 +253,7 @@ pub(crate) struct LevelIndexBuilder {
     model_config: Option<ModelConfig>,
     bucket_size: Option<usize>,
     input_shape: Option<i64>,
+    model_device: ModelDevice,
 }
 
 impl LevelIndexBuilder {
@@ -272,6 +282,11 @@ impl LevelIndexBuilder {
         self
     }
 
+    pub fn model_device(&mut self, model_device: ModelDevice) -> &mut Self {
+        self.model_device = model_device;
+        self
+    }
+
     pub fn build(&self) -> Result<LevelIndex, BuildError> {
         let n_buckets = self.n_buckets.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
@@ -283,7 +298,7 @@ impl LevelIndexBuilder {
             .ok_or(BuildError::MissingAttribute)?;
         let mut model_builder = model::ModelBuilder::default();
         model_builder
-            .device(Device::Cpu)
+            .device(self.model_device.to_tch_device())
             .input_nodes(input_shape)
             .labels(n_buckets);
         model_config.layers.iter().for_each(|layer| {
