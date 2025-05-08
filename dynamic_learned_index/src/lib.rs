@@ -8,6 +8,7 @@ mod errors;
 pub mod index;
 mod model;
 pub mod types;
+mod util;
 pub use index::{Index, IndexConfig};
 pub use types::Id;
 

@@ -309,7 +309,7 @@ impl LevelIndexBuilder {
         bucket_builder
             .input_shape(input_shape)
             .size(bucket_size)
-            .bucket_type(BucketType::Dynamic);
+            .bucket_type(BucketType::New);
         let buckets = (0..n_buckets)
             .map(|bucket_id| bucket_builder.id(format!("{}:{}", id, bucket_id)).build())
             .collect::<Result<Vec<_>, _>>()?;
