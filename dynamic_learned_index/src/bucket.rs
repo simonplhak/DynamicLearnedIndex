@@ -6,7 +6,6 @@ use tch::Tensor;
 
 use crate::{config::CONFIG, errors::BuildError, util, Id};
 
-// todo add is_dynamic flag
 #[derive(Debug, Serialize)]
 struct BucketNew {
     id: String,
@@ -15,10 +14,11 @@ struct BucketNew {
     size: usize,
     input_shape: usize,
     current_size: usize,
+    is_dynamic: bool,
 }
 
 impl BucketNew {
-    fn new(id: String, size: usize, input_shape: usize) -> Self {
+    fn new(id: String, size: usize, input_shape: usize, is_dynamic: bool) -> Self {
         Self {
             id,
             records: Vec::with_capacity(size * input_shape),
@@ -26,6 +26,7 @@ impl BucketNew {
             size,
             input_shape,
             current_size: size,
+            is_dynamic,
         }
     }
 
@@ -57,6 +58,7 @@ impl BucketNew {
     }
 
     fn resize(&mut self, new_n_objects: usize) {
+        assert!(self.is_dynamic);
         assert!(new_n_objects > 0);
         let resize_factor =
             ((new_n_objects + self.current_size) as f64 / self.current_size as f64).ceil() as usize;
@@ -222,6 +224,7 @@ pub(crate) struct BucketBuilder {
     id: Option<String>,
     size: Option<usize>,
     bucket_type: Option<BucketType>,
+    is_dynamic: bool,
 }
 
 impl BucketBuilder {
@@ -245,6 +248,11 @@ impl BucketBuilder {
         self
     }
 
+    pub fn is_dynamic(&mut self, is_dynamic: bool) -> &mut Self {
+        self.is_dynamic = is_dynamic;
+        self
+    }
+
     pub fn build(&self) -> Result<Bucket, BuildError> {
         let size = self.size.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
@@ -256,7 +264,12 @@ impl BucketBuilder {
         match bucket_type {
             BucketType::Static => Ok(Bucket::Static(StaticBucket::new(id, size, input_shape))),
             BucketType::Dynamic => Ok(Bucket::Dynamic(DynamicBucket::new(id, size, input_shape))),
-            BucketType::New => Ok(Bucket::New(BucketNew::new(id, size, input_shape as usize))),
+            BucketType::New => Ok(Bucket::New(BucketNew::new(
+                id,
+                size,
+                input_shape as usize,
+                self.is_dynamic,
+            ))),
         }
     }
 }
