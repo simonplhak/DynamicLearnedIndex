@@ -1,13 +1,13 @@
 use std::fmt::Debug;
 
 use log::info;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tch::Tensor;
 
 use crate::{config::CONFIG, errors::BuildError, util, Id};
 
 #[derive(Debug, Serialize)]
-struct BucketNew {
+pub(crate) struct BucketNew {
     id: String,
     records: Vec<f64>,
     ids: Vec<Id>,
@@ -151,10 +151,7 @@ impl Bucket {
         assert!(values.len() == ids.len());
         match self {
             Bucket::New(bucket) => {
-                let records = values
-                    .iter()
-                    .map(|x| util::tensor2vec(x))
-                    .collect::<Vec<_>>();
+                let records = values.iter().map(util::tensor2vec).collect::<Vec<_>>();
                 bucket.insert_many(records, ids);
             }
         }
@@ -184,7 +181,7 @@ impl Bucket {
                 let (records, ids) = bucket_new.get_data();
                 let records = records
                     .into_iter()
-                    .map(|x| util::vec2tensor(x))
+                    .map(util::vec2tensor)
                     .collect::<Vec<_>>();
                 (records, ids)
             }

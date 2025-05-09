@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt};
+use std::collections::HashMap;
 
 use crate::{
     bucket::{self, Bucket, BucketBuilder, BucketType},
