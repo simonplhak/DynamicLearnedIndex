@@ -20,23 +20,12 @@ pub enum ModelLayer {
     ReLU,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct ModelBuilder {
     device: Option<Device>,
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,
     labels: Option<i64>,
-}
-
-impl Default for ModelBuilder {
-    fn default() -> Self {
-        Self {
-            device: None,
-            layers: Vec::new(),
-            input_nodes: None,
-            labels: None,
-        }
-    }
 }
 
 impl ModelBuilder {
