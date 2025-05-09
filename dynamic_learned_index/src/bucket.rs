@@ -115,24 +115,18 @@ impl BucketNew {
 
 #[derive(Debug)]
 pub(crate) enum BucketType {
-    Static,
-    Dynamic,
     New,
 }
 
 // todo replace Bucket by BucketNew
 #[derive(Debug, Serialize)]
 pub(crate) enum Bucket {
-    Static(StaticBucket),
-    Dynamic(DynamicBucket),
     New(BucketNew),
 }
 
 impl Bucket {
     pub fn search(&self, query: &Tensor, k: usize) -> (Vec<Id>, Vec<f64>) {
         match self {
-            Bucket::Static(bucket) => bucket.search(query, k),
-            Bucket::Dynamic(bucket) => bucket.search(query, k),
             Bucket::New(bucket_new) => {
                 let query = util::tensor2vec(query);
                 bucket_new.search(k, &query)
@@ -145,8 +139,6 @@ impl Bucket {
             info!(size=self.size(), occupied=self.occupied(), id=self.id(); "bucket:insert");
         }
         match self {
-            Bucket::Static(bucket) => bucket.insert(value, id),
-            Bucket::Dynamic(bucket) => bucket.insert(value, id),
             Bucket::New(bucket_new) => {
                 let value = util::tensor2vec(&value);
                 bucket_new.insert(value, id);
@@ -158,8 +150,6 @@ impl Bucket {
         info!(size=self.size(), occupied=self.occupied(), id=self.id(), values_len=values.len(); "bucket:insert_many");
         assert!(values.len() == ids.len());
         match self {
-            Bucket::Static(bucket) => bucket.insert_many(values, ids),
-            Bucket::Dynamic(bucket) => bucket.insert_many(values, ids),
             Bucket::New(bucket) => {
                 let records = values
                     .iter()
@@ -172,32 +162,24 @@ impl Bucket {
 
     pub fn size(&self) -> usize {
         match self {
-            Bucket::Static(bucket) => bucket.size(),
-            Bucket::Dynamic(bucket) => bucket.size(),
             Bucket::New(bucket_new) => bucket_new.size(),
         }
     }
 
     pub fn has_space(&self, count: usize) -> bool {
         match self {
-            Bucket::Static(bucket) => bucket.has_space(count),
-            Bucket::Dynamic(bucket) => bucket.has_space(count),
             Bucket::New(bucket_new) => bucket_new.has_space(count),
         }
     }
 
     pub fn occupied(&self) -> usize {
         match self {
-            Bucket::Static(bucket) => bucket.occupied(),
-            Bucket::Dynamic(bucket) => bucket.occupied(),
             Bucket::New(bucket_new) => bucket_new.occupied(),
         }
     }
 
     pub fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>) {
         match self {
-            Bucket::Static(bucket) => bucket.get_data(),
-            Bucket::Dynamic(bucket) => bucket.get_data(),
             Bucket::New(bucket_new) => {
                 let (records, ids) = bucket_new.get_data();
                 let records = records
@@ -211,8 +193,6 @@ impl Bucket {
 
     fn id(&self) -> &str {
         match self {
-            Bucket::Static(bucket) => bucket.id(),
-            Bucket::Dynamic(bucket) => bucket.id(),
             Bucket::New(bucket_new) => bucket_new.id(),
         }
     }
@@ -262,8 +242,6 @@ impl BucketBuilder {
             .as_ref()
             .ok_or(BuildError::MissingAttribute)?;
         match bucket_type {
-            BucketType::Static => Ok(Bucket::Static(StaticBucket::new(id, size, input_shape))),
-            BucketType::Dynamic => Ok(Bucket::Dynamic(DynamicBucket::new(id, size, input_shape))),
             BucketType::New => Ok(Bucket::New(BucketNew::new(
                 id,
                 size,
@@ -272,189 +250,6 @@ impl BucketBuilder {
             ))),
         }
     }
-}
-
-#[derive(Debug, Serialize)]
-pub(crate) struct StaticBucket {
-    id: String,
-    #[serde(skip)]
-    records: Vec<Tensor>,
-    #[serde(skip)]
-    ids: Vec<Id>,
-    size: usize,
-    input_shape: i64,
-}
-
-impl StaticBucket {
-    pub fn new(id: String, size: usize, input_shape: i64) -> Self {
-        let records = Vec::with_capacity(size);
-        let ids = Vec::with_capacity(size);
-        Self {
-            id,
-            records,
-            ids,
-            size,
-            input_shape,
-        }
-    }
-
-    fn search(&self, query: &Tensor, k: usize) -> (Vec<Id>, Vec<f64>) {
-        assert!(self.occupied() > 0);
-        assert!(self.occupied() >= k);
-        assert!(self.size() > 0);
-        let mut distances = self
-            .records
-            .iter()
-            .zip(self.ids.iter())
-            .map(|(x, id)| (id, euclidean_distance(query, x)))
-            .collect::<Vec<_>>();
-        distances.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        distances.truncate(k);
-        distances.into_iter().unzip()
-    }
-
-    fn insert(&mut self, value: Tensor, id: Id) {
-        assert!(self.has_space(1), "Bucket is full size={}", self.size());
-        assert_eq!(value.size()[0], self.input_shape);
-        self.records.push(value);
-        self.ids.push(id);
-    }
-
-    fn insert_many(&mut self, values: Vec<Tensor>, ids: Vec<Id>) {
-        assert!(
-            self.has_space(values.len()),
-            "Bucket is full size={}",
-            self.size()
-        );
-        self.records.extend(values);
-        self.ids.extend(ids);
-    }
-
-    fn has_space(&self, count: usize) -> bool {
-        self.records.len() + count <= self.size
-    }
-
-    fn occupied(&self) -> usize {
-        self.records.len()
-    }
-    fn size(&self) -> usize {
-        self.size
-    }
-
-    fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>) {
-        let size = self.size();
-        let records = std::mem::replace(&mut self.records, Vec::with_capacity(size));
-        let ids = std::mem::replace(&mut self.ids, Vec::with_capacity(size));
-        (records, ids)
-    }
-
-    fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct DynamicBucket {
-    id: String,
-    #[serde(skip)]
-    records: Vec<Tensor>,
-    #[serde(skip)]
-    ids: Vec<Id>,
-    size: usize,
-    current_size: usize,
-    input_shape: i64,
-}
-
-impl DynamicBucket {
-    fn new(id: String, size: usize, input_shape: i64) -> Self {
-        let records = Vec::with_capacity(size);
-        let ids = Vec::with_capacity(size);
-        Self {
-            id,
-            records,
-            ids,
-            size,
-            current_size: size,
-            input_shape,
-        }
-    }
-
-    fn search(&self, query: &Tensor, k: usize) -> (Vec<Id>, Vec<f64>) {
-        assert!(k > 0);
-        let mut distances = self
-            .records
-            .iter()
-            .zip(self.ids.iter())
-            .map(|(x, id)| (id, euclidean_distance(query, x)))
-            .collect::<Vec<_>>();
-        distances.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
-        distances.truncate(k);
-        distances.into_iter().unzip()
-    }
-
-    fn insert(&mut self, value: Tensor, id: Id) {
-        assert_eq!(value.size()[0], self.input_shape);
-        if !self.has_space(1) {
-            self.resize(1)
-        }
-        self.records.push(value);
-        self.ids.push(id);
-    }
-
-    fn insert_many(&mut self, values: Vec<Tensor>, ids: Vec<Id>) {
-        if !self.has_space(values.len()) {
-            self.resize(values.len())
-        }
-        self.records.extend(values);
-        self.ids.extend(ids);
-    }
-
-    fn resize(&mut self, new_n_objects: usize) {
-        assert!(new_n_objects > 0);
-        // return ceil((new_n_objects + self.bucket_size) / self.bucket_size)
-        let resize_factor =
-            ((new_n_objects + self.current_size) as f64 / self.current_size as f64).ceil() as usize;
-        assert!(resize_factor > 1);
-        let to_add_size = self.size * (resize_factor - 1);
-        assert!(to_add_size > 0);
-
-        // let new_size = (self.records.len() as f64) * CONFIG.bucket_scaling_factor;
-        // let new_size = new_size.ceil() as usize;
-        // let new_size = new_size.max(new_n_objects);
-        info!(to_add_size = to_add_size, id = self.id; "bucket:rescale");
-        self.records.reserve(to_add_size);
-        self.ids.reserve(to_add_size);
-        self.current_size += to_add_size;
-    }
-
-    fn has_space(&self, count: usize) -> bool {
-        self.records.len() + count <= self.size
-    }
-
-    fn occupied(&self) -> usize {
-        self.records.len()
-    }
-
-    fn size(&self) -> usize {
-        self.size
-    }
-
-    fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>) {
-        let size = self.size();
-        let records = std::mem::replace(&mut self.records, Vec::with_capacity(size));
-        let ids = std::mem::replace(&mut self.ids, Vec::with_capacity(size));
-        (records, ids)
-    }
-
-    fn id(&self) -> &str {
-        &self.id
-    }
-}
-
-fn euclidean_distance(a: &Tensor, b: &Tensor) -> f64 {
-    let diff = a - b;
-    let sum = diff.square().sum(tch::Kind::Float).double_value(&[]);
-    sum.sqrt()
 }
 
 fn euclidean_distance_new(a: &[f64], b: &[f64]) -> f64 {
