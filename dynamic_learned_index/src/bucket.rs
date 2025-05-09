@@ -119,7 +119,7 @@ pub(crate) enum BucketType {
 }
 
 // todo replace Bucket by BucketNew
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub(crate) enum Bucket {
     New(BucketNew),
 }

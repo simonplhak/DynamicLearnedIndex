@@ -73,24 +73,12 @@ impl IndexConfig {
                 Index::BentleySaxe(index)
             }
         };
-        info!(index:? = index; "index:build");
         Ok(index)
     }
 }
 
-#[derive(Serialize)]
 pub enum Index {
     BentleySaxe(BentleySaxeIndex),
-}
-
-impl fmt::Debug for Index {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{}",
-            serde_json::to_string(self).map_err(|_| fmt::Error)?
-        )
-    }
 }
 
 impl Index {
@@ -108,7 +96,7 @@ impl Index {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct BentleySaxeIndex {
     levels_config: HashMap<usize, LevelIndexConfig>,
     input_shape: i64,
@@ -319,9 +307,8 @@ impl LevelIndexBuilder {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub struct LevelIndex {
-    #[serde(skip)]
     model: Model,
     buckets: Vec<Bucket>,
 }
