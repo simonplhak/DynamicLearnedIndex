@@ -57,7 +57,7 @@ impl IndexConfig {
             .id("buffer".to_string())
             .input_shape(self.input_shape)
             .size(self.buffer_size)
-            .bucket_type(BucketType::Static)
+            .bucket_type(BucketType::New)
             .build()?;
         let index = match self.levelling {
             Levelling::BentleySaxe => {
