@@ -112,6 +112,8 @@ impl Model {
     pub fn train(&mut self, xs: Tensor, ys: Tensor) {
         info!(queries=xs.size()[0]; "model:train_started");
         let batch_size = 8; // todo take from config
+        let xs = xs.to_device(self.device);
+        let ys = ys.to_device(self.device);
         assert!(batch_size < xs.size()[0]);
         let dataset = self.dataset(xs, ys);
         let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap(); // todo handle unwrap
