@@ -5,7 +5,8 @@ use crate::{
     clustering::{compute_labels, LabelMethod},
     errors::BuildError,
     model::{self, Model, ModelConfig},
-    Id,
+    types::Array,
+    util, Id,
 };
 use log::info;
 use measure_time_macro::log_time;
@@ -91,7 +92,10 @@ impl Index {
 
     pub fn insert(&mut self, value: Tensor, id: Id) {
         match self {
-            Index::BentleySaxe(index) => index.insert(value, id),
+            Index::BentleySaxe(index) => {
+                let value = util::tensor2vec(&value);
+                index.insert(value, id);
+            }
         }
     }
 }
@@ -150,8 +154,8 @@ impl BentleySaxeIndex {
         self.levels.len() - 1
     }
 
-    fn lower_level_data(&mut self, level_idx: usize) -> (Vec<Tensor>, Vec<Id>) {
-        let (data, ids): (Vec<Vec<Tensor>>, Vec<Vec<Id>>) = self
+    fn lower_level_data(&mut self, level_idx: usize) -> (Vec<Array>, Vec<Id>) {
+        let (data, ids): (Vec<Vec<Array>>, Vec<Vec<Id>>) = self
             .levels
             .iter_mut()
             .take(level_idx)
@@ -196,7 +200,7 @@ impl BentleySaxeIndex {
         results.into_iter().take(k).map(|(id, _)| id).collect()
     }
 
-    fn insert(&mut self, value: Tensor, id: Id) {
+    fn insert(&mut self, value: Array, id: Id) {
         if self.buffer.has_space(1) {
             self.buffer.insert(value, id);
             return; // value fits into buffer
@@ -364,9 +368,10 @@ impl LevelIndex {
         self.model.train(xs, ys);
     }
 
-    fn insert(&mut self, data: Vec<Tensor>, ids: Vec<Id>) {
+    fn insert(&mut self, data: Vec<Array>, ids: Vec<Id>) {
         data.into_iter().zip(ids).for_each(|(data, id)| {
-            let bucket_idx = self.model.predict(&data);
+            let tensor = util::vec2tensor(&data);
+            let bucket_idx = self.model.predict(&tensor);
             self.buckets[bucket_idx].insert(data, id);
         });
     }
@@ -383,8 +388,8 @@ impl LevelIndex {
             });
     }
 
-    fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>) {
-        let (data, ids): (Vec<Vec<Tensor>>, Vec<Vec<Id>>) = self
+    fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
+        let (data, ids): (Vec<Vec<Array>>, Vec<Vec<Id>>) = self
             .buckets
             .iter_mut()
             .filter(|bucket| bucket.occupied() > 0)

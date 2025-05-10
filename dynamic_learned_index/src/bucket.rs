@@ -4,7 +4,7 @@ use log::info;
 use serde::Serialize;
 use tch::Tensor;
 
-use crate::{config::CONFIG, errors::BuildError, util, Id};
+use crate::{config::CONFIG, errors::BuildError, types::Array, util, Id};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct BucketNew {
@@ -49,7 +49,7 @@ impl BucketNew {
         distances.into_iter().unzip()
     }
 
-    pub fn insert(&mut self, record: Vec<f64>, id: Id) {
+    pub fn insert(&mut self, record: Array, id: Id) {
         if !self.has_space(1) {
             self.resize(1)
         }
@@ -71,7 +71,7 @@ impl BucketNew {
         self.current_size += to_add_size;
     }
 
-    pub fn insert_many(&mut self, records: Vec<Vec<f64>>, ids: Vec<Id>) {
+    pub fn insert_many(&mut self, records: Vec<Array>, ids: Vec<Id>) {
         if !self.has_space(records.len()) {
             self.resize(records.len())
         }
@@ -81,7 +81,7 @@ impl BucketNew {
         self.ids.extend(ids);
     }
 
-    pub fn get_data(&mut self) -> (Vec<Vec<f64>>, Vec<Id>) {
+    pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
         let size = self.size();
         let mut records = std::mem::replace(
             &mut self.records,
@@ -134,13 +134,13 @@ impl Bucket {
         }
     }
 
-    pub fn insert(&mut self, value: Tensor, id: Id) {
+    pub fn insert(&mut self, value: Array, id: Id) {
         if self.occupied() % CONFIG.skip_insert_log == 0 {
             info!(size=self.size(), occupied=self.occupied(), id=self.id(); "bucket:insert");
         }
         match self {
             Bucket::New(bucket_new) => {
-                let value = util::tensor2vec(&value);
+                // let value = util::tensor2vec(&value);
                 bucket_new.insert(value, id);
             }
         }
@@ -175,14 +175,14 @@ impl Bucket {
         }
     }
 
-    pub fn get_data(&mut self) -> (Vec<Tensor>, Vec<Id>) {
+    pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
         match self {
             Bucket::New(bucket_new) => {
                 let (records, ids) = bucket_new.get_data();
-                let records = records
-                    .into_iter()
-                    .map(util::vec2tensor)
-                    .collect::<Vec<_>>();
+                // let records = records
+                //     .iter()
+                //     .map(|record| util::vec2tensor(record))
+                //     .collect::<Vec<_>>();
                 (records, ids)
             }
         }

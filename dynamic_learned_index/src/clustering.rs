@@ -3,7 +3,7 @@ use rand::seq::IteratorRandom;
 use serde::{Deserialize, Serialize};
 use tch::Tensor;
 
-use crate::Id;
+use crate::{types::Array, util, Id};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type", content = "value")]
@@ -19,7 +19,7 @@ impl Default for LabelMethod {
 }
 
 pub(crate) fn compute_labels(
-    data: Vec<Tensor>,
+    data: Vec<Array>,
     ids: Vec<Id>,
     label_method: &LabelMethod,
     k: i64,
@@ -31,7 +31,10 @@ pub(crate) fn compute_labels(
         label_method = format!("{:?}", label_method); "clustering:compute_labels"
     );
     match label_method {
-        LabelMethod::Knn(kmeans) => k_means_clustering(data, ids, k as usize, kmeans.max_iters),
+        LabelMethod::Knn(kmeans) => {
+            let data = data.iter().map(|v| util::vec2tensor(v)).collect::<Vec<_>>();
+            k_means_clustering(data, ids, k as usize, kmeans.max_iters)
+        }
     }
 }
 
