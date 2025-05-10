@@ -6,7 +6,11 @@ use tch::{
     Device, Tensor,
 };
 
-use crate::{errors::BuildError, types::Array, util};
+use crate::{
+    errors::BuildError,
+    types::{Array, ArraySlice},
+    util,
+};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct ModelConfig {
@@ -100,8 +104,9 @@ pub(crate) struct Model {
 }
 
 impl Model {
-    pub fn predict(&self, xs: &tch::Tensor) -> usize {
-        let label = self.model.forward(xs).argmax(0, false).int64_value(&[]);
+    pub fn predict(&self, xs: &ArraySlice) -> usize {
+        let xs = util::vec2tensor(xs).to_device(self.device);
+        let label = self.model.forward(&xs).argmax(0, false).int64_value(&[]);
         assert!(
             label >= 0 && label < self.labels,
             "label out of range: {}",

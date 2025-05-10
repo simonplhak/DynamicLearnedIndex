@@ -5,7 +5,7 @@ use crate::{
     clustering::{compute_labels, LabelMethod},
     errors::BuildError,
     model::{self, Model, ModelConfig},
-    types::Array,
+    types::{Array, ArraySlice},
     util, Id,
 };
 use log::info;
@@ -86,7 +86,10 @@ impl Index {
     #[log_time]
     pub fn search(&self, query: &Tensor, k: usize) -> Vec<Id> {
         match self {
-            Index::BentleySaxe(index) => index.search(query, k),
+            Index::BentleySaxe(index) => {
+                let query = util::tensor2vec(query);
+                index.search(&query, k)
+            }
         }
     }
 
@@ -175,7 +178,7 @@ impl BentleySaxeIndex {
         (data, ids)
     }
 
-    fn buckets2visit(&self, query: &Tensor) -> Vec<&Bucket> {
+    fn buckets2visit(&self, query: &ArraySlice) -> Vec<&Bucket> {
         self.levels
             .iter()
             .map(|level| level.bucket2visit(query))
@@ -183,7 +186,7 @@ impl BentleySaxeIndex {
     }
 
     #[log_time]
-    fn search(&self, query: &Tensor, k: usize) -> Vec<Id> {
+    fn search(&self, query: &ArraySlice, k: usize) -> Vec<Id> {
         let buckets2visit = self.buckets2visit(query);
         let (ids, distances): (Vec<_>, Vec<_>) = buckets2visit
             .iter()
@@ -326,7 +329,7 @@ impl LevelIndex {
         self.buckets.iter().map(|bucket| bucket.occupied()).sum()
     }
 
-    fn bucket2visit(&self, query: &Tensor) -> &Bucket {
+    fn bucket2visit(&self, query: &ArraySlice) -> &Bucket {
         let bucket_idx = self.model.predict(query);
         &self.buckets[bucket_idx]
     }
@@ -339,8 +342,7 @@ impl LevelIndex {
 
     fn insert(&mut self, data: Vec<Array>, ids: Vec<Id>) {
         data.into_iter().zip(ids).for_each(|(data, id)| {
-            let tensor = util::vec2tensor(&data);
-            let bucket_idx = self.model.predict(&tensor);
+            let bucket_idx = self.model.predict(&data);
             self.buckets[bucket_idx].insert(data, id);
         });
     }

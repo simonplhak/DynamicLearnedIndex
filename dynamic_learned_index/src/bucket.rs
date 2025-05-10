@@ -4,7 +4,12 @@ use log::info;
 use serde::Serialize;
 use tch::Tensor;
 
-use crate::{config::CONFIG, errors::BuildError, types::Array, util, Id};
+use crate::{
+    config::CONFIG,
+    errors::BuildError,
+    types::{Array, ArraySlice},
+    util, Id,
+};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct BucketNew {
@@ -125,12 +130,9 @@ pub(crate) enum Bucket {
 }
 
 impl Bucket {
-    pub fn search(&self, query: &Tensor, k: usize) -> (Vec<Id>, Vec<f64>) {
+    pub fn search(&self, query: &ArraySlice, k: usize) -> (Vec<Id>, Vec<f64>) {
         match self {
-            Bucket::New(bucket_new) => {
-                let query = util::tensor2vec(query);
-                bucket_new.search(k, &query)
-            }
+            Bucket::New(bucket_new) => bucket_new.search(k, &query),
         }
     }
 
