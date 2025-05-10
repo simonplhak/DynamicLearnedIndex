@@ -146,12 +146,11 @@ impl Bucket {
         }
     }
 
-    pub fn insert_many(&mut self, values: Vec<Tensor>, ids: Vec<Id>) {
-        info!(size=self.size(), occupied=self.occupied(), id=self.id(), values_len=values.len(); "bucket:insert_many");
-        assert!(values.len() == ids.len());
+    pub fn insert_many(&mut self, records: Vec<Array>, ids: Vec<Id>) {
+        info!(size=self.size(), occupied=self.occupied(), id=self.id(), values_len=records.len(); "bucket:insert_many");
+        assert!(records.len() == ids.len());
         match self {
             Bucket::New(bucket) => {
-                let records = values.iter().map(util::tensor2vec).collect::<Vec<_>>();
                 bucket.insert_many(records, ids);
             }
         }

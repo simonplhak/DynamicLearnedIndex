@@ -224,7 +224,7 @@ impl BentleySaxeIndex {
                     .collect::<Vec<_>>()
                     .join(",");
                 info!(cluster_shape = cluster_shape, level_idx = level_idx; "index:cluster_shape");
-                let data_refs: Vec<&[Tensor]> = data.iter().map(|inner| inner.as_slice()).collect();
+                let data_refs: Vec<&[Array]> = data.iter().map(|inner| inner.as_slice()).collect();
                 level.train(&data_refs);
                 level.insert_many(data, ids);
             }
@@ -332,40 +332,9 @@ impl LevelIndex {
     }
 
     #[log_time]
-    fn train(&mut self, queries: &[&[Tensor]]) {
+    fn train(&mut self, queries: &[&[Array]]) {
         assert!(self.buckets.len() == queries.len());
-        let total_queries = queries.iter().map(|x| x.len()).sum::<usize>() as i64;
-        let xs: Tensor = Tensor::cat(
-            &queries
-                .iter()
-                .map(|xs| Tensor::cat(&xs.iter().map(|x| x.unsqueeze(0)).collect::<Vec<_>>(), 0))
-                .collect::<Vec<_>>(),
-            0,
-        );
-        assert!(
-            xs.size()[0] == total_queries,
-            "xs and buckets must have the same length: xs={:?}, queries={}",
-            xs.size(),
-            total_queries
-        );
-
-        let ys = Tensor::cat(
-            &queries
-                .iter()
-                .enumerate()
-                .map(|(y, x)| {
-                    Tensor::full([x.len() as i64], y as i64, (tch::Kind::Int64, Device::Cpu))
-                }) // todo use specified device
-                .collect::<Vec<_>>(),
-            0,
-        );
-        assert!(
-            xs.size()[0] == ys.size()[0],
-            "xs and ys must have the same length: xs={:?}, ys={:?}",
-            xs.size(),
-            ys.size()
-        );
-        self.model.train(xs, ys);
+        self.model.train(queries);
     }
 
     fn insert(&mut self, data: Vec<Array>, ids: Vec<Id>) {
@@ -376,7 +345,7 @@ impl LevelIndex {
         });
     }
 
-    fn insert_many(&mut self, data: Vec<Vec<Tensor>>, ids: Vec<Vec<Id>>) {
+    fn insert_many(&mut self, data: Vec<Vec<Array>>, ids: Vec<Vec<Id>>) {
         assert!(data.len() == self.buckets.len());
         assert!(ids.len() == self.buckets.len());
         data.into_iter()

@@ -6,7 +6,7 @@ use tch::{
     Device, Tensor,
 };
 
-use crate::errors::BuildError;
+use crate::{errors::BuildError, types::Array, util};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct ModelConfig {
@@ -90,6 +90,7 @@ impl ModelBuilder {
     }
 }
 
+// todo reset model after flush
 #[derive(Debug)]
 pub(crate) struct Model {
     model: Box<dyn nn::Module>,
@@ -109,13 +110,10 @@ impl Model {
         label as usize
     }
 
-    pub fn train(&mut self, xs: Tensor, ys: Tensor) {
-        info!(queries=xs.size()[0]; "model:train_started");
-        let batch_size = 8; // todo take from config
-        let xs = xs.to_device(self.device);
-        let ys = ys.to_device(self.device);
-        assert!(batch_size < xs.size()[0]);
-        let dataset = self.dataset(xs, ys);
+    pub fn train(&mut self, queries: &[&[Array]]) {
+        info!(queries=queries.len(); "model:train_started");
+        let batch_size: i64 = 8; // todo take from config
+        let dataset = self.dataset(queries);
         let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap(); // todo handle unwrap
         for _ in 1..3 {
             // todo take epochs from config
@@ -127,7 +125,46 @@ impl Model {
         info!("model:train_finished");
     }
 
-    fn dataset(&self, xs: Tensor, ys: Tensor) -> Dataset {
+    fn dataset(&self, queries: &[&[Array]]) -> Dataset {
+        let total_queries = queries.iter().map(|x| x.len()).sum::<usize>() as i64;
+        let xs: Tensor = Tensor::cat(
+            &queries
+                .iter()
+                .map(|xs| {
+                    Tensor::cat(
+                        &xs.iter()
+                            .map(|x| util::vec2tensor(x).unsqueeze(0))
+                            .collect::<Vec<_>>(),
+                        0,
+                    )
+                })
+                .collect::<Vec<_>>(),
+            0,
+        );
+        let xs = xs.to_device(self.device);
+        assert!(
+            xs.size()[0] == total_queries,
+            "xs and buckets must have the same length: xs={:?}, queries={}",
+            xs.size(),
+            total_queries
+        );
+
+        let ys = Tensor::cat(
+            &queries
+                .iter()
+                .enumerate()
+                .map(|(y, x)| {
+                    Tensor::full([x.len() as i64], y as i64, (tch::Kind::Int64, self.device))
+                })
+                .collect::<Vec<_>>(),
+            0,
+        );
+        assert!(
+            xs.size()[0] == ys.size()[0],
+            "xs and ys must have the same length: xs={:?}, ys={:?}",
+            xs.size(),
+            ys.size()
+        );
         assert!(
             xs.size()[0] == ys.size()[0],
             "xs and ys must have the same size: {} != {}",

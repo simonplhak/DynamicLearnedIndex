@@ -23,7 +23,7 @@ pub(crate) fn compute_labels(
     ids: Vec<Id>,
     label_method: &LabelMethod,
     k: i64,
-) -> (Vec<Vec<Tensor>>, Vec<Vec<Id>>) {
+) -> (Vec<Vec<Array>>, Vec<Vec<Id>>) {
     debug_assert!(!data.is_empty());
     info!(
         data_len = data.len(),
@@ -33,7 +33,12 @@ pub(crate) fn compute_labels(
     match label_method {
         LabelMethod::Knn(kmeans) => {
             let data = data.iter().map(|v| util::vec2tensor(v)).collect::<Vec<_>>();
-            k_means_clustering(data, ids, k as usize, kmeans.max_iters)
+            let (data, ids) = k_means_clustering(data, ids, k as usize, kmeans.max_iters);
+            let data = data
+                .into_iter()
+                .map(|v| v.into_iter().map(|t| util::tensor2vec(&t)).collect())
+                .collect::<Vec<_>>();
+            (data, ids)
         }
     }
 }
