@@ -2,7 +2,6 @@ use dynamic_learned_index::Index;
 use log::info;
 use measure_time_macro::log_time;
 use serde::Deserialize;
-use tch::{IndexOp, Tensor};
 
 #[derive(Deserialize)]
 pub struct EvalMetrics {
@@ -12,26 +11,17 @@ pub struct EvalMetrics {
     pub recall_top10: f32,
 }
 
-pub fn eval_queries(index: &Index, gt: Tensor, queries: Tensor) -> EvalMetrics {
-    assert!(queries.size()[0] == gt.size()[0]);
+pub fn eval_queries(index: &Index, gt: &[Vec<Id>], queries: &[Array]) -> EvalMetrics {
+    assert!(queries.len() == gt.len());
     let max_k = 10;
-    let (recall_top1, recall_top5, recall_top10) = (0..queries.size()[0])
-        .map(|i| {
-            let tensor = queries.i((i, ..));
-            let res = index.search(&tensor, max_k);
+    let (recall_top1, recall_top5, recall_top10) = queries
+        .iter()
+        .zip(gt.iter())
+        .map(|(query, gt)| {
+            let res = index.search(query, max_k);
             assert!(res.len() == max_k);
-            (i, res)
-        })
-        .map(|(i, res)| {
-            let gt = gt.i((i, ..));
             let recall_at_k = |k: usize| {
-                let gt = gt.narrow(0, 0, k as i64);
-                let gt: Vec<i64> = gt.try_into().unwrap();
-                let hits = res
-                    .iter()
-                    .take(k)
-                    .filter(|idx| gt.contains(&(**idx as i64)))
-                    .count();
+                let hits = res.iter().take(k).filter(|idx| gt.contains(idx)).count();
                 hits as f32 / k as f32
             };
 
@@ -44,7 +34,7 @@ pub fn eval_queries(index: &Index, gt: Tensor, queries: Tensor) -> EvalMetrics {
         .fold((0.0, 0.0, 0.0), |(top1, top5, top10), (x, y, z)| {
             (top1 + x, top5 + y, top10 + z)
         });
-    let total = queries.size()[0] as f32;
+    let total = queries.len() as f32;
     EvalMetrics {
         total: total as u64,
         recall_top1: recall_top1 / total,
