@@ -7,14 +7,14 @@ use tch::Tensor;
 use crate::{
     config::CONFIG,
     errors::BuildError,
-    types::{Array, ArraySlice},
-    util, Id,
+    types::{Array, ArrayNumType, ArraySlice},
+    Id,
 };
 
 #[derive(Debug, Serialize)]
 pub(crate) struct BucketNew {
     id: String,
-    records: Vec<f64>,
+    records: Vec<ArrayNumType>,
     ids: Vec<Id>,
     size: usize,
     input_shape: usize,
@@ -35,13 +35,13 @@ impl BucketNew {
         }
     }
 
-    fn record(&self, i: usize) -> &[f64] {
+    fn record(&self, i: usize) -> &ArraySlice {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
         &self.records[start..end]
     }
 
-    pub fn search(&self, k: usize, query: &[f64]) -> (Vec<Id>, Vec<f64>) {
+    pub fn search(&self, k: usize, query: &ArraySlice) -> (Vec<Id>, Vec<ArrayNumType>) {
         assert!(k > 0);
         let mut distances = self
             .ids
@@ -123,16 +123,16 @@ pub(crate) enum BucketType {
     New,
 }
 
-// todo replace Bucket by BucketNew
+// todo replace BucketNew by Bucket
 #[derive(Debug)]
 pub(crate) enum Bucket {
     New(BucketNew),
 }
 
 impl Bucket {
-    pub fn search(&self, query: &ArraySlice, k: usize) -> (Vec<Id>, Vec<f64>) {
+    pub fn search(&self, query: &ArraySlice, k: usize) -> (Vec<Id>, Vec<ArrayNumType>) {
         match self {
-            Bucket::New(bucket_new) => bucket_new.search(k, &query),
+            Bucket::New(bucket_new) => bucket_new.search(k, query),
         }
     }
 
@@ -250,11 +250,11 @@ impl BucketBuilder {
     }
 }
 
-fn euclidean_distance_new(a: &[f64], b: &[f64]) -> f64 {
+fn euclidean_distance_new(a: &ArraySlice, b: &ArraySlice) -> ArrayNumType {
     assert_eq!(a.len(), b.len(), "Vectors must have the same length");
     a.iter()
         .zip(b.iter())
         .map(|(x, y)| (x - y).powi(2))
-        .sum::<f64>()
+        .sum::<f32>()
         .sqrt()
 }

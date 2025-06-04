@@ -84,19 +84,15 @@ pub enum Index {
 
 impl Index {
     #[log_time]
-    pub fn search(&self, query: &Tensor, k: usize) -> Vec<Id> {
+    pub fn search(&self, query: &ArraySlice, k: usize) -> Vec<Id> {
         match self {
-            Index::BentleySaxe(index) => {
-                let query = util::tensor2vec(query);
-                index.search(&query, k)
-            }
+            Index::BentleySaxe(index) => index.search(query, k),
         }
     }
 
-    pub fn insert(&mut self, value: Tensor, id: Id) {
+    pub fn insert(&mut self, value: Array, id: Id) {
         match self {
             Index::BentleySaxe(index) => {
-                let value = util::tensor2vec(&value);
                 index.insert(value, id);
             }
         }
