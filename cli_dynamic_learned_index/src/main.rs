@@ -7,7 +7,8 @@ use log::info;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf};
 use structured_logger::json::new_writer;
-use tch::{IndexOp, Tensor};
+
+use crate::dataset::load_dataset_ids;
 mod config;
 mod dataset;
 mod eval;
@@ -41,6 +42,12 @@ struct ExperimentConfig {
     force: bool,
     #[arg(short, long, default_value = "stdout")]
     log_output: LogOuptut,
+    #[arg(short, long)]
+    validate_after_n: Option<usize>,
+    #[arg(short, long)]
+    include_each_n: Option<usize>,
+    #[arg(short, long)]
+    limit: Option<usize>,
 }
 
 fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
@@ -74,10 +81,26 @@ fn experiment(experiment_config: &ExperimentConfig) -> Result<()> {
     fs::write(experiment_dir.join("index_config.yaml"), config_content)?;
     let mut index = index_config.build()?;
     let data = load_dataset(&dataset_config.dataset)?;
-    let gt = load_dataset(&dataset_config.ground_truth)?;
+    let gt = load_dataset_ids(&dataset_config.ground_truth)?;
     let queries = load_dataset(&dataset_config.queries)?;
-    insert_all_data(&mut index, data, None);
-    let metrics = eval_queries(&index, gt, queries);
+    let validation_options = if let (Some(validate_after_n), Some(include_each_n)) = (
+        experiment_config.validate_after_n,
+        experiment_config.include_each_n,
+    ) {
+        Some(eval::ValidationOptions {
+            validate_after_n,
+            include_each_n,
+        })
+    } else {
+        None
+    };
+    insert_all_data(
+        &mut index,
+        data,
+        experiment_config.limit,
+        validation_options,
+    );
+    let metrics = eval_queries(&index, &gt, &queries);
     info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }
@@ -88,11 +111,11 @@ fn test() -> Result<()> {
         fs::create_dir_all(&experiment_dir)?;
     }
     structured_logger::Builder::with_level("info")
-        // .with_target_writer("*", new_writer(std::io::stdout()))
-        .with_target_writer(
-            "*",
-            new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
-        )
+        .with_target_writer("*", new_writer(std::io::stdout()))
+        // .with_target_writer(
+        //     "*",
+        //     new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
+        // )
         .init();
     let path = PathBuf::from("configs/example.yaml");
     let config_content = fs::read_to_string(path)?;
@@ -100,11 +123,15 @@ fn test() -> Result<()> {
     let mut index = index_config.build()?;
     let dataset_config = config_from_yaml(&PathBuf::from("data/k300/config.yaml"))?;
     let data = load_dataset(&dataset_config.dataset)?;
-    let gt = load_dataset(&dataset_config.ground_truth)?;
+    let gt = load_dataset_ids(&dataset_config.ground_truth)?;
     let queries = load_dataset(&dataset_config.queries)?;
-    insert_all_data(&mut index, data, Some(200));
-    let metrics = eval_queries(&index, gt, queries);
-    info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
+    let validation_options = eval::ValidationOptions {
+        validate_after_n: 100,
+        include_each_n: 10,
+    };
+    insert_all_data(&mut index, data, Some(200), Some(validation_options));
+    // let metrics = eval_queries(&index, &gt, &queries);
+    // info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }
 
