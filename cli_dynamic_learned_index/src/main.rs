@@ -34,17 +34,15 @@ enum LogOuptut {
 #[derive(Parser, Debug, Serialize, Deserialize)]
 struct ExperimentConfig {
     experiment_name: PathBuf,
-    #[arg(short, long)]
     dataset_config: PathBuf,
-    #[arg(short, long)]
     index_config: PathBuf,
     #[arg(short, long)]
     force: bool,
-    #[arg(short, long, default_value = "stdout")]
+    #[arg(long, default_value = "file")]
     log_output: LogOuptut,
-    #[arg(short, long)]
+    #[arg(long)]
     validate_after_n: Option<usize>,
-    #[arg(short, long)]
+    #[arg(long)]
     include_each_n: Option<usize>,
     #[arg(short, long)]
     limit: Option<usize>,
