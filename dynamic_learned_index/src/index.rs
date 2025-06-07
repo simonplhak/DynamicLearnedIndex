@@ -297,6 +297,9 @@ impl LevelIndexBuilder {
             .device(self.model_device.to_tch_device())
             .input_nodes(input_shape as i64)
             .labels(n_buckets as i64);
+        if let Some(train_params) = model_config.train_params.clone() {
+            model_builder.train_params(train_params);
+        }
         model_config.layers.iter().for_each(|layer| {
             model_builder.add_layer(*layer);
         });

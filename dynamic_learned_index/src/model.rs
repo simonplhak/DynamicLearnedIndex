@@ -13,8 +13,15 @@ use crate::{
 };
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct ModelTrainConfig {
+    pub batch_size: Option<i64>,
+    pub epochs: Option<usize>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct ModelConfig {
     pub layers: Vec<ModelLayer>,
+    pub train_params: Option<ModelTrainConfig>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -30,6 +37,8 @@ pub(crate) struct ModelBuilder {
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,
     labels: Option<i64>,
+    batch_size: Option<i64>,
+    epochs: Option<usize>,
 }
 
 impl ModelBuilder {
@@ -50,6 +59,12 @@ impl ModelBuilder {
 
     pub fn labels(&mut self, labels: i64) -> &mut Self {
         self.labels = Some(labels);
+        self
+    }
+
+    pub fn train_params(&mut self, train_params: ModelTrainConfig) -> &mut Self {
+        self.batch_size = train_params.batch_size;
+        self.epochs = train_params.epochs;
         self
     }
 
@@ -78,6 +93,8 @@ impl ModelBuilder {
                 (model, output_nodes)
             },
         );
+        let epochs = self.epochs.unwrap_or(3);
+        let batch_size = self.batch_size.unwrap_or(8);
         model = model.add(nn::linear(
             &vs_root / "output",
             output_nodes,
@@ -89,6 +106,8 @@ impl ModelBuilder {
             vs,
             labels,
             device,
+            batch_size,
+            epochs,
         };
         Ok(model)
     }
@@ -101,6 +120,8 @@ pub(crate) struct Model {
     vs: nn::VarStore,
     labels: i64,
     device: Device,
+    batch_size: i64,
+    epochs: usize,
 }
 
 impl Model {
@@ -116,12 +137,10 @@ impl Model {
 
     pub fn train(&mut self, queries: &[&[Array]]) {
         info!(queries=queries.len(); "model:train_started");
-        let batch_size: i64 = 8; // todo take from config
         let dataset = self.dataset(queries);
-        let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap(); // todo handle unwrap
-        for _ in 1..3 {
-            // todo take epochs from config
-            for (xs, ys) in dataset.train_iter(batch_size).shuffle() {
+        let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap();
+        for _ in 0..self.epochs {
+            for (xs, ys) in dataset.train_iter(self.batch_size).shuffle() {
                 let loss = self.model.forward(&xs).cross_entropy_for_logits(&ys);
                 opt.backward_step(&loss);
             }
