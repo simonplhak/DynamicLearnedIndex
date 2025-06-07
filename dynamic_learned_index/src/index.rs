@@ -215,8 +215,13 @@ impl BentleySaxeIndex {
                 let level_idx = self.add_level();
                 let (data, ids) = self.lower_level_data(level_idx);
                 let level = &mut self.levels[level_idx];
-                let (data, ids) =
-                    compute_labels(data, ids, &self.label_method, level.n_buckets() as i64);
+                let (data, ids) = compute_labels(
+                    data,
+                    ids,
+                    &self.label_method,
+                    level.n_buckets(),
+                    self.input_shape as usize,
+                );
                 let cluster_shape = data
                     .iter()
                     .map(|x| x.len().to_string())
