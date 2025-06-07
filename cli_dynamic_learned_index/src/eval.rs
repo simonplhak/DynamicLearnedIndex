@@ -63,7 +63,7 @@ pub fn insert_all_data(
     let mut validation_queries = Vec::new();
     (0..limit).zip(queries.into_iter()).for_each(|(id, query)| {
         if let Some(validation_options) = validation_options {
-            if id % validation_options.validate_after_n == 0 {
+            if id > 0 && id % validation_options.validate_after_n == 0 {
                 let metrics = eval_queries(index, &validation_ids, &validation_queries);
                 info!(total = metrics.total, recall_top1=metrics.recall_top1; "validation_metrics");
             }
