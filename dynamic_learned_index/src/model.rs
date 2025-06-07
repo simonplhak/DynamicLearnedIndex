@@ -135,6 +135,19 @@ impl Model {
         label as usize
     }
 
+    pub fn predict_many(&self, xs: &[Array]) -> Vec<usize> {
+        let xs = Tensor::cat(
+            &xs.iter()
+                .map(|x| util::vec2tensor(x).unsqueeze(0))
+                .collect::<Vec<_>>(),
+            0,
+        )
+        .to_device(self.device);
+        let labels = self.model.forward(&xs).argmax(1, false);
+        println!("labels: {labels:?}, kind: {:?}", labels.kind());
+        tensor2vec_usize(&labels)
+    }
+
     pub fn train(&mut self, queries: &[&[Array]]) {
         info!(queries=queries.len(); "model:train_started");
         let dataset = self.dataset(queries);
@@ -203,4 +216,9 @@ impl Model {
             labels: self.labels,
         }
     }
+}
+
+fn tensor2vec_usize(tensor: &tch::Tensor) -> Vec<usize> {
+    let x: Vec<i64> = tensor.try_into().unwrap();
+    x.iter().map(|&v| v as usize).collect()
 }
