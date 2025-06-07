@@ -6,12 +6,12 @@ use crate::{
     errors::BuildError,
     model::{self, Model, ModelConfig},
     types::{Array, ArraySlice},
-    util, Id,
+    Id,
 };
 use log::info;
 use measure_time_macro::log_time;
 use serde::{Deserialize, Serialize};
-use tch::{Device, Tensor};
+use tch::Device;
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub enum ModelDevice {
@@ -40,8 +40,8 @@ pub struct IndexConfig {
     levelling: Levelling,
     levels: HashMap<usize, LevelIndexConfig>,
     buffer_size: usize,
-    input_shape: i64,
-    arity: i64,
+    input_shape: usize,
+    arity: usize,
     label_method: LabelMethod,
     device: ModelDevice,
 }
@@ -102,10 +102,10 @@ impl Index {
 #[derive(Debug)]
 pub struct BentleySaxeIndex {
     levels_config: HashMap<usize, LevelIndexConfig>,
-    input_shape: i64,
-    arity: i64,
+    input_shape: usize,
+    arity: usize,
     label_method: LabelMethod,
-    device: ModelDevice, // todo propagate to model
+    device: ModelDevice,
     levels: Vec<LevelIndex>,
     buffer: Bucket,
 }
@@ -220,7 +220,7 @@ impl BentleySaxeIndex {
                     ids,
                     &self.label_method,
                     level.n_buckets(),
-                    self.input_shape as usize,
+                    self.input_shape,
                 );
                 let cluster_shape = data
                     .iter()
@@ -245,15 +245,15 @@ pub struct LevelIndexConfig {
 #[derive(Debug, Default)]
 pub(crate) struct LevelIndexBuilder {
     id: Option<String>,
-    n_buckets: Option<i64>,
+    n_buckets: Option<usize>,
     model_config: Option<ModelConfig>,
     bucket_size: Option<usize>,
-    input_shape: Option<i64>,
+    input_shape: Option<usize>,
     model_device: ModelDevice,
 }
 
 impl LevelIndexBuilder {
-    pub fn n_buckets(&mut self, size: i64) -> &mut Self {
+    pub fn n_buckets(&mut self, size: usize) -> &mut Self {
         self.n_buckets = Some(size);
         self
     }
@@ -268,7 +268,7 @@ impl LevelIndexBuilder {
         self
     }
 
-    pub fn input_shape(&mut self, input_shape: i64) -> &mut Self {
+    pub fn input_shape(&mut self, input_shape: usize) -> &mut Self {
         self.input_shape = Some(input_shape);
         self
     }
@@ -295,8 +295,8 @@ impl LevelIndexBuilder {
         let mut model_builder = model::ModelBuilder::default();
         model_builder
             .device(self.model_device.to_tch_device())
-            .input_nodes(input_shape)
-            .labels(n_buckets);
+            .input_nodes(input_shape as i64)
+            .labels(n_buckets as i64);
         model_config.layers.iter().for_each(|layer| {
             model_builder.add_layer(*layer);
         });
@@ -308,7 +308,7 @@ impl LevelIndexBuilder {
             .is_dynamic(true)
             .bucket_type(BucketType::New);
         let buckets = (0..n_buckets)
-            .map(|bucket_id| bucket_builder.id(format!("{}:{}", id, bucket_id)).build())
+            .map(|bucket_id| bucket_builder.id(format!("{id}:{bucket_id}")).build())
             .collect::<Result<Vec<_>, _>>()?;
         let level_index = LevelIndex { model, buckets };
         Ok(level_index)

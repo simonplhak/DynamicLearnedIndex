@@ -2,7 +2,6 @@ use std::fmt::Debug;
 
 use log::info;
 use serde::Serialize;
-use tch::Tensor;
 
 use crate::{
     config::CONFIG,
@@ -198,7 +197,7 @@ impl Bucket {
 
 #[derive(Debug, Default)]
 pub(crate) struct BucketBuilder {
-    input_shape: Option<i64>,
+    input_shape: Option<usize>,
     id: Option<String>,
     size: Option<usize>,
     bucket_type: Option<BucketType>,
@@ -206,7 +205,7 @@ pub(crate) struct BucketBuilder {
 }
 
 impl BucketBuilder {
-    pub fn input_shape(&mut self, input_shape: i64) -> &mut Self {
+    pub fn input_shape(&mut self, input_shape: usize) -> &mut Self {
         self.input_shape = Some(input_shape);
         self
     }
@@ -243,7 +242,7 @@ impl BucketBuilder {
             BucketType::New => Ok(Bucket::New(BucketNew::new(
                 id,
                 size,
-                input_shape as usize,
+                input_shape,
                 self.is_dynamic,
             ))),
         }

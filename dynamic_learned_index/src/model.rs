@@ -66,7 +66,7 @@ impl ModelBuilder {
                 let (model, output_nodes) = match layer {
                     ModelLayer::Linear(nodes) => (
                         model.add(nn::linear(
-                            &vs_root / format!("layer_{}", i),
+                            &vs_root / format!("layer_{i}"),
                             input_nodes,
                             *nodes,
                             Default::default(),
@@ -109,8 +109,7 @@ impl Model {
         let label = self.model.forward(&xs).argmax(0, false).int64_value(&[]);
         assert!(
             label >= 0 && label < self.labels,
-            "label out of range: {}",
-            label
+            "label out of range: {label}",
         );
         label as usize
     }
