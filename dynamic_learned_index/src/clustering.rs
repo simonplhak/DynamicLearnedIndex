@@ -23,8 +23,10 @@ pub(crate) fn compute_labels(
     input_shape: usize,
 ) -> Vec<i32> {
     debug_assert!(!data.is_empty());
+    let data_len = data.len() / input_shape;
+    assert!(data_len * input_shape == data.len());
     info!(
-        data_len = data.len(),
+        data_len = data_len,
         k = k,
         label_method = format!("{:?}", label_method); "clustering:compute_labels"
     );
@@ -46,6 +48,8 @@ fn k_means_clustering_new(
 ) -> Vec<i32> {
     let count = data.len() / input_shape;
     assert!(count * input_shape == data.len());
+    assert!(k > 0);
+    assert!(k <= count);
     let kmean: kmeans::KMeans<_, { constants::LANES }, _> =
         kmeans::KMeans::new(data, count, input_shape, kmeans::EuclideanDistance);
     let result = kmean.kmeans_lloyd(
