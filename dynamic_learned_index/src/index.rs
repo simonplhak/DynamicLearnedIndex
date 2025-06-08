@@ -2,7 +2,6 @@ use std::collections::HashMap;
 
 use crate::{
     bucket::{self, Bucket, BucketBuilder, BucketType},
-    clustering::LabelMethod,
     errors::BuildError,
     model::{self, Model, ModelConfig},
     types::{Array, ArraySlice},
@@ -42,7 +41,6 @@ pub struct IndexConfig {
     buffer_size: usize,
     input_shape: usize,
     arity: usize,
-    label_method: LabelMethod,
     device: ModelDevice,
 }
 
@@ -56,7 +54,6 @@ impl Default for IndexConfig {
             buffer_size: 5000,
             input_shape: 768,
             arity: 3,
-            label_method: Default::default(),
             device: Default::default(),
         }
     }
