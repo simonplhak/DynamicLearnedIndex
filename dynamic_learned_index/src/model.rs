@@ -1,4 +1,3 @@
-use log::info;
 use serde::{Deserialize, Serialize};
 use tch::{
     nn::{self, OptimizerConfig},
@@ -7,21 +6,57 @@ use tch::{
 };
 
 use crate::{
+    clustering::{self, KMeansConfig, LabelMethod},
     errors::BuildError,
+    sampling,
     types::{Array, ArraySlice},
     util,
 };
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct ModelTrainConfig {
+pub struct TrainParamsBuild {
+    pub threshold_samples: Option<usize>,
     pub batch_size: Option<i64>,
     pub epochs: Option<usize>,
+    pub label_method: Option<LabelMethod>,
+}
+
+impl From<TrainParamsBuild> for TrainParams {
+    fn from(val: TrainParamsBuild) -> Self {
+        TrainParams {
+            threshold_samples: val.threshold_samples.unwrap_or(1000),
+            batch_size: val.batch_size.unwrap_or(8),
+            epochs: val.epochs.unwrap_or(3),
+            label_method: val
+                .label_method
+                .unwrap_or(LabelMethod::Knn(KMeansConfig::default())),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TrainParams {
+    pub threshold_samples: usize,
+    pub batch_size: i64,
+    pub epochs: usize,
+    pub label_method: LabelMethod,
+}
+
+impl Default for TrainParams {
+    fn default() -> Self {
+        Self {
+            threshold_samples: 1000,
+            batch_size: 8,
+            epochs: 3,
+            label_method: LabelMethod::Knn(KMeansConfig::default()),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub struct ModelConfig {
     pub layers: Vec<ModelLayer>,
-    pub train_params: Option<ModelTrainConfig>,
+    pub train_params: Option<TrainParamsBuild>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -37,8 +72,7 @@ pub(crate) struct ModelBuilder {
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,
     labels: Option<i64>,
-    batch_size: Option<i64>,
-    epochs: Option<usize>,
+    train_params: Option<TrainParamsBuild>,
 }
 
 impl ModelBuilder {
@@ -62,9 +96,8 @@ impl ModelBuilder {
         self
     }
 
-    pub fn train_params(&mut self, train_params: ModelTrainConfig) -> &mut Self {
-        self.batch_size = train_params.batch_size;
-        self.epochs = train_params.epochs;
+    pub fn train_params(&mut self, train_params: TrainParamsBuild) -> &mut Self {
+        self.train_params = Some(train_params);
         self
     }
 
@@ -93,21 +126,24 @@ impl ModelBuilder {
                 (model, output_nodes)
             },
         );
-        let epochs = self.epochs.unwrap_or(3);
-        let batch_size = self.batch_size.unwrap_or(8);
         model = model.add(nn::linear(
             &vs_root / "output",
             output_nodes,
             labels,
             Default::default(),
         ));
+        let train_params = self
+            .train_params
+            .clone()
+            .map(Into::into)
+            .unwrap_or_default();
         let model = Model {
             model: Box::new(model),
             vs,
             labels,
             device,
-            batch_size,
-            epochs,
+            train_params,
+            input_shape: input_nodes as usize,
         };
         Ok(model)
     }
@@ -120,8 +156,8 @@ pub(crate) struct Model {
     vs: nn::VarStore,
     labels: i64,
     device: Device,
-    batch_size: i64,
-    epochs: usize,
+    input_shape: usize,
+    train_params: TrainParams,
 }
 
 impl Model {
@@ -148,65 +184,43 @@ impl Model {
         tensor2vec_usize(&labels)
     }
 
-    pub fn train(&mut self, queries: &[&[Array]]) {
-        info!(queries=queries.len(); "model:train_started");
-        let dataset = self.dataset(queries);
+    pub fn train(&mut self, xs: &[Array], k: usize) {
+        let xs = sampling::sample(xs, self.train_params.threshold_samples);
+        let ys =
+            clustering::compute_labels(&xs, &self.train_params.label_method, k, self.input_shape);
+        let dataset = self.dataset(&xs, &ys);
         let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap();
-        for _ in 0..self.epochs {
-            for (xs, ys) in dataset.train_iter(self.batch_size).shuffle() {
+        for _ in 0..self.train_params.epochs {
+            for (xs, ys) in dataset.train_iter(self.train_params.batch_size).shuffle() {
                 let loss = self.model.forward(&xs).cross_entropy_for_logits(&ys);
                 opt.backward_step(&loss);
             }
         }
-        info!("model:train_finished");
     }
 
-    fn dataset(&self, queries: &[&[Array]]) -> Dataset {
-        let total_queries = queries.iter().map(|x| x.len()).sum::<usize>() as i64;
-        let xs: Tensor = Tensor::cat(
-            &queries
-                .iter()
-                .map(|xs| {
-                    Tensor::cat(
-                        &xs.iter()
-                            .map(|x| util::vec2tensor(x).unsqueeze(0))
-                            .collect::<Vec<_>>(),
-                        0,
-                    )
-                })
-                .collect::<Vec<_>>(),
-            0,
-        );
-        let xs = xs.to_device(self.device);
+    fn dataset(&self, xs: &[f32], ys: &[i32]) -> Dataset {
+        let total_queries = ys.len();
+        assert!(xs.len() % self.input_shape == 0);
+        assert!(xs.len() / self.input_shape == ys.len());
+        let tensors = (0..total_queries)
+            .map(|i| {
+                Tensor::from_slice(&xs[i * self.input_shape..(i + 1) * self.input_shape])
+                    .unsqueeze(0)
+            })
+            .collect::<Vec<_>>();
+        let xs = Tensor::cat(&tensors, 0).to_device(self.device);
         assert!(
-            xs.size()[0] == total_queries,
-            "xs and buckets must have the same length: xs={:?}, queries={}",
-            xs.size(),
-            total_queries
-        );
-
-        let ys = Tensor::cat(
-            &queries
-                .iter()
-                .enumerate()
-                .map(|(y, x)| {
-                    Tensor::full([x.len() as i64], y as i64, (tch::Kind::Int64, self.device))
-                })
-                .collect::<Vec<_>>(),
-            0,
-        );
-        assert!(
-            xs.size()[0] == ys.size()[0],
-            "xs and ys must have the same length: xs={:?}, ys={:?}",
-            xs.size(),
-            ys.size()
-        );
-        assert!(
-            xs.size()[0] == ys.size()[0],
-            "xs and ys must have the same size: {} != {}",
+            xs.size()[0] as usize == total_queries,
+            "{} != {total_queries}, {:?}",
             xs.size()[0],
-            ys.size()[0]
+            xs.size()
         );
+        let ys = Tensor::from_slice(ys)
+            .to_kind(tch::Kind::Int64)
+            .to_device(self.device);
+        assert!(xs.size()[0] == ys.size()[0]);
+        assert!(xs.size()[0] == ys.size()[0]);
+        assert!(ys.kind() == tch::Kind::Int64);
         let options = (xs.kind(), xs.device());
         Dataset {
             train_images: xs,

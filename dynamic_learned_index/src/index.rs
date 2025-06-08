@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::{
     bucket::{self, Bucket, BucketBuilder, BucketType},
-    clustering::{compute_labels, LabelMethod},
+    clustering::LabelMethod,
     errors::BuildError,
     model::{self, Model, ModelConfig},
     types::{Array, ArraySlice},
@@ -68,7 +68,6 @@ impl IndexConfig {
                     arity: self.arity,
                     device: self.device,
                     levels: Vec::new(),
-                    label_method: self.label_method,
                     buffer,
                 };
                 Index::BentleySaxe(index)
@@ -104,7 +103,6 @@ pub struct BentleySaxeIndex {
     levels_config: HashMap<usize, LevelIndexConfig>,
     input_shape: usize,
     arity: usize,
-    label_method: LabelMethod,
     device: ModelDevice,
     levels: Vec<LevelIndex>,
     buffer: Bucket,
@@ -215,21 +213,12 @@ impl BentleySaxeIndex {
                 let level_idx = self.add_level();
                 let (data, ids) = self.lower_level_data(level_idx);
                 let level = &mut self.levels[level_idx];
-                let (data, ids) = compute_labels(
-                    data,
-                    ids,
-                    &self.label_method,
-                    level.n_buckets(),
-                    self.input_shape,
-                );
-                let cluster_shape = data
-                    .iter()
-                    .map(|x| x.len().to_string())
-                    .collect::<Vec<_>>()
-                    .join(",");
-                info!(cluster_shape = cluster_shape, level_idx = level_idx; "index:cluster_shape");
-                let data_refs: Vec<&[Array]> = data.iter().map(|inner| inner.as_slice()).collect();
-                level.train(&data_refs);
+                level.train(&data, level.n_buckets());
+                // let xs = sampling::sample(&data, 1000); // todo make this configurable
+                // let level = &mut self.levels[level_idx];
+                // let ys =
+                //     compute_labels(&xs, &self.label_method, level.n_buckets(), self.input_shape);
+                // level.train(&xs, &ys);
                 level.insert_many(data, ids);
             }
         };
@@ -339,9 +328,8 @@ impl LevelIndex {
     }
 
     #[log_time]
-    fn train(&mut self, queries: &[&[Array]]) {
-        assert!(self.buckets.len() == queries.len());
-        self.model.train(queries);
+    fn train(&mut self, xs: &[Array], k: usize) {
+        self.model.train(xs, k);
     }
 
     fn insert(&mut self, data: Vec<Array>, ids: Vec<Id>) {
@@ -351,15 +339,15 @@ impl LevelIndex {
         });
     }
 
-    fn insert_many(&mut self, data: Vec<Vec<Array>>, ids: Vec<Vec<Id>>) {
-        assert!(data.len() == self.buckets.len());
-        assert!(ids.len() == self.buckets.len());
-        data.into_iter()
-            .zip(ids)
-            .enumerate()
-            .for_each(|(bucket_idx, (data, ids))| {
-                assert!(data.len() == ids.len());
-                self.buckets[bucket_idx].insert_many(data, ids);
+    fn insert_many(&mut self, data: Vec<Array>, ids: Vec<Id>) {
+        assert!(data.len() == ids.len());
+        let asigments = self.model.predict_many(&data);
+        assert!(asigments.len() == data.len());
+        asigments
+            .into_iter()
+            .zip(data.into_iter().zip(ids))
+            .for_each(|(bucket_idx, (query, id))| {
+                self.buckets[bucket_idx].insert(query, id);
             });
     }
 

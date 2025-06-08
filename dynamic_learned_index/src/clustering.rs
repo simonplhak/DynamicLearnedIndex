@@ -1,11 +1,11 @@
 use log::info;
 use serde::{Deserialize, Serialize};
 
-use crate::{constants, types::Array, Id};
+use crate::constants;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(tag = "type", content = "value")]
-pub(crate) enum LabelMethod {
+pub enum LabelMethod {
     #[serde(rename = "knn")]
     Knn(KMeansConfig),
 }
@@ -17,12 +17,11 @@ impl Default for LabelMethod {
 }
 
 pub(crate) fn compute_labels(
-    data: Vec<Array>,
-    ids: Vec<Id>,
+    data: &Vec<f32>,
     label_method: &LabelMethod,
     k: usize,
     input_shape: usize,
-) -> (Vec<Vec<Array>>, Vec<Vec<Id>>) {
+) -> Vec<i32> {
     debug_assert!(!data.is_empty());
     info!(
         data_len = data.len(),
@@ -30,31 +29,25 @@ pub(crate) fn compute_labels(
         label_method = format!("{:?}", label_method); "clustering:compute_labels"
     );
     match label_method {
-        LabelMethod::Knn(kmeans) => {
-            // todo get_data method from index should return data in the right shape
-            let data = data.into_iter().flatten().collect::<Vec<_>>();
-            k_means_clustering_new(data, input_shape, ids, k, kmeans.max_iters)
-        }
+        LabelMethod::Knn(kmeans) => k_means_clustering_new(data, input_shape, k, kmeans.max_iters),
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub(crate) struct KMeansConfig {
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub struct KMeansConfig {
     max_iters: usize,
 }
 
 fn k_means_clustering_new(
-    data: Vec<f32>,
+    data: &Vec<f32>,
     input_shape: usize,
-    ids: Vec<Id>,
     k: usize,
     max_iters: usize,
-) -> (Vec<Vec<Array>>, Vec<Vec<Id>>) {
+) -> Vec<i32> {
     let count = data.len() / input_shape;
     assert!(count * input_shape == data.len());
-    assert!(count == ids.len());
     let kmean: kmeans::KMeans<_, { constants::LANES }, _> =
-        kmeans::KMeans::new(&data, count, input_shape, kmeans::EuclideanDistance);
+        kmeans::KMeans::new(data, count, input_shape, kmeans::EuclideanDistance);
     let result = kmean.kmeans_lloyd(
         k,
         max_iters,
@@ -63,20 +56,5 @@ fn k_means_clustering_new(
     );
     info!(error = result.distsum ;"kmeans:metrics");
     assert!(result.assignments.len() == count);
-    let mut cluster_data = vec![Vec::new(); k];
-    let mut cluster_ids = vec![Vec::new(); k];
-    let mut data = data;
-    result
-        .assignments
-        .iter()
-        .zip(ids.iter())
-        .enumerate()
-        .rev()
-        .for_each(|(i, (assigment, id))| {
-            let v = data.drain(i * input_shape..).collect::<Vec<_>>();
-            assert!(v.len() == input_shape);
-            cluster_data[*assigment].push(v);
-            cluster_ids[*assigment].push(*id);
-        });
-    (cluster_data, cluster_ids)
+    result.assignments.into_iter().map(|x| x as i32).collect()
 }
