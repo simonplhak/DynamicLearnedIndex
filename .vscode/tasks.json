@@ -20,7 +20,7 @@
 		},
 		{
 			"type": "shell",
-			"command": "cargo build --release && ./target/release/cli_dynamic_learned_index experiment test_build data/k300/config.yaml configs/01.yaml --validate-after-n 10000 --include-each-n 1000 --force",
+			"command": "cargo build --release && ./target/release/cli_dynamic_learned_index experiment test_build data/k300 --force",
 			"problemMatcher": [
 				"$rustc"
 			],
