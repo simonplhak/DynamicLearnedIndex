@@ -26,8 +26,8 @@ pub(crate) fn compute_labels(
     let data_len = data.len() / input_shape;
     assert!(data_len * input_shape == data.len());
     info!(
-        data_len = data_len,
-        k = k,
+        data_len=data_len,
+        k=k,
         label_method = format!("{:?}", label_method); "clustering:compute_labels"
     );
     match label_method {

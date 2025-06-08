@@ -69,7 +69,7 @@ impl BucketNew {
         assert!(resize_factor > 1);
         let to_add_size = self.size * (resize_factor - 1);
         assert!(to_add_size > 0);
-        info!(to_add_size = to_add_size, id = self.id; "bucket:rescale");
+        info!(to_add_size=to_add_size, id=self.id; "bucket:rescale");
         self.records.reserve(to_add_size * self.input_shape);
         self.ids.reserve(to_add_size);
         self.current_size += to_add_size;
