@@ -111,10 +111,7 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
             let config_content = fs::read_to_string(index_config_path)?;
             serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?
         }
-        None => {
-            info!("No index config provided, using default");
-            dynamic_learned_index::IndexConfig::default()
-        }
+        None => dynamic_learned_index::IndexConfig::default(),
     };
 
     fs::write(
