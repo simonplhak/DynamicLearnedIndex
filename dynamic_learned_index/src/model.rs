@@ -13,26 +13,26 @@ use crate::{
     util,
 };
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub struct TrainParamsBuild {
-    pub threshold_samples: Option<usize>,
-    pub batch_size: Option<i64>,
-    pub epochs: Option<usize>,
-    pub label_method: Option<LabelMethod>,
-}
+// #[derive(Debug, Serialize, Deserialize, Default, Clone)]
+// pub struct TrainParamsBuild {
+//     pub threshold_samples: Option<usize>,
+//     pub batch_size: Option<i64>,
+//     pub epochs: Option<usize>,
+//     pub label_method: Option<LabelMethod>,
+// }
 
-impl From<TrainParamsBuild> for TrainParams {
-    fn from(val: TrainParamsBuild) -> Self {
-        TrainParams {
-            threshold_samples: val.threshold_samples.unwrap_or(1000),
-            batch_size: val.batch_size.unwrap_or(8),
-            epochs: val.epochs.unwrap_or(3),
-            label_method: val
-                .label_method
-                .unwrap_or(LabelMethod::Knn(KMeansConfig::default())),
-        }
-    }
-}
+// impl From<TrainParamsBuild> for TrainParams {
+//     fn from(val: TrainParamsBuild) -> Self {
+//         TrainParams {
+//             threshold_samples: val.threshold_samples.unwrap_or(1000),
+//             batch_size: val.batch_size.unwrap_or(8),
+//             epochs: val.epochs.unwrap_or(3),
+//             label_method: val
+//                 .label_method
+//                 .unwrap_or(LabelMethod::Knn(KMeansConfig::default())),
+//         }
+//     }
+// }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrainParams {
@@ -53,10 +53,24 @@ impl Default for TrainParams {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelConfig {
     pub layers: Vec<ModelLayer>,
-    pub train_params: Option<TrainParamsBuild>,
+    pub train_params: TrainParams,
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            layers: vec![
+                ModelLayer::Linear(256),
+                ModelLayer::ReLU,
+                ModelLayer::Linear(256),
+                ModelLayer::ReLU,
+            ],
+            train_params: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -72,7 +86,7 @@ pub(crate) struct ModelBuilder {
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,
     labels: Option<i64>,
-    train_params: Option<TrainParamsBuild>,
+    train_params: Option<TrainParams>,
 }
 
 impl ModelBuilder {
@@ -96,7 +110,7 @@ impl ModelBuilder {
         self
     }
 
-    pub fn train_params(&mut self, train_params: TrainParamsBuild) -> &mut Self {
+    pub fn train_params(&mut self, train_params: TrainParams) -> &mut Self {
         self.train_params = Some(train_params);
         self
     }
@@ -132,11 +146,7 @@ impl ModelBuilder {
             labels,
             Default::default(),
         ));
-        let train_params = self
-            .train_params
-            .clone()
-            .map(Into::into)
-            .unwrap_or_default();
+        let train_params = self.train_params.clone().unwrap_or_default();
         let model = Model {
             model: Box::new(model),
             vs,

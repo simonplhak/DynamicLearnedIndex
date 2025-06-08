@@ -35,7 +35,7 @@ pub enum Levelling {
     BentleySaxe,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct IndexConfig {
     levelling: Levelling,
     levels: HashMap<usize, LevelIndexConfig>,
@@ -44,6 +44,22 @@ pub struct IndexConfig {
     arity: usize,
     label_method: LabelMethod,
     device: ModelDevice,
+}
+
+impl Default for IndexConfig {
+    fn default() -> Self {
+        let mut levels = HashMap::new();
+        levels.insert(0, Default::default());
+        Self {
+            levelling: Default::default(),
+            levels,
+            buffer_size: 5000,
+            input_shape: 768,
+            arity: 3,
+            label_method: Default::default(),
+            device: Default::default(),
+        }
+    }
 }
 
 impl IndexConfig {
@@ -225,10 +241,19 @@ impl BentleySaxeIndex {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LevelIndexConfig {
     pub model: ModelConfig,
     pub bucket_size: usize,
+}
+
+impl Default for LevelIndexConfig {
+    fn default() -> Self {
+        Self {
+            model: ModelConfig::default(),
+            bucket_size: 5000,
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -285,10 +310,11 @@ impl LevelIndexBuilder {
         model_builder
             .device(self.model_device.to_tch_device())
             .input_nodes(input_shape as i64)
+            .train_params(model_config.train_params.clone())
             .labels(n_buckets as i64);
-        if let Some(train_params) = model_config.train_params.clone() {
-            model_builder.train_params(train_params);
-        }
+        // if let Some(train_params) = model_config.train_params.clone() {
+        //     model_builder.train_params(train_params);
+        // }
         model_config.layers.iter().for_each(|layer| {
             model_builder.add_layer(*layer);
         });
