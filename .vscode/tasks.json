@@ -7,8 +7,27 @@
 			"problemMatcher": [
 				"$rustc"
 			],
-			"args": ["-p", "cli_dynamic_learned_index", "experiment", "example", "--dataset", "k300", "--force"],
+			"args": [
+				"-p",
+				"cli_dynamic_learned_index",
+				"experiment",
+				"example",
+				"--dataset",
+				"k300",
+				"--force"
+			],
 			"label": "rust: run simple test example"
-		}
+		},
+		{
+			"type": "shell",
+			"command": "cargo build --release && ./target/release/cli_dynamic_learned_index experiment test_build data/k300/config.yaml configs/01.yaml --validate-after-n 10000 --include-each-n 1000 --force",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": {
+                "kind": "build",
+            },
+			"label": "test build"
+		},
 	]
 }
