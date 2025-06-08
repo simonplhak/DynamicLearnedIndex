@@ -230,11 +230,6 @@ impl BentleySaxeIndex {
                 let (data, ids) = self.lower_level_data(level_idx);
                 let level = &mut self.levels[level_idx];
                 level.train(&data, level.n_buckets());
-                // let xs = sampling::sample(&data, 1000); // todo make this configurable
-                // let level = &mut self.levels[level_idx];
-                // let ys =
-                //     compute_labels(&xs, &self.label_method, level.n_buckets(), self.input_shape);
-                // level.train(&xs, &ys);
                 level.insert_many(data, ids);
             }
         };
@@ -312,9 +307,6 @@ impl LevelIndexBuilder {
             .input_nodes(input_shape as i64)
             .train_params(model_config.train_params.clone())
             .labels(n_buckets as i64);
-        // if let Some(train_params) = model_config.train_params.clone() {
-        //     model_builder.train_params(train_params);
-        // }
         model_config.layers.iter().for_each(|layer| {
             model_builder.add_layer(*layer);
         });

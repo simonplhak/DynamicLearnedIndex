@@ -75,16 +75,6 @@ impl BucketNew {
         self.current_size += to_add_size;
     }
 
-    pub fn insert_many(&mut self, records: Vec<Array>, ids: Vec<Id>) {
-        if !self.has_space(records.len()) {
-            self.resize(records.len())
-        }
-        for record in records {
-            self.records.extend(record);
-        }
-        self.ids.extend(ids);
-    }
-
     pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
         let size = self.size();
         let mut records = std::mem::replace(
@@ -122,7 +112,6 @@ pub(crate) enum BucketType {
     New,
 }
 
-// todo replace BucketNew by Bucket
 #[derive(Debug)]
 pub(crate) enum Bucket {
     New(BucketNew),
@@ -141,18 +130,7 @@ impl Bucket {
         }
         match self {
             Bucket::New(bucket_new) => {
-                // let value = util::tensor2vec(&value);
                 bucket_new.insert(value, id);
-            }
-        }
-    }
-
-    pub fn insert_many(&mut self, records: Vec<Array>, ids: Vec<Id>) {
-        info!(size=self.size(), occupied=self.occupied(), id=self.id(), values_len=records.len(); "bucket:insert_many");
-        assert!(records.len() == ids.len());
-        match self {
-            Bucket::New(bucket) => {
-                bucket.insert_many(records, ids);
             }
         }
     }
@@ -179,10 +157,6 @@ impl Bucket {
         match self {
             Bucket::New(bucket_new) => {
                 let (records, ids) = bucket_new.get_data();
-                // let records = records
-                //     .iter()
-                //     .map(|record| util::vec2tensor(record))
-                //     .collect::<Vec<_>>();
                 (records, ids)
             }
         }

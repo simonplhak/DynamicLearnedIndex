@@ -13,27 +13,6 @@ use crate::{
     util,
 };
 
-// #[derive(Debug, Serialize, Deserialize, Default, Clone)]
-// pub struct TrainParamsBuild {
-//     pub threshold_samples: Option<usize>,
-//     pub batch_size: Option<i64>,
-//     pub epochs: Option<usize>,
-//     pub label_method: Option<LabelMethod>,
-// }
-
-// impl From<TrainParamsBuild> for TrainParams {
-//     fn from(val: TrainParamsBuild) -> Self {
-//         TrainParams {
-//             threshold_samples: val.threshold_samples.unwrap_or(1000),
-//             batch_size: val.batch_size.unwrap_or(8),
-//             epochs: val.epochs.unwrap_or(3),
-//             label_method: val
-//                 .label_method
-//                 .unwrap_or(LabelMethod::Knn(KMeansConfig::default())),
-//         }
-//     }
-// }
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrainParams {
     pub threshold_samples: usize,
@@ -190,7 +169,6 @@ impl Model {
         )
         .to_device(self.device);
         let labels = self.model.forward(&xs).argmax(1, false);
-        println!("labels: {labels:?}, kind: {:?}", labels.kind());
         tensor2vec_usize(&labels)
     }
 
