@@ -55,7 +55,9 @@ impl Default for ModelConfig {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 #[serde(tag = "type", content = "value")]
 pub enum ModelLayer {
+    #[serde(rename = "linear")]
     Linear(i64),
+    #[serde(rename = "relu")]
     ReLU,
 }
 

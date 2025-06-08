@@ -11,12 +11,12 @@ levels:
   0:
     model:
       layers:
-      - type: Linear
+      - type: linear
         value: 256
-      - type: ReLU
-      - type: Linear
+      - type: relu
+      - type: linear
         value: 256
-      - type: ReLU
+      - type: relu
     bucket_size: 30
 
 
