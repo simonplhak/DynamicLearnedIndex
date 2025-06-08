@@ -156,8 +156,8 @@ fn test() -> Result<()> {
         include_each_n: 10,
     };
     insert_all_data(&mut index, queries, Some(200), Some(validation_options));
-    // let metrics = eval_queries(&index, &gt, &queries);
-    // info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
+    let metrics = eval_queries(&index, &gt, &test_queries);
+    info!(total=metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }
 
@@ -191,22 +191,6 @@ fn defaults(config: &DefaultsConfig) -> Result<()> {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    // let matrix = Tensor::from_slice(&[1, 2, 3, 4, 5, 6]).reshape([2, 3]);
-    // Example vector: shape (3,)
-    // let result = {
-    //     let vector = Tensor::from_slice(&[10, 20, 30]);
-    //     let result = tch::Tensor::cat(matrix, vector);
-    //     &matrix + &vector
-    // };
-    // Broadcasting: add vector to each row
-    // result.print();
-    // let a = Tensor::from_slice(&[1, 2]).unsqueeze(0); // shape (1, 2)
-    // let b = Tensor::from_slice(&[3, 4]).unsqueeze(0);
-
-    // let result = Tensor::cat(&[a, b], 0); // concatenate along dimension 1
-
-    // result.print();
-    // Ok(())
     match &cli.command {
         Commands::Experiment(config) => experiment(config),
         Commands::Test => test(),
