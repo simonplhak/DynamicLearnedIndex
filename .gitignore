@@ -10,3 +10,4 @@ env/
 target/
 experiments_data/*
 .env
+images/random.excalidraw.png
