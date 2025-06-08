@@ -14,3 +14,4 @@ serde = "1.0.219"
 serde_yaml = "0.9.34"
 structured-logger = { version = "1.0.3", default-features = false }
 log = { version = "0.4.27", features = ["kv"] }
+indicatif = { version = "0.17.11" }

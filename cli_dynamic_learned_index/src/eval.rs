@@ -1,5 +1,6 @@
 use dynamic_learned_index::types::{Array, Id};
 use dynamic_learned_index::Index;
+use indicatif::ProgressBar;
 use log::info;
 use measure_time_macro::log_time;
 use serde::Deserialize;
@@ -61,6 +62,7 @@ pub fn insert_all_data(
 
     let mut validation_ids = Vec::new();
     let mut validation_queries = Vec::new();
+    let bar = ProgressBar::new(limit as u64);
     (0..limit).zip(queries.into_iter()).for_each(|(id, query)| {
         if let Some(validation_options) = validation_options {
             if id > 0 && id % validation_options.validate_after_n == 0 {
@@ -73,5 +75,7 @@ pub fn insert_all_data(
             }
         }
         index.insert(query, id as Id);
+        bar.inc(1);
     });
+    bar.finish();
 }
