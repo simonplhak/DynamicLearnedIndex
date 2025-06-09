@@ -392,6 +392,7 @@ dependencies = [
  "measure_time_macro",
  "once_cell",
  "rand 0.9.0",
+ "rayon",
  "serde",
  "serde_json",
  "tch",

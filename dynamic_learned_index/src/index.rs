@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::{
     bucket::{self, Bucket, BucketBuilder, BucketType},
     errors::BuildError,
@@ -9,7 +7,9 @@ use crate::{
 };
 use log::info;
 use measure_time_macro::log_time;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tch::Device;
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
@@ -196,7 +196,7 @@ impl BentleySaxeIndex {
     fn search(&self, query: &ArraySlice, k: usize) -> Vec<Id> {
         let buckets2visit = self.buckets2visit(query);
         let (ids, distances): (Vec<_>, Vec<_>) = buckets2visit
-            .iter()
+            .par_iter()
             .map(|bucket| bucket.search(query, k))
             .unzip();
         let ids = ids.into_iter().flatten().collect::<Vec<_>>();
