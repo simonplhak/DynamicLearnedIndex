@@ -7,6 +7,5 @@ pub mod index;
 mod model;
 mod sampling;
 pub mod types;
-mod util;
 pub use index::{Index, IndexConfig};
 pub use types::Id;

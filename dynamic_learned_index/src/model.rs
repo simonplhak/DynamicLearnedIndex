@@ -10,7 +10,6 @@ use crate::{
     errors::BuildError,
     sampling,
     types::{Array, ArraySlice},
-    util,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -153,7 +152,7 @@ pub(crate) struct Model {
 
 impl Model {
     pub fn predict(&self, xs: &ArraySlice) -> usize {
-        let xs = util::vec2tensor(xs).to_device(self.device);
+        let xs = vec2tensor(xs).to_device(self.device);
         let label = self.model.forward(&xs).argmax(0, false).int64_value(&[]);
         assert!(
             label >= 0 && label < self.labels,
@@ -165,7 +164,7 @@ impl Model {
     pub fn predict_many(&self, xs: &[Array]) -> Vec<usize> {
         let xs = Tensor::cat(
             &xs.iter()
-                .map(|x| util::vec2tensor(x).unsqueeze(0))
+                .map(|x| vec2tensor(x).unsqueeze(0))
                 .collect::<Vec<_>>(),
             0,
         )
@@ -225,4 +224,8 @@ impl Model {
 fn tensor2vec_usize(tensor: &tch::Tensor) -> Vec<usize> {
     let x: Vec<i64> = tensor.try_into().unwrap();
     x.iter().map(|&v| v as usize).collect()
+}
+
+fn vec2tensor(vec: &ArraySlice) -> tch::Tensor {
+    tch::Tensor::from_slice(vec).to_kind(tch::kind::Kind::Float)
 }
