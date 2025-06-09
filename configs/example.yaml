@@ -17,6 +17,13 @@ levels:
       - type: linear
         value: 256
       - type: relu
+      train_params:
+        epochs: 3
+        batch_size: 8
+        threshold_samples: 100
+        label_method:
+          type: knn
+          value:
+            max_iters: 0
     bucket_size: 30
-
 
