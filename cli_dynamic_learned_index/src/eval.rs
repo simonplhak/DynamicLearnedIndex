@@ -23,7 +23,11 @@ pub fn eval_queries(index: &Index, gt: &[Vec<Id>], queries: &[Array]) -> EvalMet
             let res = index.search(query, max_k);
             assert!(res.len() == max_k);
             let recall_at_k = |k: usize| {
-                let hits = res.iter().take(k).filter(|idx| gt.contains(idx)).count();
+                let hits = res
+                    .iter()
+                    .take(k)
+                    .filter(|idx| gt.iter().take(k).any(|gt_idx| *idx == gt_idx))
+                    .count();
                 hits as f32 / k as f32
             };
 
