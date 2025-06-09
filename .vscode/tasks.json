@@ -20,7 +20,7 @@
 		},
 		{
 			"type": "shell",
-			"command": "cargo build --release && ./target/release/cli_dynamic_learned_index experiment test_build data/k300 --force",
+			"command": "cargo build --release && ./target/release/cli_dynamic_learned_index experiment test_build data/k300 --force --start-from-one",
 			"problemMatcher": [
 				"$rustc"
 			],
