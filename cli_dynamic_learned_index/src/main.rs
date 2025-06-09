@@ -159,7 +159,7 @@ fn test() -> Result<()> {
     let config_content = fs::read_to_string(path)?;
     let index_config = serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?;
     let mut index = index_config.build()?;
-    let dataset_config = load_dataset_config(&PathBuf::from("data/k300/config.yaml"))?;
+    let dataset_config = load_dataset_config(&PathBuf::from("data/k300"))?;
     let (queries, test_queries, gt) = dataset_config.load()?;
     let validation_options = eval::ValidationOptions {
         validate_after_n: 100,
