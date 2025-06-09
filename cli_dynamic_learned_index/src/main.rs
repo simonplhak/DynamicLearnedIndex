@@ -75,6 +75,10 @@ struct ExperimentConfig {
     /// more specifically data are stored under experiments_dir / {name} directory
     #[arg(short, long, default_value = "experiments_data")]
     experiments_dir: PathBuf,
+    /// Some datasets start indexing from 1, not 0 (from some **** reason)
+    /// To mitigate this, we can set this flag to true
+    #[arg(long, default_value = "false")]
+    start_from_one: bool,
 }
 
 fn experiment(config: &ExperimentConfig) -> Result<()> {
@@ -127,7 +131,13 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
             include_each_n: config.include_each_n_val,
         }),
     };
-    insert_all_data(&mut index, queries, config.limit, validation_options);
+    insert_all_data(
+        &mut index,
+        queries,
+        config.limit,
+        validation_options,
+        config.start_from_one,
+    );
     let metrics = eval_queries(&index, &gt, &test_queries);
     info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
@@ -155,7 +165,13 @@ fn test() -> Result<()> {
         validate_after_n: 100,
         include_each_n: 10,
     };
-    insert_all_data(&mut index, queries, Some(200), Some(validation_options));
+    insert_all_data(
+        &mut index,
+        queries,
+        Some(200),
+        Some(validation_options),
+        true,
+    );
     let metrics = eval_queries(&index, &gt, &test_queries);
     info!(total=metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())

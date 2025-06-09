@@ -61,13 +61,18 @@ pub fn insert_all_data(
     queries: Vec<Array>,
     limit: Option<usize>,
     validation_options: Option<ValidationOptions>,
+    start_from_one: bool,
 ) {
     let limit = limit.unwrap_or(queries.len());
 
     let mut validation_ids = Vec::new();
     let mut validation_queries = Vec::new();
     let bar = ProgressBar::new(limit as u64);
-    (0..limit).zip(queries.into_iter()).for_each(|(id, query)| {
+    let range = match start_from_one {
+        true => 1..=limit,
+        false => 0..=limit,
+    };
+    range.zip(queries.into_iter()).for_each(|(id, query)| {
         if let Some(validation_options) = validation_options {
             if id > 0 && id % validation_options.validate_after_n == 0 {
                 let metrics = eval_queries(index, &validation_ids, &validation_queries);
