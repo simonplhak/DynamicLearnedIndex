@@ -110,6 +110,14 @@ impl Index {
             }
         }
     }
+
+    pub fn search_strategy(&mut self, search_strategy: SearchStrategy) {
+        match self {
+            Index::BentleySaxe(index) => {
+                index.search_startegy = search_strategy;
+            }
+        }
+    }
 }
 
 pub struct BentleySaxeIndex {
