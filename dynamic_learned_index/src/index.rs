@@ -3,7 +3,7 @@ use crate::{
     errors::BuildError,
     model::{self, Model, ModelConfig},
     types::{Array, ArraySlice},
-    Id,
+    Id, SearchStrategy,
 };
 use log::info;
 use measure_time_macro::log_time;
@@ -82,6 +82,7 @@ impl IndexConfig {
                     device: self.device,
                     levels: Vec::new(),
                     buffer,
+                    search_startegy: Default::default(),
                 };
                 Index::BentleySaxe(index)
             }
@@ -111,7 +112,6 @@ impl Index {
     }
 }
 
-#[derive(Debug)]
 pub struct BentleySaxeIndex {
     levels_config: HashMap<usize, LevelIndexConfig>,
     input_shape: usize,
@@ -119,6 +119,7 @@ pub struct BentleySaxeIndex {
     device: ModelDevice,
     levels: Vec<LevelIndex>,
     buffer: Bucket,
+    search_startegy: SearchStrategy,
 }
 
 impl BentleySaxeIndex {
@@ -186,10 +187,14 @@ impl BentleySaxeIndex {
     }
 
     fn buckets2visit(&self, query: &ArraySlice) -> Vec<&Bucket> {
-        self.levels
-            .iter()
-            .map(|level| level.bucket2visit(query))
-            .collect()
+        let nprobe = self.search_startegy.nprobe();
+        match &self.search_startegy {
+            SearchStrategy::Base(_) => self
+                .levels
+                .iter()
+                .flat_map(|level| level.buckets2visit(query, nprobe))
+                .collect(),
+        }
     }
 
     #[log_time]
@@ -337,9 +342,13 @@ impl LevelIndex {
         self.buckets.iter().map(|bucket| bucket.occupied()).sum()
     }
 
-    fn bucket2visit(&self, query: &ArraySlice) -> &Bucket {
-        let bucket_idx = self.model.predict(query)[0].0;
-        &self.buckets[bucket_idx]
+    fn buckets2visit(&self, query: &ArraySlice, nprobe: usize) -> Vec<&Bucket> {
+        self.model
+            .predict(query)
+            .into_iter()
+            .take(nprobe)
+            .map(|(bucket_idx, _)| &self.buckets[bucket_idx])
+            .collect()
     }
 
     #[log_time]

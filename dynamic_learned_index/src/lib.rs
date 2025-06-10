@@ -6,6 +6,8 @@ mod errors;
 pub mod index;
 mod model;
 mod sampling;
+mod search_strategy;
 pub mod types;
 pub use index::{Index, IndexConfig};
+pub use search_strategy::*;
 pub use types::Id;
