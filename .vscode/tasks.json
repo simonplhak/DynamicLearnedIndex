@@ -29,5 +29,23 @@
             },
 			"label": "test build"
 		},
+		{
+			"type": "shell",
+			"command": "docker build -t dli-cli .",
+			"problemMatcher": [],
+			"group": "build",
+			"label": "docker: build image"
+		},
+		{
+			"type": "shell",
+			"command": "docker run -it --rm -v ${PWD}/experiments_data:/app/experiments_data -v ${PWD}/data:/app/data -v ${PWD}/configs:/app/configs dli-cli test",
+			"problemMatcher": [
+				"$rustc"
+			],
+			"group": {
+                "kind": "build",
+            },
+			"label": "docker: test build"
+		},
 	]
 }

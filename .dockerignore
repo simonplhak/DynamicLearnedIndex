@@ -1,0 +1,13 @@
+experiments_data/
+.vscode/
+.github/
+configs/
+data/
+env/
+images/
+target/
+.env
+.gitignore
+.gitlab-ci.yml
+Dockerfile
+README.md

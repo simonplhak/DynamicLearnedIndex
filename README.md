@@ -180,3 +180,12 @@ index.insert(query, label=42)
 # Perform a search
 results = index.search(query, k=10)
 ```
+
+## Docker
+
+To run the project in a Docker container.
+
+```shell
+docker build -t dli-cli --exclude py_dynamic_learned_index .
+docker run -it --rm -v ${PWD}/experiments_data:/app/experiments_data -v ${PWD}/data:/app/data -v ${PWD}/configs:/app/configs dli-cli
+```
