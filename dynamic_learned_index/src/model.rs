@@ -151,14 +151,18 @@ pub(crate) struct Model {
 }
 
 impl Model {
-    pub fn predict(&self, xs: &ArraySlice) -> usize {
+    /// returns vec of tuples (label, confidence) sorted by confidence
+    pub fn predict(&self, xs: &ArraySlice) -> Vec<(usize, f32)> {
         let xs = vec2tensor(xs).to_device(self.device);
-        let label = self.model.forward(&xs).argmax(0, false).int64_value(&[]);
-        assert!(
-            label >= 0 && label < self.labels,
-            "label out of range: {label}",
-        );
-        label as usize
+        let predictions = tensor2vec(&self.model.forward(&xs));
+        assert!(predictions.len() == self.labels as usize);
+        let mut predictions = predictions
+            .into_iter()
+            .enumerate()
+            .filter(|(_, p)| *p > 0.0)
+            .collect::<Vec<_>>();
+        predictions.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        predictions
     }
 
     pub fn predict_many(&self, xs: &[Array]) -> Vec<usize> {
@@ -219,6 +223,10 @@ impl Model {
             labels: self.labels,
         }
     }
+}
+
+fn tensor2vec(tensor: &tch::Tensor) -> Vec<f32> {
+    tensor.try_into().unwrap()
 }
 
 fn tensor2vec_usize(tensor: &tch::Tensor) -> Vec<usize> {

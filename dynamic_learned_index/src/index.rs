@@ -338,7 +338,7 @@ impl LevelIndex {
     }
 
     fn bucket2visit(&self, query: &ArraySlice) -> &Bucket {
-        let bucket_idx = self.model.predict(query);
+        let bucket_idx = self.model.predict(query)[0].0;
         &self.buckets[bucket_idx]
     }
 
@@ -349,7 +349,7 @@ impl LevelIndex {
 
     fn insert(&mut self, data: Vec<Array>, ids: Vec<Id>) {
         data.into_iter().zip(ids).for_each(|(data, id)| {
-            let bucket_idx = self.model.predict(&data);
+            let bucket_idx = self.model.predict(&data)[0].0;
             self.buckets[bucket_idx].insert(data, id);
         });
     }
