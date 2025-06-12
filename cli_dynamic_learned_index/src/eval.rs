@@ -21,7 +21,12 @@ pub fn eval_queries(index: &Index, gt: &[Vec<Id>], queries: &[Array]) -> EvalMet
         .zip(gt.iter())
         .map(|(query, gt)| {
             let res = index.search(query, max_k);
-            assert!(res.len() == max_k);
+            assert!(
+                res.len() == max_k,
+                "Expected {} results, got {}",
+                max_k,
+                res.len()
+            );
             let recall_at_k = |k: usize| {
                 let hits = res
                     .iter()
