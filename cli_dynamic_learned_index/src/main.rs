@@ -79,6 +79,10 @@ struct ExperimentConfig {
     /// To mitigate this, we can set this flag to true
     #[arg(long, default_value = "false")]
     start_from_one: bool,
+    /// Set verbosity level
+    /// -v for info, -vv for debug, -vvv for trace
+    #[arg(short, long, action = clap::ArgAction::Count)]
+    verbose: u8,
 }
 
 fn experiment(config: &ExperimentConfig) -> Result<()> {
@@ -99,7 +103,11 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         LogOuptut::Stdout => new_writer(std::io::stdout()),
         LogOuptut::File => new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
     };
-    structured_logger::Builder::with_level("info")
+    let log_level = match config.verbose {
+        0 => "info",
+        _ => "debug",
+    };
+    structured_logger::Builder::with_level(log_level)
         .with_target_writer("*", log_writer)
         .init();
     let config_yaml = serde_yaml::to_string(&config)?;

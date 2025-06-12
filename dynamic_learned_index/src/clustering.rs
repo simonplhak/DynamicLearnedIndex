@@ -1,4 +1,4 @@
-use log::info;
+use log::debug;
 use serde::{Deserialize, Serialize};
 
 use crate::constants;
@@ -25,7 +25,7 @@ pub(crate) fn compute_labels(
     debug_assert!(!data.is_empty());
     let data_len = data.len() / input_shape;
     assert!(data_len * input_shape == data.len());
-    info!(
+    debug!(
         data_len=data_len,
         k=k,
         label_method = format!("{:?}", label_method); "clustering:compute_labels"
@@ -58,7 +58,7 @@ fn k_means_clustering_new(
         kmeans::KMeans::init_kmeanplusplus,
         &kmeans::KMeansConfig::default(),
     );
-    info!(error = result.distsum ;"kmeans:metrics");
+    debug!(error = result.distsum ;"kmeans:metrics");
     assert!(result.assignments.len() == count);
     result.assignments.into_iter().map(|x| x as i32).collect()
 }

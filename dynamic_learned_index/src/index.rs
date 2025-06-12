@@ -5,7 +5,7 @@ use crate::{
     types::{Array, ArraySlice},
     Id, SearchStrategy,
 };
-use log::info;
+use log::{debug, info};
 use measure_time_macro::log_time;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -228,7 +228,7 @@ impl BentleySaxeIndex {
             self.buffer.insert(value, id);
             return; // value fits into buffer
         }
-        info!(buffer_size = self.buffer.size(); "index:buffer_flush");
+        debug!(buffer_size = self.buffer.size(); "index:buffer_flush");
         match self.available_level() {
             Some(level_idx) => {
                 let (data, ids) = self.lower_level_data(level_idx);
