@@ -27,7 +27,6 @@ pub(crate) fn load_dataset_config(path: &Path) -> Result<DatasetConfig> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DatasetConfig {
-    // todo add docs
     pub dataset: LoadMethod,
     pub queries: LoadMethod,
     pub ground_truth: LoadMethod,
