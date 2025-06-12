@@ -118,6 +118,12 @@ impl Index {
             }
         }
     }
+
+    pub fn size(&self) -> usize {
+        match self {
+            Index::BentleySaxe(index) => index.size(),
+        }
+    }
 }
 
 pub struct BentleySaxeIndex {
@@ -243,6 +249,10 @@ impl BentleySaxeIndex {
                 level.insert_many(data, ids);
             }
         };
+    }
+
+    fn size(&self) -> usize {
+        self.levels.iter().map(|level| level.size()).sum::<usize>() + self.buffer.size()
     }
 }
 
