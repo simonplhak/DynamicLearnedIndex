@@ -146,7 +146,7 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         validation_options,
         config.start_from_one,
     );
-    let metrics = eval_queries(&index, &gt, &test_queries);
+    let metrics = eval_queries(&index, &gt, &test_queries, true);
     info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }
@@ -180,7 +180,7 @@ fn test() -> Result<()> {
         Some(validation_options),
         true,
     );
-    let metrics = eval_queries(&index, &gt, &test_queries);
+    let metrics = eval_queries(&index, &gt, &test_queries, true);
     info!(total=metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }

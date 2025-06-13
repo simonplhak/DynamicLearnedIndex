@@ -13,9 +13,20 @@ pub struct EvalMetrics {
     pub recall_top10: f32,
 }
 
-pub fn eval_queries(index: &Index, gt: &[Vec<Id>], queries: &[Array]) -> EvalMetrics {
+pub fn eval_queries(
+    index: &Index,
+    gt: &[Vec<Id>],
+    queries: &[Array],
+    use_progress: bool,
+) -> EvalMetrics {
     assert!(queries.len() == gt.len());
     let max_k = 10;
+    assert!(queries.len() > max_k);
+    assert!(index.size() >= max_k);
+    let bar = match use_progress {
+        true => Some(ProgressBar::new(gt.len() as u64).with_message("Inserting queries")),
+        false => None,
+    };
     let (recall_top1, recall_top5, recall_top10) = queries
         .iter()
         .zip(gt.iter())
@@ -39,13 +50,18 @@ pub fn eval_queries(index: &Index, gt: &[Vec<Id>], queries: &[Array]) -> EvalMet
             let recall_top1 = recall_at_k(1);
             let recall_top5 = recall_at_k(5);
             let recall_top10 = recall_at_k(10);
-
+            if let Some(bar) = &bar {
+                bar.inc(1);
+            }
             (recall_top1, recall_top5, recall_top10)
         })
         .fold((0.0, 0.0, 0.0), |(top1, top5, top10), (x, y, z)| {
             (top1 + x, top5 + y, top10 + z)
         });
     let total = queries.len() as f32;
+    if let Some(bar) = &bar {
+        bar.finish();
+    }
     EvalMetrics {
         total: total as u64,
         recall_top1: recall_top1 / total,
@@ -72,7 +88,7 @@ pub fn insert_all_data(
 
     let mut validation_ids = Vec::new();
     let mut validation_queries = Vec::new();
-    let bar = ProgressBar::new(limit as u64);
+    let bar = ProgressBar::new(limit as u64).with_message("Inserting queries");
     let range = match start_from_one {
         true => 1..=limit,
         false => 0..=limit,
@@ -80,7 +96,7 @@ pub fn insert_all_data(
     range.zip(queries.into_iter()).for_each(|(id, query)| {
         if let Some(validation_options) = validation_options {
             if id > 0 && id % validation_options.validate_after_n == 0 {
-                let metrics = eval_queries(index, &validation_ids, &validation_queries);
+                let metrics = eval_queries(index, &validation_ids, &validation_queries, false);
                 info!(total = metrics.total, recall_top1=metrics.recall_top1; "validation_metrics");
             }
             if id % validation_options.include_each_n == 0 {
