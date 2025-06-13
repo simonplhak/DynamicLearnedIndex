@@ -1,0 +1,46 @@
+name: Publish Docker image
+
+on:
+  push:
+    branches: [ "rust" ]
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Docker image tag (e.g., latest, v1.0.0)'
+        required: true
+        default: 'latest'
+      build_arg_env:
+        description: 'Environment for build (e.g., development, production)'
+        required: false
+        default: 'development'
+
+jobs:
+  build-and-push-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          # Use the input for the image tag
+          tags: ghcr.io/dli-cli:${{ github.event.inputs.image_tag }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          # Pass build arguments based on input
+          build-args: |
+            ENVIRONMENT=${{ github.event.inputs.build_arg_env }}
