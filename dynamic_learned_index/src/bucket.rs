@@ -108,11 +108,6 @@ impl BucketNew {
 }
 
 #[derive(Debug)]
-pub(crate) enum BucketType {
-    New,
-}
-
-#[derive(Debug)]
 pub(crate) enum Bucket {
     New(BucketNew),
 }
@@ -174,7 +169,6 @@ pub(crate) struct BucketBuilder {
     input_shape: Option<usize>,
     id: Option<String>,
     size: Option<usize>,
-    bucket_type: Option<BucketType>,
     is_dynamic: bool,
 }
 
@@ -194,11 +188,6 @@ impl BucketBuilder {
         self
     }
 
-    pub fn bucket_type(&mut self, bucket_type: BucketType) -> &mut Self {
-        self.bucket_type = Some(bucket_type);
-        self
-    }
-
     pub fn is_dynamic(&mut self, is_dynamic: bool) -> &mut Self {
         self.is_dynamic = is_dynamic;
         self
@@ -208,18 +197,12 @@ impl BucketBuilder {
         let size = self.size.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
-        let bucket_type = self
-            .bucket_type
-            .as_ref()
-            .ok_or(BuildError::MissingAttribute)?;
-        match bucket_type {
-            BucketType::New => Ok(Bucket::New(BucketNew::new(
-                id,
-                size,
-                input_shape,
-                self.is_dynamic,
-            ))),
-        }
+        Ok(Bucket::New(BucketNew::new(
+            id,
+            size,
+            input_shape,
+            self.is_dynamic,
+        )))
     }
 }
 

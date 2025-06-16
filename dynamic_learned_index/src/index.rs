@@ -1,5 +1,5 @@
 use crate::{
-    bucket::{self, Bucket, BucketBuilder, BucketType},
+    bucket::{self, Bucket, BucketBuilder},
     errors::BuildError,
     model::{self, Model, ModelConfig},
     types::{Array, ArraySlice},
@@ -71,7 +71,6 @@ impl IndexConfig {
             .id("buffer".to_string())
             .input_shape(self.input_shape)
             .size(self.buffer_size)
-            .bucket_type(BucketType::New)
             .build()?;
         let index = match self.levelling {
             Levelling::BentleySaxe => {
@@ -335,8 +334,7 @@ impl LevelIndexBuilder {
         bucket_builder
             .input_shape(input_shape)
             .size(bucket_size)
-            .is_dynamic(true)
-            .bucket_type(BucketType::New);
+            .is_dynamic(true);
         let buckets = (0..n_buckets)
             .map(|bucket_id| bucket_builder.id(format!("{id}:{bucket_id}")).build())
             .collect::<Result<Vec<_>, _>>()?;
