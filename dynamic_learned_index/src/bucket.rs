@@ -11,7 +11,7 @@ use crate::{
 };
 
 #[derive(Debug, Serialize)]
-pub(crate) struct BucketNew {
+pub(crate) struct Bucket {
     id: String,
     records: Vec<ArrayNumType>,
     ids: Vec<Id>,
@@ -21,7 +21,7 @@ pub(crate) struct BucketNew {
     is_dynamic: bool,
 }
 
-impl BucketNew {
+impl Bucket {
     fn new(id: String, size: usize, input_shape: usize, is_dynamic: bool) -> Self {
         Self {
             id,
@@ -40,7 +40,7 @@ impl BucketNew {
         &self.records[start..end]
     }
 
-    pub fn search(&self, k: usize, query: &ArraySlice) -> (Vec<Id>, Vec<ArrayNumType>) {
+    pub fn search(&self, query: &ArraySlice, k: usize) -> (Vec<Id>, Vec<ArrayNumType>) {
         assert!(k > 0);
         let mut distances = self
             .ids
@@ -56,6 +56,9 @@ impl BucketNew {
     pub fn insert(&mut self, record: Array, id: Id) {
         if !self.has_space(1) {
             self.resize(1)
+        }
+        if self.occupied() % CONFIG.skip_insert_log == 0 {
+            debug!(size=self.size(), occupied=self.occupied(), id=self.id(); "bucket:insert");
         }
         self.records.extend(record);
         self.ids.push(id);
@@ -107,63 +110,6 @@ impl BucketNew {
     }
 }
 
-#[derive(Debug)]
-pub(crate) enum Bucket {
-    New(BucketNew),
-}
-
-impl Bucket {
-    pub fn search(&self, query: &ArraySlice, k: usize) -> (Vec<Id>, Vec<ArrayNumType>) {
-        match self {
-            Bucket::New(bucket) => bucket.search(k, query),
-        }
-    }
-
-    pub fn insert(&mut self, value: Array, id: Id) {
-        if self.occupied() % CONFIG.skip_insert_log == 0 {
-            debug!(size=self.size(), occupied=self.occupied(), id=self.id(); "bucket:insert");
-        }
-        match self {
-            Bucket::New(bucket) => {
-                bucket.insert(value, id);
-            }
-        }
-    }
-
-    pub fn size(&self) -> usize {
-        match self {
-            Bucket::New(bucket) => bucket.size(),
-        }
-    }
-
-    pub fn has_space(&self, count: usize) -> bool {
-        match self {
-            Bucket::New(bucket) => bucket.has_space(count),
-        }
-    }
-
-    pub fn occupied(&self) -> usize {
-        match self {
-            Bucket::New(bucket) => bucket.occupied(),
-        }
-    }
-
-    pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
-        match self {
-            Bucket::New(bucket) => {
-                let (records, ids) = bucket.get_data();
-                (records, ids)
-            }
-        }
-    }
-
-    fn id(&self) -> &str {
-        match self {
-            Bucket::New(bucket) => bucket.id(),
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 pub(crate) struct BucketBuilder {
     input_shape: Option<usize>,
@@ -197,12 +143,7 @@ impl BucketBuilder {
         let size = self.size.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
-        Ok(Bucket::New(BucketNew::new(
-            id,
-            size,
-            input_shape,
-            self.is_dynamic,
-        )))
+        Ok(Bucket::new(id, size, input_shape, self.is_dynamic))
     }
 }
 
