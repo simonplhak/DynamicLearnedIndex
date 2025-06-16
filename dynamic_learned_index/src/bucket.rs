@@ -69,7 +69,7 @@ impl BucketNew {
         assert!(resize_factor > 1);
         let to_add_size = self.size * (resize_factor - 1);
         assert!(to_add_size > 0);
-        debug!(to_add_size=to_add_size, id=self.id; "bucket:rescale");
+        // debug!(to_add_size=to_add_size, id=self.id; "bucket:rescale");
         self.records.reserve(to_add_size * self.input_shape);
         self.ids.reserve(to_add_size);
         self.current_size += to_add_size;
@@ -120,7 +120,7 @@ pub(crate) enum Bucket {
 impl Bucket {
     pub fn search(&self, query: &ArraySlice, k: usize) -> (Vec<Id>, Vec<ArrayNumType>) {
         match self {
-            Bucket::New(bucket_new) => bucket_new.search(k, query),
+            Bucket::New(bucket) => bucket.search(k, query),
         }
     }
 
@@ -129,34 +129,34 @@ impl Bucket {
             debug!(size=self.size(), occupied=self.occupied(), id=self.id(); "bucket:insert");
         }
         match self {
-            Bucket::New(bucket_new) => {
-                bucket_new.insert(value, id);
+            Bucket::New(bucket) => {
+                bucket.insert(value, id);
             }
         }
     }
 
     pub fn size(&self) -> usize {
         match self {
-            Bucket::New(bucket_new) => bucket_new.size(),
+            Bucket::New(bucket) => bucket.size(),
         }
     }
 
     pub fn has_space(&self, count: usize) -> bool {
         match self {
-            Bucket::New(bucket_new) => bucket_new.has_space(count),
+            Bucket::New(bucket) => bucket.has_space(count),
         }
     }
 
     pub fn occupied(&self) -> usize {
         match self {
-            Bucket::New(bucket_new) => bucket_new.occupied(),
+            Bucket::New(bucket) => bucket.occupied(),
         }
     }
 
     pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
         match self {
-            Bucket::New(bucket_new) => {
-                let (records, ids) = bucket_new.get_data();
+            Bucket::New(bucket) => {
+                let (records, ids) = bucket.get_data();
                 (records, ids)
             }
         }
@@ -164,7 +164,7 @@ impl Bucket {
 
     fn id(&self) -> &str {
         match self {
-            Bucket::New(bucket_new) => bucket_new.id(),
+            Bucket::New(bucket) => bucket.id(),
         }
     }
 }
