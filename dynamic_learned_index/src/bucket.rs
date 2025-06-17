@@ -1,14 +1,14 @@
 use std::fmt::Debug;
 
-use log::debug;
-use serde::Serialize;
-
 use crate::{
     config::CONFIG,
     errors::BuildError,
     types::{Array, ArrayNumType, ArraySlice},
     Id,
 };
+use log::debug;
+use serde::Serialize;
+use simsimd::SpatialSimilarity;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Bucket {
@@ -149,9 +149,5 @@ impl BucketBuilder {
 
 fn euclidean_distance_new(a: &ArraySlice, b: &ArraySlice) -> ArrayNumType {
     assert_eq!(a.len(), b.len(), "Vectors must have the same length");
-    a.iter()
-        .zip(b.iter())
-        .map(|(x, y)| (x - y).powi(2))
-        .sum::<f32>()
-        .sqrt()
+    f32::l2(a, b).unwrap() as f32
 }
