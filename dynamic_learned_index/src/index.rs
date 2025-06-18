@@ -60,6 +60,11 @@ impl Default for IndexConfig {
 }
 
 impl IndexConfig {
+    pub fn from_yaml(file: &str) -> Result<Self, BuildError> {
+        let content = std::fs::read_to_string(file).map_err(|_| BuildError::NonExistentFile)?;
+        serde_yaml::from_str(&content).map_err(|e| BuildError::InvalidYamlConfig(e.to_string()))
+    }
+
     pub fn build(self) -> Result<Index, BuildError> {
         if self.levels.is_empty() {
             return Err(BuildError::MissingAttribute);

@@ -3,12 +3,16 @@ use std::fmt;
 #[derive(Debug)]
 pub enum BuildError {
     MissingAttribute,
+    NonExistentFile,
+    InvalidYamlConfig(String),
 }
 
 impl fmt::Display for BuildError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BuildError::MissingAttribute => write!(f, "MissingAttribute"),
+            BuildError::NonExistentFile => write!(f, "NonExistentFile"),
+            BuildError::InvalidYamlConfig(err) => write!(f, "Invalid YAML config: {err}"),
         }
     }
 }

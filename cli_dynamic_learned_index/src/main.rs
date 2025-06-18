@@ -114,14 +114,7 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
     fs::write(experiment_dir.join("config.yaml"), config_yaml)?;
     let index_config = match &config.index_config {
         Some(index_config_path) => {
-            if !index_config_path.exists() {
-                return Err(anyhow::anyhow!(
-                    "Index config file does not exist: {}",
-                    index_config_path.display()
-                ));
-            }
-            let config_content = fs::read_to_string(index_config_path)?;
-            serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?
+            dynamic_learned_index::IndexConfig::from_yaml(index_config_path.to_str().unwrap())?
         }
         None => dynamic_learned_index::IndexConfig::default(),
     };
@@ -163,15 +156,13 @@ fn test() -> Result<()> {
         //     new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
         // )
         .init();
-    let path = PathBuf::from("configs/example.yaml");
-    let config_content = fs::read_to_string(path)?;
-    let index_config = serde_yaml::from_str::<dynamic_learned_index::IndexConfig>(&config_content)?;
+    let index_config = dynamic_learned_index::IndexConfig::from_yaml("configs/example.yaml")?;
     let mut index = index_config.build()?;
     let dataset_config = load_dataset_config(&PathBuf::from("data/k300"))?;
     let (queries, test_queries, gt) = dataset_config.load()?;
     let validation_options = eval::ValidationOptions {
         validate_after_n: 100,
-        include_each_n: 10,
+        include_each_n: 1,
     };
     insert_all_data(
         &mut index,
