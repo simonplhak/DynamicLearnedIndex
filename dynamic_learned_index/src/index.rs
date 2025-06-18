@@ -27,14 +27,14 @@ impl ModelDevice {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub enum Levelling {
     #[default]
     #[serde(rename = "bentley_saxe")]
     BentleySaxe,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
     levelling: Levelling,
     levels: HashMap<usize, LevelIndexConfig>,
