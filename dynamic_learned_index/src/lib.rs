@@ -8,6 +8,6 @@ mod model;
 mod sampling;
 mod search_strategy;
 pub mod types;
-pub use index::{Index, IndexConfig};
+pub use index::{Index, IndexConfig, ModelDevice};
 pub use search_strategy::*;
 pub use types::Id;
