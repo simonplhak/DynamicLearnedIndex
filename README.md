@@ -141,45 +141,8 @@ To run experiments via CLI, you can use the `cli_dynamic_learned_index` binary. 
 
 ## Python API
 
-This is just a design proposal, not implemented yet.
+Example can be found in [`py_dynamic_learned_index/example.py`](py_dynamic_learned_index/example.py) directory.
 
-```python
-import torch
-from py_dynamic_learned_index import DynamicLearnedIndex
-
-index = DynamicLearnedIndex(
-    levelling="bentley_saxe",
-    levels={
-        0: {
-            "model": {
-                "layers": [
-                    {"type": "linear", "value": 256},
-                    {"type": "relu"},
-                    {"type": "linear", "value": 256},
-                    {"type": "relu"}
-                ],
-                "train_params": {
-                    "threshold_samples": 1000,
-                    "batch_size": 8,
-                    "epochs": 3,
-                    "label_method": {"type": "knn", "value": {"max_iters": 0}}
-                }
-            },
-            "bucket_size": 5000
-        },
-    },
-    buffer_size=5000,
-    input_shape=768,
-    arity=3,
-    device="cpu"
-)
-# Example query tensor
-query = torch.zeros(768)
-# Insert a query with a label
-index.insert(query, label=42)
-# Perform a search
-results = index.search(query, k=10)
-```
 
 ## Docker
 
