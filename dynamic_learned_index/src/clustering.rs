@@ -56,6 +56,7 @@ fn k_means_clustering_new(
     assert!(count * input_shape == data.len());
     assert!(k > 0);
     assert!(k <= count);
+    assert!(max_iters > 0);
     let kmean: kmeans::KMeans<_, { constants::LANES }, _> =
         kmeans::KMeans::new(data, count, input_shape, kmeans::EuclideanDistance);
     let result = kmean.kmeans_lloyd(
