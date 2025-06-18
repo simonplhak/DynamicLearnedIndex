@@ -110,7 +110,7 @@ levels:
         label_method:
           type: knn
           value:
-            max_iters: 0
+            max_iters: 10
     bucket_size: 5000
   5:
     ...

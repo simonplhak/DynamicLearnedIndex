@@ -35,9 +35,15 @@ pub(crate) fn compute_labels(
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KMeansConfig {
     max_iters: usize,
+}
+
+impl Default for KMeansConfig {
+    fn default() -> Self {
+        KMeansConfig { max_iters: 10 }
+    }
 }
 
 fn k_means_clustering_new(
