@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub enum SearchStrategy {
     Base(BaseSearchConfig),
 }
@@ -16,6 +17,7 @@ impl SearchStrategy {
     }
 }
 
+#[derive(Debug)]
 pub struct BaseSearchConfig {
     nprobe: usize,
 }

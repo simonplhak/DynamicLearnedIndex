@@ -95,6 +95,7 @@ impl IndexConfig {
     }
 }
 
+#[derive(Debug)]
 pub enum Index {
     BentleySaxe(BentleySaxeIndex),
 }
@@ -130,6 +131,7 @@ impl Index {
     }
 }
 
+#[derive(Debug)]
 pub struct BentleySaxeIndex {
     levels_config: HashMap<usize, LevelIndexConfig>,
     input_shape: usize,
