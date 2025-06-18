@@ -17,12 +17,15 @@ pub enum ModelDevice {
     #[default]
     #[serde(rename = "cpu")]
     Cpu,
+    #[serde(rename = "gpu")]
+    Gpu(usize),
 }
 
 impl ModelDevice {
     pub fn to_tch_device(&self) -> Device {
         match self {
             ModelDevice::Cpu => Device::Cpu,
+            ModelDevice::Gpu(gpu_no) => Device::Cuda(*gpu_no),
         }
     }
 }

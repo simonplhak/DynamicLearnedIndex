@@ -1,4 +1,4 @@
-use dynamic_learned_index::IndexConfig;
+use dynamic_learned_index::{IndexConfig, ModelDevice};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::{prelude::*, PyErr};
 
@@ -38,15 +38,29 @@ impl DynamicLearnedIndexBuilder {
 
     fn device(&self, device: &str) -> PyResult<Self> {
         let mut builder = self.clone();
-        let device = match device {
-            "cpu" => dynamic_learned_index::ModelDevice::Cpu,
-            // todo: add support for CUDA
-            // "cuda" => dynamic_learned_index::ModelDevice::Cuda,
-            _ => {
+        let device = if device == "cpu" {
+            ModelDevice::Cpu
+        } else if device.starts_with("gpu:") {
+            let parts: Vec<&str> = device.split(':').collect();
+            if parts.len() == 2 {
+                let index_str = parts[1];
+                match index_str.parse::<usize>() {
+                    Ok(index) => ModelDevice::Gpu(index),
+                    Err(_) => {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                            "Invalid device type",
+                        ))
+                    }
+                }
+            } else {
                 return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                     "Invalid device type",
-                ))
+                ));
             }
+        } else {
+            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                "Invalid device type",
+            ));
         };
         builder.builder.device = device;
         Ok(builder)
