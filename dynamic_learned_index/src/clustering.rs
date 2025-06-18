@@ -25,11 +25,7 @@ pub(crate) fn compute_labels(
     debug_assert!(!data.is_empty());
     let data_len = data.len() / input_shape;
     assert!(data_len * input_shape == data.len());
-    debug!(
-        data_len=data_len,
-        k=k,
-        label_method = format!("{:?}", label_method); "clustering:compute_labels"
-    );
+    debug!(data_len = data_len, k = k; "clustering:compute_labels");
     match label_method {
         LabelMethod::Knn(kmeans) => k_means_clustering_new(data, input_shape, k, kmeans.max_iters),
     }
