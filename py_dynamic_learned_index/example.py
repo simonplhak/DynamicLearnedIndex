@@ -5,11 +5,14 @@ from py_dynamic_learned_index import DynamicLearnedIndexBuilder, DynamicLearnedI
 builder = DynamicLearnedIndexBuilder()
 input_shape = 768
 builder = builder.buffer_size(10).input_shape(input_shape)
+
+# optional: make model device use gpu
+# builder = builder.device(gpu:0)
+
 # TBD
 # builder.levelling(...)
 # builder.levels(...)
 # builder.arity(...)
-# builder.device(...)
 
 index: DynamicLearnedIndex = builder.build()
 
