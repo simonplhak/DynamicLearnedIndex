@@ -38,10 +38,10 @@ pub enum Levelling {
 pub struct IndexConfig {
     levelling: Levelling,
     levels: HashMap<usize, LevelIndexConfig>,
-    buffer_size: usize,
-    input_shape: usize,
+    pub buffer_size: usize,
+    pub input_shape: usize,
     arity: usize,
-    device: ModelDevice,
+    pub device: ModelDevice,
 }
 
 impl Default for IndexConfig {
