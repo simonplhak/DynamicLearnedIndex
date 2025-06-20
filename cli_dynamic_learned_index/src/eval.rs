@@ -1,5 +1,5 @@
 use dynamic_learned_index::types::{Array, Id};
-use dynamic_learned_index::Index;
+use dynamic_learned_index::{Index, SearchStrategy};
 use indicatif::ProgressBar;
 use log::info;
 use measure_time_macro::log_time;
@@ -17,6 +17,7 @@ pub fn eval_queries(
     index: &Index,
     gt: &[Vec<Id>],
     queries: &[Array],
+    search_strategy: SearchStrategy,
     use_progress: bool,
 ) -> EvalMetrics {
     assert!(queries.len() == gt.len());
@@ -31,7 +32,7 @@ pub fn eval_queries(
         .iter()
         .zip(gt.iter())
         .map(|(query, gt)| {
-            let res = index.search(query, max_k);
+            let res = index.search(query, (max_k, search_strategy));
             assert!(
                 res.len() == max_k,
                 "Expected {} results, got {}",
@@ -83,6 +84,7 @@ pub fn insert_all_data(
     limit: Option<usize>,
     validation_options: Option<ValidationOptions>,
     start_from_one: bool,
+    search_strategy: SearchStrategy,
 ) {
     let limit = limit.unwrap_or(queries.len());
 
@@ -96,7 +98,13 @@ pub fn insert_all_data(
     range.zip(queries.into_iter()).for_each(|(id, query)| {
         if let Some(validation_options) = validation_options {
             if id > 0 && id % validation_options.validate_after_n == 0 {
-                let metrics = eval_queries(index, &validation_ids, &validation_queries, false);
+                let metrics = eval_queries(
+                    index,
+                    &validation_ids,
+                    &validation_queries,
+                    search_strategy,
+                    false,
+                );
                 info!(total = metrics.total, recall_top1=metrics.recall_top1; "validation_metrics");
             }
             if id % validation_options.include_each_n == 0 {

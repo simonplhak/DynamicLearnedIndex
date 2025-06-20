@@ -1,7 +1,7 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use dataset::load_dataset_config;
-use dynamic_learned_index::{self};
+use dynamic_learned_index::{self, SearchStrategy};
 use eval::{eval_queries, insert_all_data};
 use log::info;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,12 @@ enum Commands {
 enum LogOuptut {
     Stdout,
     File,
+}
+
+#[derive(Parser, Debug, Serialize, Deserialize, Clone, clap::ValueEnum)]
+enum CLISearchStrategy {
+    Knn,
+    Model,
 }
 
 #[derive(Parser, Debug, Serialize, Deserialize)]
@@ -68,6 +74,12 @@ struct ExperimentConfig {
     /// Skips validation
     #[arg(long)]
     skip_validation: bool,
+    /// What strategy is used to pick buckets to visit
+    #[arg(long, default_value = "model")]
+    search_startegy: CLISearchStrategy,
+    /// Number of buckets to visit in each level
+    #[arg(long, default_value = "1")]
+    nprobe: usize,
     /// Limits original dataset size
     #[arg(short, long)]
     limit: Option<usize>,
@@ -132,14 +144,20 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
             include_each_n: config.include_each_n_val,
         }),
     };
+
+    let search_strategy = match config.search_startegy {
+        CLISearchStrategy::Knn => SearchStrategy::Base(config.nprobe),
+        CLISearchStrategy::Model => SearchStrategy::ModelDriven(config.nprobe),
+    };
     insert_all_data(
         &mut index,
         queries,
         config.limit,
         validation_options,
         config.start_from_one,
+        search_strategy,
     );
-    let metrics = eval_queries(&index, &gt, &test_queries, true);
+    let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true);
     info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }
@@ -170,8 +188,9 @@ fn test() -> Result<()> {
         Some(200),
         Some(validation_options),
         true,
+        Default::default(),
     );
-    let metrics = eval_queries(&index, &gt, &test_queries, true);
+    let metrics = eval_queries(&index, &gt, &test_queries, Default::default(), true);
     info!(total=metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }

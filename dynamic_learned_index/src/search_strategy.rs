@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub enum SearchStrategy {
     Base(usize), // todo rename to KnnDriven
     ModelDriven(usize),
