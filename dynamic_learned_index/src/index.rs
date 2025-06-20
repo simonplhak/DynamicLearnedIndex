@@ -102,11 +102,50 @@ pub enum Index {
     BentleySaxe(BentleySaxeIndex),
 }
 
+pub struct SearchParams {
+    k: usize,
+    search_strategy: SearchStrategy,
+}
+
+pub trait SearchParamsT {
+    fn into_search_params(self) -> SearchParams;
+}
+
+impl SearchParamsT for () {
+    fn into_search_params(self) -> SearchParams {
+        SearchParams {
+            k: 10,
+            search_strategy: SearchStrategy::default(),
+        }
+    }
+}
+
+impl SearchParamsT for (usize, SearchStrategy) {
+    fn into_search_params(self) -> SearchParams {
+        SearchParams {
+            k: self.0,
+            search_strategy: self.1,
+        }
+    }
+}
+
+impl SearchParamsT for usize {
+    fn into_search_params(self) -> SearchParams {
+        SearchParams {
+            k: self,
+            search_strategy: SearchStrategy::default(),
+        }
+    }
+}
+
 impl Index {
-    #[log_time]
-    pub fn search(&self, query: &ArraySlice, k: usize, search_strategy: SearchStrategy) -> Vec<Id> {
+    pub fn search<S>(&self, query: &ArraySlice, params: S) -> Vec<Id>
+    where
+        S: SearchParamsT,
+    {
+        let params = params.into_search_params();
         match self {
-            Index::BentleySaxe(index) => index.search(query, k, search_strategy),
+            Index::BentleySaxe(index) => index.search(query, params),
         }
     }
 
@@ -219,11 +258,11 @@ impl BentleySaxeIndex {
     }
 
     #[log_time]
-    fn search(&self, query: &ArraySlice, k: usize, search_strategy: SearchStrategy) -> Vec<Id> {
-        let buckets2visit = self.buckets2visit(query, search_strategy);
+    fn search(&self, query: &ArraySlice, params: SearchParams) -> Vec<Id> {
+        let buckets2visit = self.buckets2visit(query, params.search_strategy);
         let (ids, distances): (Vec<_>, Vec<_>) = buckets2visit
             .par_iter()
-            .map(|bucket| bucket.search(query, k))
+            .map(|bucket| bucket.search(query, params.k))
             .unzip();
         let ids = ids.into_iter().flatten().collect::<Vec<_>>();
         let distances = distances.into_iter().flatten().collect::<Vec<_>>();
@@ -233,7 +272,11 @@ impl BentleySaxeIndex {
                 .partial_cmp(dist_b)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        results.into_iter().take(k).map(|(id, _)| id).collect()
+        results
+            .into_iter()
+            .take(params.k)
+            .map(|(id, _)| id)
+            .collect()
     }
 
     fn insert(&mut self, value: Array, id: Id) {

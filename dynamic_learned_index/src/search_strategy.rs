@@ -1,6 +1,6 @@
 #[derive(Debug)]
 pub enum SearchStrategy {
-    Base(usize),
+    Base(usize), // todo rename to KnnDriven
     ModelDriven(usize),
 }
 

@@ -1,6 +1,6 @@
 use dynamic_learned_index::{IndexConfig, ModelDevice};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
-use pyo3::{prelude::*, PyErr};
+use pyo3::{prelude::*, types::PyDict, PyErr};
 
 #[pyclass]
 #[derive(Clone)]
@@ -91,16 +91,54 @@ impl DynamicLearnedIndex {
         Ok(DynamicLearnedIndex { index })
     }
 
+    #[pyo3(signature = (query, k, **py_kwargs))]
     fn search<'py>(
         &self,
         py: Python<'py>,
         query: PyReadonlyArray1<'py, f32>,
         k: usize,
-    ) -> Bound<'py, PyArray1<u32>> {
+        py_kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Bound<'py, PyArray1<u32>>> {
         let query = array2vec(query);
-        let r = self.index.search(&query, k, Default::default());
+        let r = match py_kwargs {
+            Some(kwargs) => {
+                let nprobe = kwargs
+                    .iter()
+                    .find(|(key, _)| key.extract::<String>().unwrap_or_default() == "nprobe") // todo remove unwrap
+                    .map(|(_, value)| {
+                        value.extract::<usize>().map_err(|_| {
+                            PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                                "nprobe must be an integer",
+                            )
+                        })
+                    })
+                    .unwrap_or(Ok(1))?;
+                let search_strategy = kwargs
+                    .iter()
+                    .find(|(key, _)| {
+                        key.extract::<String>().unwrap_or_default() == "search_strategy"
+                    })
+                    .map(|(_, value)| match value.extract::<String>() {
+                        Ok(strategy) => match strategy.as_str() {
+                            "knn" => Ok(dynamic_learned_index::SearchStrategy::Base(nprobe)),
+                            "model_driven" => {
+                                Ok(dynamic_learned_index::SearchStrategy::ModelDriven(nprobe))
+                            }
+                            _ => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                                "Invalid search strategy",
+                            )),
+                        },
+                        Err(_) => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                            "search_strategy must be a string",
+                        )),
+                    })
+                    .unwrap_or(Ok(Default::default()))?;
+                self.index.search(&query, (k, search_strategy))
+            }
+            None => self.index.search(&query, k),
+        };
         let x = r.into_pyarray_bound(py);
-        x
+        Ok(x)
     }
 
     fn insert<'py>(&mut self, record: PyReadonlyArray1<'py, f32>, id: u32) {
