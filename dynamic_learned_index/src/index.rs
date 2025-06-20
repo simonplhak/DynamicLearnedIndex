@@ -89,7 +89,6 @@ impl IndexConfig {
                     device: self.device,
                     levels: Vec::new(),
                     buffer,
-                    search_startegy: Default::default(),
                 };
                 Index::BentleySaxe(index)
             }
@@ -105,9 +104,9 @@ pub enum Index {
 
 impl Index {
     #[log_time]
-    pub fn search(&self, query: &ArraySlice, k: usize) -> Vec<Id> {
+    pub fn search(&self, query: &ArraySlice, k: usize, search_strategy: SearchStrategy) -> Vec<Id> {
         match self {
-            Index::BentleySaxe(index) => index.search(query, k),
+            Index::BentleySaxe(index) => index.search(query, k, search_strategy),
         }
     }
 
@@ -115,14 +114,6 @@ impl Index {
         match self {
             Index::BentleySaxe(index) => {
                 index.insert(value, id);
-            }
-        }
-    }
-
-    pub fn search_strategy(&mut self, search_strategy: SearchStrategy) {
-        match self {
-            Index::BentleySaxe(index) => {
-                index.search_startegy = search_strategy;
             }
         }
     }
@@ -142,7 +133,6 @@ pub struct BentleySaxeIndex {
     device: ModelDevice,
     levels: Vec<LevelIndex>,
     buffer: Bucket,
-    search_startegy: SearchStrategy,
 }
 
 impl BentleySaxeIndex {
@@ -209,20 +199,28 @@ impl BentleySaxeIndex {
         (data, ids)
     }
 
-    fn buckets2visit(&self, query: &ArraySlice) -> Vec<&Bucket> {
-        let nprobe = self.search_startegy.nprobe();
-        match &self.search_startegy {
-            SearchStrategy::Base(_) => self
-                .levels
-                .iter()
-                .flat_map(|level| level.buckets2visit(query, nprobe))
-                .collect(),
-        }
+    fn buckets2visit(&self, query: &ArraySlice, search_strategy: SearchStrategy) -> Vec<&Bucket> {
+        let bucket_predictions = self
+            .levels
+            .iter()
+            .map(|level| level.buckets2visit_predictions(query))
+            .collect::<Vec<_>>();
+        let level_bucket_idxs = search_strategy.buckets2visit(bucket_predictions);
+        level_bucket_idxs
+            .into_iter()
+            .zip(self.levels.iter())
+            .flat_map(|(bucket_idxs, level)| {
+                bucket_idxs
+                    .into_iter()
+                    .map(|bucket_idx| &level.buckets[bucket_idx])
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
     }
 
     #[log_time]
-    fn search(&self, query: &ArraySlice, k: usize) -> Vec<Id> {
-        let buckets2visit = self.buckets2visit(query);
+    fn search(&self, query: &ArraySlice, k: usize, search_strategy: SearchStrategy) -> Vec<Id> {
+        let buckets2visit = self.buckets2visit(query, search_strategy);
         let (ids, distances): (Vec<_>, Vec<_>) = buckets2visit
             .par_iter()
             .map(|bucket| bucket.search(query, k))
@@ -368,13 +366,8 @@ impl LevelIndex {
         self.buckets.iter().map(|bucket| bucket.occupied()).sum()
     }
 
-    fn buckets2visit(&self, query: &ArraySlice, nprobe: usize) -> Vec<&Bucket> {
-        self.model
-            .predict(query)
-            .into_iter()
-            .take(nprobe)
-            .map(|(bucket_idx, _)| &self.buckets[bucket_idx])
-            .collect()
+    fn buckets2visit_predictions(&self, query: &ArraySlice) -> Vec<(usize, f32)> {
+        self.model.predict(query).into_iter().collect()
     }
 
     #[log_time]

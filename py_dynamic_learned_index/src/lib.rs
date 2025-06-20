@@ -98,7 +98,7 @@ impl DynamicLearnedIndex {
         k: usize,
     ) -> Bound<'py, PyArray1<u32>> {
         let query = array2vec(query);
-        let r = self.index.search(&query, k);
+        let r = self.index.search(&query, k, Default::default());
         let x = r.into_pyarray_bound(py);
         x
     }

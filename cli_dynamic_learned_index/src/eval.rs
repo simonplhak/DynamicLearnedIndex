@@ -31,7 +31,7 @@ pub fn eval_queries(
         .iter()
         .zip(gt.iter())
         .map(|(query, gt)| {
-            let res = index.search(query, max_k);
+            let res = index.search(query, max_k, Default::default());
             assert!(
                 res.len() == max_k,
                 "Expected {} results, got {}",
