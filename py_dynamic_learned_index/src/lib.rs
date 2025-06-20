@@ -121,7 +121,7 @@ impl DynamicLearnedIndex {
                     .map(|(_, value)| match value.extract::<String>() {
                         Ok(strategy) => match strategy.as_str() {
                             "knn" => Ok(dynamic_learned_index::SearchStrategy::Base(nprobe)),
-                            "model_driven" => {
+                            "model" => {
                                 Ok(dynamic_learned_index::SearchStrategy::ModelDriven(nprobe))
                             }
                             _ => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(

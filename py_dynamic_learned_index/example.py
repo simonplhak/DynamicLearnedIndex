@@ -28,7 +28,7 @@ for i, query in enumerate(queries):
 
 k = 3
 nprobe = 1
-search_strategy = 'knn'  # options: knn, model_driven
+search_strategy = 'model'  # options: knn, model
 for i in range(0, len(queries) - 1, 50):
     res = index.search(queries[i], k, nprobe=nprobe, search_strategy=search_strategy)
     print(f'For query "{i}" index found: {res}')
