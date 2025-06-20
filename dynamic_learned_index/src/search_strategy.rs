@@ -26,7 +26,8 @@ impl SearchStrategy {
                 .collect(),
             SearchStrategy::ModelDriven(nprobe) => {
                 let arity = predictions[0].len();
-                let normalize_probabilities = |prob, level_idx| arity.pow(level_idx) as f32 * prob;
+                let normalize_probability =
+                    |prob: f32, level_idx| (arity.pow(level_idx) as f32) * prob.max(0.0);
                 let levels = predictions.len();
                 let mut predictions = predictions
                     .iter()
@@ -38,13 +39,13 @@ impl SearchStrategy {
                                 (
                                     level_idx,
                                     *bucket_id,
-                                    normalize_probabilities(*prob, level_idx as u32),
+                                    normalize_probability(*prob, level_idx as u32),
                                 )
                             })
                             .collect::<Vec<_>>()
                     })
                     .collect::<Vec<_>>();
-                predictions.sort_by(|a, b| a.2.partial_cmp(&b.2).unwrap());
+                predictions.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
                 predictions.into_iter().take(*nprobe).fold(
                     vec![vec![]; levels],
                     |mut acc, (level_idx, bucket_id, _)| {
