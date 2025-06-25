@@ -1,4 +1,4 @@
-pub(crate) mod bucket;
+mod bucket;
 mod clustering;
 mod config;
 mod constants;
@@ -8,6 +8,7 @@ mod model;
 mod sampling;
 mod search_strategy;
 pub mod types;
-pub use index::{Index, IndexConfig, ModelDevice};
+pub use bucket::DistanceFn;
+pub use index::{Index, IndexConfig, Levelling, ModelDevice};
 pub use search_strategy::*;
 pub use types::Id;

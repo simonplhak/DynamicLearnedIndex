@@ -7,7 +7,7 @@ use crate::{
     Id,
 };
 use log::debug;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use simsimd::SpatialSimilarity;
 
 #[derive(Debug, Serialize)]
@@ -19,10 +19,17 @@ pub(crate) struct Bucket {
     input_shape: usize,
     current_size: usize,
     is_dynamic: bool,
+    distance_fn: DistanceFn,
 }
 
 impl Bucket {
-    fn new(id: String, size: usize, input_shape: usize, is_dynamic: bool) -> Self {
+    fn new(
+        id: String,
+        size: usize,
+        input_shape: usize,
+        is_dynamic: bool,
+        distance_fn: DistanceFn,
+    ) -> Self {
         Self {
             id,
             records: Vec::with_capacity(size * input_shape),
@@ -31,6 +38,7 @@ impl Bucket {
             input_shape,
             current_size: size,
             is_dynamic,
+            distance_fn,
         }
     }
 
@@ -46,9 +54,9 @@ impl Bucket {
             .ids
             .iter()
             .enumerate()
-            .map(|(i, id)| (id, euclidean_distance_new(query, self.record(i))))
+            .map(|(i, id)| (id, self.distance_fn.distance(query, self.record(i))))
             .collect::<Vec<_>>();
-        distances.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+        distances.sort_by(|a, b| self.distance_fn.cmp(&a.1, &b.1));
         distances.truncate(k);
         distances.into_iter().unzip()
     }
@@ -116,6 +124,7 @@ pub(crate) struct BucketBuilder {
     id: Option<String>,
     size: Option<usize>,
     is_dynamic: bool,
+    distance_fn: Option<DistanceFn>,
 }
 
 impl BucketBuilder {
@@ -139,15 +148,49 @@ impl BucketBuilder {
         self
     }
 
+    pub fn distance_fn(&mut self, distance_fn: DistanceFn) -> &mut Self {
+        self.distance_fn = Some(distance_fn);
+        self
+    }
+
     pub fn build(&self) -> Result<Bucket, BuildError> {
         let size = self.size.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
-        Ok(Bucket::new(id, size, input_shape, self.is_dynamic))
+        let distance_fn = self
+            .distance_fn
+            .clone()
+            .ok_or(BuildError::MissingAttribute)?;
+        Ok(Bucket::new(
+            id,
+            size,
+            input_shape,
+            self.is_dynamic,
+            distance_fn,
+        ))
     }
 }
 
-fn euclidean_distance_new(a: &ArraySlice, b: &ArraySlice) -> ArrayNumType {
-    assert_eq!(a.len(), b.len(), "Vectors must have the same length");
-    f32::l2(a, b).unwrap() as f32
+#[derive(Default, Deserialize, Serialize, Debug, Clone)]
+pub enum DistanceFn {
+    #[default]
+    L2,
+    Dot,
+}
+
+impl DistanceFn {
+    fn distance(&self, a: &ArraySlice, b: &ArraySlice) -> ArrayNumType {
+        assert_eq!(a.len(), b.len(), "Vectors must have the same length");
+        match self {
+            DistanceFn::L2 => f32::l2(a, b).unwrap() as f32,
+            DistanceFn::Dot => f32::dot(a, b).unwrap() as f32,
+        }
+    }
+
+    pub(crate) fn cmp(&self, a: &f32, b: &f32) -> std::cmp::Ordering {
+        match self {
+            DistanceFn::L2 => a.total_cmp(b),
+            DistanceFn::Dot => b.total_cmp(a), // Higher is better for inner product
+        }
+    }
 }

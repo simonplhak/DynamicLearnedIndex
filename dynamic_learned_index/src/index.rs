@@ -1,5 +1,5 @@
 use crate::{
-    bucket::{self, Bucket, BucketBuilder},
+    bucket::{self, Bucket, BucketBuilder, DistanceFn},
     errors::BuildError,
     model::{self, Model, ModelConfig},
     types::{Array, ArraySlice},
@@ -39,12 +39,13 @@ pub enum Levelling {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
-    levelling: Levelling,
-    levels: HashMap<usize, LevelIndexConfig>,
+    pub levelling: Levelling,
+    pub levels: HashMap<usize, LevelIndexConfig>,
     pub buffer_size: usize,
     pub input_shape: usize,
-    arity: usize,
+    pub arity: usize,
     pub device: ModelDevice,
+    pub distance_fn: DistanceFn,
 }
 
 impl Default for IndexConfig {
@@ -58,6 +59,7 @@ impl Default for IndexConfig {
             input_shape: 768,
             arity: 3,
             device: Default::default(),
+            distance_fn: Default::default(),
         }
     }
 }
@@ -79,6 +81,7 @@ impl IndexConfig {
             .id("buffer".to_string())
             .input_shape(self.input_shape)
             .size(self.buffer_size)
+            .distance_fn(self.distance_fn.clone())
             .build()?;
         let index = match self.levelling {
             Levelling::BentleySaxe => {
@@ -89,6 +92,7 @@ impl IndexConfig {
                     device: self.device,
                     levels: Vec::new(),
                     buffer,
+                    distance_fn: self.distance_fn,
                 };
                 Index::BentleySaxe(index)
             }
@@ -172,6 +176,7 @@ pub struct BentleySaxeIndex {
     device: ModelDevice,
     levels: Vec<LevelIndex>,
     buffer: Bucket,
+    distance_fn: DistanceFn,
 }
 
 impl BentleySaxeIndex {
@@ -211,6 +216,7 @@ impl BentleySaxeIndex {
             .model(level_index_config.model.clone())
             .model_device(self.device.clone())
             .bucket_size(level_index_config.bucket_size)
+            .distance_fn(self.distance_fn.clone())
             .build()
             .unwrap();
         self.levels.push(level_index);
@@ -267,11 +273,7 @@ impl BentleySaxeIndex {
         let ids = ids.into_iter().flatten().collect::<Vec<_>>();
         let distances = distances.into_iter().flatten().collect::<Vec<_>>();
         let mut results = ids.into_iter().zip(distances.iter()).collect::<Vec<_>>();
-        results.sort_by(|(_, dist_a), (_, dist_b)| {
-            dist_a
-                .partial_cmp(dist_b)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        results.sort_by(|(_, dist_a), (_, dist_b)| self.distance_fn.cmp(dist_a, dist_b));
         results
             .into_iter()
             .take(params.k)
@@ -329,6 +331,7 @@ pub(crate) struct LevelIndexBuilder {
     bucket_size: Option<usize>,
     input_shape: Option<usize>,
     model_device: ModelDevice,
+    distance_fn: Option<DistanceFn>,
 }
 
 impl LevelIndexBuilder {
@@ -362,11 +365,20 @@ impl LevelIndexBuilder {
         self
     }
 
+    pub fn distance_fn(&mut self, distance_fn: DistanceFn) -> &mut Self {
+        self.distance_fn = Some(distance_fn);
+        self
+    }
+
     pub fn build(&self) -> Result<LevelIndex, BuildError> {
         let n_buckets = self.n_buckets.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
         let bucket_size = self.bucket_size.ok_or(BuildError::MissingAttribute)?;
+        let distance_fn = self
+            .distance_fn
+            .clone()
+            .ok_or(BuildError::MissingAttribute)?;
         let model_config = self
             .model_config
             .as_ref()
@@ -385,7 +397,8 @@ impl LevelIndexBuilder {
         bucket_builder
             .input_shape(input_shape)
             .size(bucket_size)
-            .is_dynamic(true);
+            .is_dynamic(true)
+            .distance_fn(distance_fn);
         let buckets = (0..n_buckets)
             .map(|bucket_id| bucket_builder.id(format!("{id}:{bucket_id}")).build())
             .collect::<Result<Vec<_>, _>>()?;
