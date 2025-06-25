@@ -30,6 +30,45 @@ impl DynamicLearnedIndexBuilder {
         Ok(builder)
     }
 
+    fn arity(&self, arity: usize) -> PyResult<Self> {
+        let mut builder = self.clone();
+        builder.builder.arity = arity;
+        Ok(builder)
+    }
+
+    fn levelling(&self, levelling: &str) -> PyResult<Self> {
+        let mut builder = self.clone();
+        match levelling {
+            "bentley_saxe" => {
+                builder.builder.levelling = dynamic_learned_index::Levelling::BentleySaxe;
+            }
+            _ => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid levelling type",
+                ))
+            }
+        }
+        Ok(builder)
+    }
+
+    fn distance_fn(&self, distance_fn: &str) -> PyResult<Self> {
+        let mut builder = self.clone();
+        match distance_fn {
+            "dot" => {
+                builder.builder.distance_fn = dynamic_learned_index::DistanceFn::Dot;
+            }
+            "l2" => {
+                builder.builder.distance_fn = dynamic_learned_index::DistanceFn::L2;
+            }
+            _ => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid distance function",
+                ))
+            }
+        }
+        Ok(builder)
+    }
+
     fn input_shape(&self, shape: usize) -> PyResult<Self> {
         let mut builder = self.clone();
         builder.builder.input_shape = shape;

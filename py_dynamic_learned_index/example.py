@@ -4,15 +4,21 @@ from py_dynamic_learned_index import DynamicLearnedIndexBuilder, DynamicLearnedI
 
 builder = DynamicLearnedIndexBuilder()
 input_shape = 768
-builder = builder.buffer_size(10).input_shape(input_shape)
+builder = (
+    builder
+        .buffer_size(10)  # size of the buffer
+        .input_shape(input_shape)  # the shape of the input vector
+        .distance_fn('dot')  # options: dot|l2
+        .arity(3)  # arity of the tree structure created by the index
+        .levelling('bentley_saxe')  # type of levelling used to construct new levels of tree; options: bentley_saxe
+)
 
 # optional: make model device use gpu
 # builder = builder.device(gpu:0)
 
 # TBD
-# builder.levelling(...)
 # builder.levels(...)
-# builder.arity(...)
+# builder.bucket_size(10)  # size of the individial buckets
 
 index: DynamicLearnedIndex = builder.build()
 
