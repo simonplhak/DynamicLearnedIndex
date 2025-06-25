@@ -29,7 +29,7 @@ impl SearchStrategy {
                 let normalize_probability =
                     |prob: f32, level_idx| (arity.pow(level_idx) as f32) * prob.max(0.0);
                 let levels = predictions.len();
-                let mut predictions = predictions
+                let mut buckets2visit = predictions
                     .iter()
                     .enumerate()
                     .flat_map(|(level_idx, level_predictions)| {
@@ -45,8 +45,8 @@ impl SearchStrategy {
                             .collect::<Vec<_>>()
                     })
                     .collect::<Vec<_>>();
-                predictions.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap());
-                predictions.into_iter().take(*nprobe).fold(
+                buckets2visit.sort_by(|a, b| b.2.total_cmp(&a.2));
+                buckets2visit.into_iter().take(*nprobe).fold(
                     vec![vec![]; levels],
                     |mut acc, (level_idx, bucket_id, _)| {
                         acc[level_idx].push(bucket_id);
