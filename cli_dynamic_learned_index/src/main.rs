@@ -177,7 +177,7 @@ fn test() -> Result<()> {
     let index_config = dynamic_learned_index::IndexConfig::from_yaml("configs/example.yaml")?;
     let mut index = index_config.build()?;
     let dataset_config = load_dataset_config(&PathBuf::from("data/k300"))?;
-    let (queries, test_queries, gt) = dataset_config.load()?;
+    let (queries, _, _) = dataset_config.load()?;
     let validation_options = eval::ValidationOptions {
         validate_after_n: 100,
         include_each_n: 1,
@@ -190,8 +190,6 @@ fn test() -> Result<()> {
         true,
         Default::default(),
     );
-    let metrics = eval_queries(&index, &gt, &test_queries, Default::default(), true);
-    info!(total=metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
     Ok(())
 }
 
