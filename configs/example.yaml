@@ -27,3 +27,4 @@ levels:
             max_iters: 10
     bucket_size: 30
 
+distance_fn: dot
