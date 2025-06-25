@@ -6,7 +6,7 @@ pub enum SearchStrategy {
 
 impl Default for SearchStrategy {
     fn default() -> Self {
-        SearchStrategy::ModelDriven(1)
+        SearchStrategy::ModelDriven(3)
     }
 }
 
