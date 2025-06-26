@@ -14,5 +14,7 @@ serde_json = "1.0.140"
 serde_yaml = "0.9.34"
 tch = { version = "0.19.0" }
 kmeans = { version = "2.0.0" }
+kentro = { version = "0.1.0" }
 rayon = { version = "1.10.0" }
 simsimd = { version = "6.4.9" }
+ndarray = "0.16.1"

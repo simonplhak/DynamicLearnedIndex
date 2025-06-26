@@ -1,3 +1,4 @@
+#![feature(portable_simd)]
 mod bucket;
 mod clustering;
 mod config;
