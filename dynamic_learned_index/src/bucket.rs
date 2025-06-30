@@ -196,3 +196,256 @@ impl DistanceFn {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_bucket(distance_fn: DistanceFn) -> Bucket {
+        Bucket::new("test_bucket".to_string(), 10, 5, true, distance_fn)
+    }
+
+    fn create_static_bucket() -> Bucket {
+        Bucket::new("static_bucket".to_string(), 3, 2, false, DistanceFn::L2)
+    }
+
+    #[test]
+    fn test_new_bucket() {
+        let bucket = create_bucket(DistanceFn::Dot);
+        assert_eq!(bucket.id, "test_bucket");
+        assert_eq!(bucket.size, 10);
+        assert_eq!(bucket.input_shape, 5);
+        assert!(bucket.is_dynamic);
+        assert_eq!(bucket.current_size, 10);
+        assert_eq!(bucket.occupied(), 0);
+    }
+
+    #[test]
+    fn test_bucket_builder() {
+        let bucket = BucketBuilder::default()
+            .id("builder_test".to_string())
+            .size(20)
+            .input_shape(3)
+            .is_dynamic(false)
+            .distance_fn(DistanceFn::L2)
+            .build()
+            .unwrap();
+
+        assert_eq!(bucket.id(), "builder_test");
+        assert_eq!(bucket.size(), 20);
+        assert_eq!(bucket.input_shape, 3);
+        assert!(!bucket.is_dynamic);
+    }
+
+    #[test]
+    fn test_bucket_builder_missing_attributes() {
+        let result = BucketBuilder::default().build();
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), BuildError::MissingAttribute));
+    }
+
+    #[test]
+    fn test_insert_single_record() {
+        let mut bucket = create_bucket(DistanceFn::Dot);
+        let record = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        bucket.insert(record.clone(), 100);
+
+        assert_eq!(bucket.occupied(), 1);
+        assert_eq!(bucket.record(0), record.as_slice());
+        assert_eq!(bucket.ids[0], 100);
+    }
+
+    #[test]
+    fn test_insert_multiple_records() {
+        let mut bucket = create_bucket(DistanceFn::Dot);
+        let record1 = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let record2 = vec![5.0, 4.0, 3.0, 2.0, 1.0];
+        let record3 = vec![2.5, 3.5, 4.5, 5.5, 6.5];
+
+        bucket.insert(record1.clone(), 1);
+        bucket.insert(record2.clone(), 2);
+        bucket.insert(record3.clone(), 3);
+
+        assert_eq!(bucket.occupied(), 3);
+        assert_eq!(bucket.record(0), record1.as_slice());
+        assert_eq!(bucket.record(1), record2.as_slice());
+        assert_eq!(bucket.record(2), record3.as_slice());
+        assert_eq!(bucket.ids, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_has_space() {
+        let mut bucket = create_static_bucket(); // size 3
+        assert!(bucket.has_space(1));
+        assert!(bucket.has_space(3));
+        assert!(!bucket.has_space(4));
+
+        bucket.insert(vec![1.0, 2.0], 1);
+        assert!(bucket.has_space(2));
+        assert!(!bucket.has_space(3));
+
+        bucket.insert(vec![3.0, 4.0], 2);
+        bucket.insert(vec![5.0, 6.0], 3);
+        assert!(!bucket.has_space(1));
+    }
+
+    #[test]
+    fn test_search_single_record() {
+        let mut bucket = create_bucket(DistanceFn::Dot);
+        let record = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        bucket.insert(record.clone(), 42);
+
+        let query = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let (ids, distances) = bucket.search(&query, 1);
+
+        assert_eq!(ids.len(), 1);
+        assert_eq!(ids[0], 42);
+        assert_eq!(distances.len(), 1);
+        // For dot product with identical vectors, we expect a high similarity
+        assert!(distances[0] > 0.0);
+    }
+
+    #[test]
+    fn test_search_multiple_records_dot() {
+        let mut bucket = create_bucket(DistanceFn::Dot);
+        let record1 = vec![1.0, 0.0, 0.0, 0.0, 0.0]; // Should have lower dot product with query
+        let record2 = vec![1.0, 1.0, 1.0, 1.0, 1.0]; // Should have higher dot product with query
+        let record3 = vec![2.0, 2.0, 2.0, 2.0, 2.0]; // Should have highest dot product with query
+
+        bucket.insert(record1, 1);
+        bucket.insert(record2, 2);
+        bucket.insert(record3, 3);
+
+        let query = vec![1.0, 1.0, 1.0, 1.0, 1.0];
+        let (ids, _distances) = bucket.search(&query, 2);
+
+        // For dot product, higher values are better, so id 3 should come first
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids[0], 3); // record3 has highest dot product
+        assert_eq!(ids[1], 2); // record2 has second highest
+    }
+
+    #[test]
+    fn test_search_multiple_records_l2() {
+        let mut bucket = Bucket::new("test".to_string(), 10, 3, true, DistanceFn::L2);
+        let record1 = vec![1.0, 1.0, 1.0]; // Distance sqrt(3) from origin
+        let record2 = vec![2.0, 2.0, 2.0]; // Distance sqrt(12) from origin
+        let record3 = vec![0.5, 0.5, 0.5]; // Distance sqrt(0.75) from origin
+
+        bucket.insert(record1, 1);
+        bucket.insert(record2, 2);
+        bucket.insert(record3, 3);
+
+        let query = vec![0.0, 0.0, 0.0]; // Origin
+        let (ids, _distances) = bucket.search(&query, 2);
+
+        // For L2 distance, smaller values are better, so id 3 should come first
+        assert_eq!(ids.len(), 2);
+        assert_eq!(ids[0], 3); // record3 has smallest L2 distance
+        assert_eq!(ids[1], 1); // record1 has second smallest
+    }
+
+    #[test]
+    fn test_get_data() {
+        let mut bucket = create_bucket(DistanceFn::Dot);
+        let record1 = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let record2 = vec![5.0, 4.0, 3.0, 2.0, 1.0];
+
+        bucket.insert(record1.clone(), 10);
+        bucket.insert(record2.clone(), 20);
+
+        let (records, ids) = bucket.get_data();
+
+        assert_eq!(records.len(), 2);
+        assert_eq!(ids.len(), 2);
+        assert_eq!(records[0], record1);
+        assert_eq!(records[1], record2);
+        assert_eq!(ids, vec![10, 20]);
+
+        // After get_data, bucket should be empty
+        assert_eq!(bucket.occupied(), 0);
+    }
+
+    #[test]
+    fn test_resize_dynamic_bucket() {
+        let mut bucket = Bucket::new("test".to_string(), 2, 3, true, DistanceFn::Dot);
+        assert_eq!(bucket.current_size, 2);
+
+        // Fill the bucket
+        bucket.insert(vec![1.0, 2.0, 3.0], 1);
+        bucket.insert(vec![4.0, 5.0, 6.0], 2);
+        assert_eq!(bucket.occupied(), 2);
+        assert!(!bucket.has_space(1));
+
+        // Insert one more - should trigger resize
+        bucket.insert(vec![7.0, 8.0, 9.0], 3);
+        assert_eq!(bucket.occupied(), 3);
+        assert!(bucket.current_size > 2); // Should have been resized
+    }
+
+    #[test]
+    fn test_distance_fn_l2() {
+        let distance_fn = DistanceFn::L2;
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![4.0, 5.0, 6.0];
+
+        let distance = distance_fn.distance(&a, &b);
+        // L2 distance between [1,2,3] and [4,5,6] should be sqrt(27) ≈ 5.196
+        assert!((distance - 5.196).abs() < 0.01);
+    }
+
+    #[test]
+    fn test_distance_fn_dot() {
+        let distance_fn = DistanceFn::Dot;
+        let a = vec![1.0, 2.0, 3.0];
+        let b = vec![4.0, 5.0, 6.0];
+
+        let distance = distance_fn.distance(&a, &b);
+        // Dot product of [1,2,3] and [4,5,6] should be 1*4 + 2*5 + 3*6 = 32
+        assert_eq!(distance, 32.0);
+    }
+
+    #[test]
+    fn test_distance_fn_cmp() {
+        let l2_fn = DistanceFn::L2;
+        let dot_fn = DistanceFn::Dot;
+
+        // For L2, smaller is better
+        assert_eq!(l2_fn.cmp(&1.0, &2.0), std::cmp::Ordering::Less);
+        assert_eq!(l2_fn.cmp(&2.0, &1.0), std::cmp::Ordering::Greater);
+
+        // For Dot, larger is better (reversed comparison)
+        assert_eq!(dot_fn.cmp(&1.0, &2.0), std::cmp::Ordering::Greater);
+        assert_eq!(dot_fn.cmp(&2.0, &1.0), std::cmp::Ordering::Less);
+    }
+
+    #[test]
+    #[should_panic(expected = "Vectors must have the same length")]
+    fn test_distance_fn_mismatched_lengths() {
+        let distance_fn = DistanceFn::L2;
+        let a = vec![1.0, 2.0];
+        let b = vec![1.0, 2.0, 3.0];
+        distance_fn.distance(&a, &b);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_resize_static_bucket_panics() {
+        let mut bucket = create_static_bucket();
+        // Try to force resize on a static bucket
+        bucket.resize(1);
+    }
+
+    #[test]
+    fn test_record_access() {
+        let mut bucket = create_bucket(DistanceFn::Dot);
+        let record1 = vec![1.0, 2.0, 3.0, 4.0, 5.0];
+        let record2 = vec![6.0, 7.0, 8.0, 9.0, 10.0];
+
+        bucket.insert(record1.clone(), 1);
+        bucket.insert(record2.clone(), 2);
+
+        assert_eq!(bucket.record(0), record1.as_slice());
+        assert_eq!(bucket.record(1), record2.as_slice());
+    }
+}
