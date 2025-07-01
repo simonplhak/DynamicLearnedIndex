@@ -13,6 +13,7 @@ pub struct EvalMetrics {
     pub recall_top10: f32,
 }
 
+#[log_time]
 pub fn eval_queries(
     index: &Index,
     gt: &[Vec<Id>],
