@@ -78,8 +78,8 @@ struct ExperimentConfig {
     #[arg(long, default_value = "model")]
     search_startegy: CLISearchStrategy,
     /// Number of buckets to visit in each level
-    #[arg(long, default_value = "1")]
-    nprobe: usize,
+    #[arg(short, long, default_value = "1", num_args = 0..)]
+    nprobe: Vec<usize>,
     /// Limits original dataset size
     #[arg(short, long)]
     limit: Option<usize>,
@@ -137,6 +137,7 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
     )?;
     let mut index = index_config.build()?;
     let (queries, test_queries, gt) = dataset_config.load()?;
+    info!(queries=queries.len(), test_queries=test_queries.len(); "dataset");
     let validation_options = match config.skip_validation {
         true => None,
         false => Some(eval::ValidationOptions {
@@ -144,10 +145,9 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
             include_each_n: config.include_each_n_val,
         }),
     };
-
     let search_strategy = match config.search_startegy {
-        CLISearchStrategy::Knn => SearchStrategy::Base(config.nprobe),
-        CLISearchStrategy::Model => SearchStrategy::ModelDriven(config.nprobe),
+        CLISearchStrategy::Knn => SearchStrategy::Base(config.nprobe[0]),
+        CLISearchStrategy::Model => SearchStrategy::ModelDriven(config.nprobe[0]),
     };
     insert_all_data(
         &mut index,
@@ -157,8 +157,15 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         config.start_from_one,
         search_strategy,
     );
-    let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true);
-    info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10; "metrics");
+    for nprobe in &config.nprobe {
+        let search_strategy = match config.search_startegy {
+            CLISearchStrategy::Knn => SearchStrategy::Base(*nprobe),
+            CLISearchStrategy::Model => SearchStrategy::ModelDriven(*nprobe),
+        };
+        let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true);
+        info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, nprobe=nprobe; "metrics");
+    }
+
     Ok(())
 }
 
