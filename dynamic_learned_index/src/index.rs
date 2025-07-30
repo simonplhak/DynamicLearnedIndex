@@ -166,6 +166,12 @@ impl Index {
             Index::BentleySaxe(index) => index.size(),
         }
     }
+
+    pub fn n_buckets(&self) -> usize {
+        match self {
+            Index::BentleySaxe(index) => index.levels.iter().map(|level| level.n_buckets()).sum(),
+        }
+    }
 }
 
 #[derive(Debug)]
