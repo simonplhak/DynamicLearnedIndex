@@ -1,7 +1,6 @@
 use std::fmt::Debug;
 
 use crate::{
-    config::CONFIG,
     errors::BuildError,
     types::{Array, ArrayNumType, ArraySlice},
     Id,
