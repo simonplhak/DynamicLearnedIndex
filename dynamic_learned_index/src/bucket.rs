@@ -87,18 +87,20 @@ impl Bucket {
     }
 
     pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
-        let size = self.size();
-        let mut records = std::mem::replace(
-            &mut self.records,
-            Vec::with_capacity(size * self.input_shape),
-        );
-        assert!(records.len() % self.input_shape == 0);
-        assert!(records.len() == self.occupied() * self.input_shape);
-        let records = (0..self.occupied())
-            .map(|_| records.drain(..self.input_shape).collect::<Vec<_>>())
-            .collect::<Vec<_>>();
-        let ids = std::mem::replace(&mut self.ids, Vec::with_capacity(size));
-        (records, ids)
+        let mut records = std::mem::take(&mut self.records);
+        let ids = std::mem::take(&mut self.ids);
+
+        let chunk = self.input_shape;
+        assert!(records.len() % chunk == 0);
+
+        let mut out = Vec::with_capacity(records.len() / chunk);
+        while !records.is_empty() {
+            let tail = records.split_off(records.len() - chunk);
+            out.push(tail);
+        }
+
+        out.reverse(); // since split_off takes from the end
+        (out, ids)
     }
 
     pub fn has_space(&self, count: usize) -> bool {
