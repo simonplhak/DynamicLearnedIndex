@@ -52,7 +52,7 @@ impl Bucket {
             .ids
             .iter()
             .enumerate()
-            .map(|(i, id)| (id.clone(), self.distance_fn.distance(query, self.record(i))))
+            .map(|(i, id)| (*id, self.distance_fn.distance(query, self.record(i))))
             .collect::<Vec<_>>();
         distances.sort_unstable_by(|a, b| self.distance_fn.cmp(&a.1, &b.1));
         distances.truncate(k);
