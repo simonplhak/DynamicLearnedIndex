@@ -294,7 +294,7 @@ impl BentleySaxeIndex {
             Some(level_idx) => {
                 let (data, ids) = self.lower_level_data(level_idx);
                 let level = &mut self.levels[level_idx];
-                level.insert(data, ids);
+                level.insert_many(data, ids);
             }
             None => {
                 let level_idx = self.add_level();
