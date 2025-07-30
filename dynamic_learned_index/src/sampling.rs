@@ -1,27 +1,60 @@
-use rand::seq::IteratorRandom;
-
 use crate::types::Array;
+use log::info;
+use rand::rngs::SmallRng;
+use rand::SeedableRng;
+
+/// A global RNG instance with a fixed seed for reproducibility
+pub(crate) static mut GLOBAL_RNG: Option<SmallRng> = None;
+
+/// Initialize the global RNG with a fixed seed
+pub(crate) fn init_global_rng() {
+    unsafe {
+        if GLOBAL_RNG.is_none() {
+            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
+        }
+    }
+}
+
+/// Get a reference to the global RNG, initializing if needed
+pub(crate) fn get_global_rng() -> &'static mut SmallRng {
+    unsafe {
+        if GLOBAL_RNG.is_none() {
+            init_global_rng();
+        }
+        GLOBAL_RNG.as_mut().unwrap()
+    }
+}
 
 pub(crate) fn sample(queries: &[Array], n: usize) -> Array {
+    info!(n=n ;"sampling");
     assert!(!queries.is_empty(), "Queries cannot be empty");
     assert!(n > 0, "Sample size must be greater than zero");
+    let num_queries = queries.len();
+    let input_len = queries[0].len();
+    if n >= num_queries {
+        let total = num_queries * input_len;
+        let mut flat = Vec::with_capacity(total);
+        for q in queries {
+            flat.extend_from_slice(q);
+        }
+        return flat;
+    }
 
-    let mut rng = rand::rng();
-    let indices: Vec<usize> = (0..queries.len()).choose_multiple(&mut rng, n);
-    let input_shape = queries[0].len();
-    let n = indices.len();
-    let shape = n * input_shape;
-    let mut sampled_queries = Vec::with_capacity(shape);
-    indices.iter().for_each(|i| {
-        sampled_queries.extend_from_slice(&queries[*i]);
-    });
-    assert!(
-        sampled_queries.len() == shape,
-        "Sampled queries length mismatch: {} != {}",
-        sampled_queries.len(),
-        shape
-    );
-    sampled_queries
+    // Sample `n` distinct indices efficiently:
+    let mut rng = get_global_rng(); // Fixed seed for consistency, or use: SmallRng::from_entropy()
+    let idxs = rand::seq::index::sample(&mut rng, num_queries, n).into_vec();
+
+    // Pre-allocate exactly what we need:
+    let mut out = Vec::with_capacity(n * input_len);
+
+    // Bulk-copy each selected slice:
+    for &i in &idxs {
+        let slice = &queries[i];
+        // Safety: `slice.len() == input_len`
+        out.extend_from_slice(slice);
+    }
+
+    out
 }
 
 #[cfg(test)]
