@@ -266,14 +266,11 @@ impl BentleySaxeIndex {
     #[log_time]
     fn search(&self, query: &ArraySlice, params: SearchParams) -> Vec<Id> {
         let buckets2visit = self.buckets2visit(query, params.search_strategy);
-        let (ids, distances): (Vec<_>, Vec<_>) = buckets2visit
+        let mut results: Vec<(Id, f32)> = buckets2visit
             .par_iter()
-            .map(|bucket| bucket.search(query, params.k))
-            .unzip();
-        let ids = ids.into_iter().flatten().collect::<Vec<_>>();
-        let distances = distances.into_iter().flatten().collect::<Vec<_>>();
-        let mut results = ids.into_iter().zip(distances.iter()).collect::<Vec<_>>();
-        results.sort_by(|(_, dist_a), (_, dist_b)| self.distance_fn.cmp(dist_a, dist_b));
+            .flat_map(|bucket| bucket.search(query, params.k))
+            .collect();
+        results.sort_unstable_by(|(_, dist_a), (_, dist_b)| self.distance_fn.cmp(dist_a, dist_b));
         results
             .into_iter()
             .take(params.k)
