@@ -434,15 +434,6 @@ impl LevelIndex {
         self.model.train(xs, k);
     }
 
-    fn insert(&mut self, data: Vec<Array>, ids: Vec<Id>) {
-        data.into_iter().zip(ids).for_each(|(data, id)| {
-            let predictions = self.model.predict(&data);
-            assert!(predictions.len() == self.buckets.len());
-            let bucket_idx = predictions[0].0;
-            self.buckets[bucket_idx].insert(data, id);
-        });
-    }
-
     fn insert_many(&mut self, data: Vec<Array>, ids: Vec<Id>) {
         assert!(data.len() == ids.len());
         let asigments = self.model.predict_many(&data);
