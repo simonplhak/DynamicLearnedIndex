@@ -17,6 +17,21 @@ The whole project is written in Rust and uses `cargo` as a build system. The pro
 cargo run -p cli_dynamic_learned_index
 ```
 
+### Profiling
+
+Add these lines to [`Cargo.toml`](Cargo.toml) to enable profiling:
+
+```toml
+[build]
+rustflags = ["-C", "force-frame-pointers=yes"]
+```
+
+Then you can run the profiler with the following command:
+
+```
+CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --bin=cli_dynamic_learned_index -- experiment 20250713.profiler  data/k300/ --skip-validation --start-from-one --force -n 10 --limit 50000
+```
+
 ## Build
 
 Thi library uses SIMD instructions for performance. It needs to know at a compile time the number of bits in SIMD register that CPU supports. To specify the number of bits go to [`dynamic_learned_index/src/constants.rs`](dynamic_learned_index/src/constants.rs) and change `SIMD_REGISTER_SIZE` constant (do not change any other constants). To find out how many bits in SIMD register your CPU support visit manufacturer webpage (in Linux you can find your CPU model via command `cat /proc/cpuinfo | grep -i 'model name'`). 
