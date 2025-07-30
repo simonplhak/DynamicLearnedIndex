@@ -181,6 +181,7 @@ pub enum DistanceFn {
 }
 
 impl DistanceFn {
+    #[inline]
     fn distance(&self, a: &ArraySlice, b: &ArraySlice) -> ArrayNumType {
         assert_eq!(a.len(), b.len(), "Vectors must have the same length");
         match self {
@@ -189,6 +190,7 @@ impl DistanceFn {
         }
     }
 
+    #[inline]
     pub(crate) fn cmp(&self, a: &f32, b: &f32) -> std::cmp::Ordering {
         match self {
             DistanceFn::L2 => a.total_cmp(b),
