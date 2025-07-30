@@ -75,15 +75,6 @@ impl Bucket {
     fn resize(&mut self, new_n_objects: usize) {
         assert!(self.is_dynamic);
         assert!(new_n_objects > 0);
-        let resize_factor =
-            ((new_n_objects + self.current_size) as f64 / self.current_size as f64).ceil() as usize;
-        assert!(resize_factor > 1);
-        let to_add_size = self.size * (resize_factor - 1);
-        assert!(to_add_size > 0);
-        // debug!(to_add_size=to_add_size, id=self.id; "bucket:rescale");
-        self.records.reserve(to_add_size * self.input_shape);
-        self.ids.reserve(to_add_size);
-        self.current_size += to_add_size;
     }
 
     pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
