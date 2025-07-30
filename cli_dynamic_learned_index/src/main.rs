@@ -165,6 +165,7 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true);
         info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, nprobe=nprobe; "metrics");
     }
+    info!(buckets = index.n_buckets();"index:filled");
 
     Ok(())
 }
