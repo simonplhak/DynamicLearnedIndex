@@ -6,7 +6,6 @@ use crate::{
     types::{Array, ArrayNumType, ArraySlice},
     Id,
 };
-use log::debug;
 use serde::{Deserialize, Serialize};
 use simsimd::SpatialSimilarity;
 
@@ -64,9 +63,6 @@ impl Bucket {
     pub fn insert(&mut self, record: Array, id: Id) {
         if !self.has_space(1) {
             self.resize(1)
-        }
-        if self.occupied() % CONFIG.skip_insert_log == 0 {
-            debug!(size=self.size(), occupied=self.occupied(), id=self.id(); "bucket:insert");
         }
         self.records.extend(record);
         self.ids.push(id);
