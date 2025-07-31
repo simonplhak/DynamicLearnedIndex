@@ -156,7 +156,7 @@ impl Model {
         let xs = vec2tensor(xs).to_device(self.device);
         let predictions = tensor2vec(&self.model.forward(&xs));
         let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
-        predictions.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         assert!(predictions.len() <= self.labels as usize);
         predictions
     }
