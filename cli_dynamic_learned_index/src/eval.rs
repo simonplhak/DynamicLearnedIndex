@@ -11,6 +11,7 @@ pub struct EvalMetrics {
     pub recall_top1: f32, // how many true top-5 queries were found in retrieved 5-nn results
     pub recall_top5: f32,
     pub recall_top10: f32,
+    pub elapsed_time: std::time::Duration,
 }
 
 #[log_time]
@@ -29,11 +30,16 @@ pub fn eval_queries(
         true => Some(ProgressBar::new(gt.len() as u64).with_message("Inserting queries")),
         false => None,
     };
-    let (recall_top1, recall_top5, recall_top10) = queries
+    let start = std::time::Instant::now();
+    let results: Vec<_> = queries
+        .iter()
+        .map(|query| index.search(query, (max_k, search_strategy)))
+        .collect();
+    let elapsed_time = start.elapsed();
+    let (recall_top1, recall_top5, recall_top10) = results
         .iter()
         .zip(gt.iter())
-        .map(|(query, gt)| {
-            let res = index.search(query, (max_k, search_strategy));
+        .map(|(res, gt)| {
             assert!(
                 res.len() == max_k,
                 "Expected {} results, got {}",
@@ -69,6 +75,7 @@ pub fn eval_queries(
         recall_top1: recall_top1 / total,
         recall_top5: recall_top5 / total,
         recall_top10: recall_top10 / total,
+        elapsed_time,
     }
 }
 
