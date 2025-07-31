@@ -13,12 +13,6 @@ pub enum LabelMethod {
     SphericalKnn(KMeansConfig),
 }
 
-impl Default for LabelMethod {
-    fn default() -> Self {
-        LabelMethod::SphericalKnn(KMeansConfig { max_iters: 10 })
-    }
-}
-
 pub(crate) fn compute_labels(
     data: &Vec<f32>,
     label_method: &LabelMethod,
