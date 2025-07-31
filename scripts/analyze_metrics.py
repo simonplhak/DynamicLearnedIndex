@@ -31,7 +31,7 @@ def load_metrics_data(log_file_path):
                     # Filter lines with message: "metrics", "time" for function "eval_queries", or "dataset"
                     if data.get('message') == 'metrics':
                         metrics_data.append(data)
-                    elif data.get('message') == 'time' and data.get('function') == 'eval_queries':
+                    elif data.get('message') == 'time' and data.get('function') in ['insert_all_data']:
                         metrics_data.append(data)
                     elif data.get('message') == 'dataset' and 'test_dataset' in data:
                         test_dataset_size = data.get('test_dataset')

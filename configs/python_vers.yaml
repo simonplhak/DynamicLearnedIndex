@@ -1,0 +1,24 @@
+levelling: bentley_saxe
+levels:
+  0:
+    model:
+      layers:
+      - type: linear
+        value: 256
+      - type: relu
+      - type: linear
+        value: 256
+      train_params:
+        threshold_samples: 100000
+        batch_size: 8
+        epochs: 10
+        label_method:
+          type: knn
+          value:
+            max_iters: 10
+    bucket_size: 5000
+buffer_size: 5000
+input_shape: 768
+arity: 3
+device: cpu
+distance_fn: l2
