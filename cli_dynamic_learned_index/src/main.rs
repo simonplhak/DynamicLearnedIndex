@@ -76,7 +76,7 @@ struct ExperimentConfig {
     skip_validation: bool,
     /// What strategy is used to pick buckets to visit
     #[arg(long, default_value = "model")]
-    search_startegy: CLISearchStrategy,
+    search_strategy: CLISearchStrategy,
     /// Number of buckets to visit in each level
     #[arg(short, long, default_value = "1", num_args = 0..)]
     nprobe: Vec<usize>,
@@ -145,7 +145,7 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
             include_each_n: config.include_each_n_val,
         }),
     };
-    let search_strategy = match config.search_startegy {
+    let search_strategy = match config.search_strategy {
         CLISearchStrategy::Knn => SearchStrategy::Base(config.nprobe[0]),
         CLISearchStrategy::Model => SearchStrategy::ModelDriven(config.nprobe[0]),
     };
@@ -158,12 +158,12 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         search_strategy,
     );
     for nprobe in &config.nprobe {
-        let search_strategy = match config.search_startegy {
+        let search_strategy = match config.search_strategy {
             CLISearchStrategy::Knn => SearchStrategy::Base(*nprobe),
             CLISearchStrategy::Model => SearchStrategy::ModelDriven(*nprobe),
         };
         let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true);
-        info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, nprobe=nprobe; "metrics");
+        info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, nprobe=nprobe, elapsed_time=metrics.elapsed_time.as_secs(); "metrics");
     }
     info!(buckets = index.n_buckets();"index:filled");
 
