@@ -66,7 +66,7 @@ pub(crate) struct ModelBuilder {
     device: Option<Device>,
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,
-    labels: Option<i64>,
+    labels: Option<usize>,
     train_params: Option<TrainParams>,
     label_method: Option<LabelMethod>,
 }
@@ -87,7 +87,7 @@ impl ModelBuilder {
         self
     }
 
-    pub fn labels(&mut self, labels: i64) -> &mut Self {
+    pub fn labels(&mut self, labels: usize) -> &mut Self {
         self.labels = Some(labels);
         self
     }
@@ -131,7 +131,7 @@ impl ModelBuilder {
         model = model.add(nn::linear(
             &vs_root / "output",
             output_nodes,
-            labels,
+            labels as i64,
             Default::default(),
         ));
         let train_params = self.train_params.clone().unwrap_or_default();
@@ -153,7 +153,7 @@ impl ModelBuilder {
 pub(crate) struct Model {
     model: Box<dyn nn::Module>,
     vs: nn::VarStore,
-    labels: i64,
+    labels: usize,
     device: Device,
     pub input_shape: usize,
     train_params: TrainParams,
@@ -172,7 +172,7 @@ impl Model {
         let predictions = tensor2vec(&self.model.forward(&xs));
         let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
         predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        assert!(predictions.len() <= self.labels as usize);
+        assert!(predictions.len() <= self.labels);
         predictions
     }
 
@@ -238,7 +238,7 @@ impl Model {
             train_labels: ys,
             test_images: Tensor::empty(0, options),
             test_labels: Tensor::empty(0, options),
-            labels: self.labels,
+            labels: self.labels as i64,
         }
     }
 }
