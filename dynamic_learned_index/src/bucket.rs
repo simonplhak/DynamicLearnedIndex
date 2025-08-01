@@ -16,17 +16,10 @@ pub(crate) struct Bucket {
     input_shape: usize,
     current_size: usize,
     is_dynamic: bool,
-    distance_fn: DistanceFn,
 }
 
 impl Bucket {
-    fn new(
-        id: String,
-        size: usize,
-        input_shape: usize,
-        is_dynamic: bool,
-        distance_fn: DistanceFn,
-    ) -> Self {
+    fn new(id: String, size: usize, input_shape: usize, is_dynamic: bool) -> Self {
         Self {
             id,
             records: Vec::with_capacity(size * input_shape),
@@ -35,7 +28,6 @@ impl Bucket {
             input_shape,
             current_size: size,
             is_dynamic,
-            distance_fn,
         }
     }
 
@@ -45,15 +37,20 @@ impl Bucket {
         &self.records[start..end]
     }
 
-    pub fn search(&self, query: &ArraySlice, k: usize) -> Vec<(Id, ArrayNumType)> {
+    pub fn search(
+        &self,
+        query: &ArraySlice,
+        k: usize,
+        distance_fn: &DistanceFn,
+    ) -> Vec<(Id, ArrayNumType)> {
         assert!(k > 0);
         let mut distances = self
             .ids
             .iter()
             .enumerate()
-            .map(|(i, id)| (*id, self.distance_fn.distance(query, self.record(i))))
+            .map(|(i, id)| (*id, distance_fn.distance(query, self.record(i))))
             .collect::<Vec<_>>();
-        distances.sort_unstable_by(|a, b| self.distance_fn.cmp(&a.1, &b.1));
+        distances.sort_unstable_by(|a, b| distance_fn.cmp(&a.1, &b.1));
         distances.truncate(k);
         distances
     }
@@ -111,7 +108,6 @@ pub(crate) struct BucketBuilder {
     id: Option<String>,
     size: Option<usize>,
     is_dynamic: bool,
-    distance_fn: Option<DistanceFn>,
 }
 
 impl BucketBuilder {
@@ -135,26 +131,11 @@ impl BucketBuilder {
         self
     }
 
-    pub fn distance_fn(&mut self, distance_fn: DistanceFn) -> &mut Self {
-        self.distance_fn = Some(distance_fn);
-        self
-    }
-
     pub fn build(&self) -> Result<Bucket, BuildError> {
         let size = self.size.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
         let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
-        let distance_fn = self
-            .distance_fn
-            .clone()
-            .ok_or(BuildError::MissingAttribute)?;
-        Ok(Bucket::new(
-            id,
-            size,
-            input_shape,
-            self.is_dynamic,
-            distance_fn,
-        ))
+        Ok(Bucket::new(id, size, input_shape, self.is_dynamic))
     }
 }
 
@@ -164,17 +145,17 @@ mod tests {
 
     use super::*;
 
-    fn create_bucket(distance_fn: DistanceFn) -> Bucket {
-        Bucket::new("test_bucket".to_string(), 10, 5, true, distance_fn)
+    fn create_bucket() -> Bucket {
+        Bucket::new("test_bucket".to_string(), 10, 5, true)
     }
 
     fn create_static_bucket() -> Bucket {
-        Bucket::new("static_bucket".to_string(), 3, 2, false, DistanceFn::L2)
+        Bucket::new("static_bucket".to_string(), 3, 2, false)
     }
 
     #[test]
     fn test_new_bucket() {
-        let bucket = create_bucket(DistanceFn::Dot);
+        let bucket = create_bucket();
         assert_eq!(bucket.id, "test_bucket");
         assert_eq!(bucket.size, 10);
         assert_eq!(bucket.input_shape, 5);
@@ -190,7 +171,6 @@ mod tests {
             .size(20)
             .input_shape(3)
             .is_dynamic(false)
-            .distance_fn(DistanceFn::L2)
             .build()
             .unwrap();
 
@@ -209,7 +189,7 @@ mod tests {
 
     #[test]
     fn test_insert_single_record() {
-        let mut bucket = create_bucket(DistanceFn::Dot);
+        let mut bucket = create_bucket();
         let record = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         bucket.insert(record.clone(), 100);
 
@@ -220,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_insert_multiple_records() {
-        let mut bucket = create_bucket(DistanceFn::Dot);
+        let mut bucket = create_bucket();
         let record1 = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let record2 = vec![5.0, 4.0, 3.0, 2.0, 1.0];
         let record3 = vec![2.5, 3.5, 4.5, 5.5, 6.5];
@@ -310,7 +290,7 @@ mod tests {
 
     #[test]
     fn test_get_data() {
-        let mut bucket = create_bucket(DistanceFn::Dot);
+        let mut bucket = create_bucket();
         let record1 = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let record2 = vec![5.0, 4.0, 3.0, 2.0, 1.0];
 
@@ -331,7 +311,7 @@ mod tests {
 
     #[test]
     fn test_resize_dynamic_bucket() {
-        let mut bucket = Bucket::new("test".to_string(), 2, 3, true, DistanceFn::Dot);
+        let mut bucket = Bucket::new("test".to_string(), 2, 3, true);
         assert_eq!(bucket.current_size, 2);
 
         // Fill the bucket
@@ -401,7 +381,7 @@ mod tests {
 
     #[test]
     fn test_record_access() {
-        let mut bucket = create_bucket(DistanceFn::Dot);
+        let mut bucket = create_bucket();
         let record1 = vec![1.0, 2.0, 3.0, 4.0, 5.0];
         let record2 = vec![6.0, 7.0, 8.0, 9.0, 10.0];
 

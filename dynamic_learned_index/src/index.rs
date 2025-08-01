@@ -81,7 +81,6 @@ impl IndexConfig {
             .id("buffer".to_string())
             .input_shape(self.input_shape)
             .size(self.buffer_size)
-            .distance_fn(self.distance_fn.clone())
             .build()?;
         let index = match self.levelling {
             Levelling::BentleySaxe => {
@@ -272,9 +271,10 @@ impl BentleySaxeIndex {
     #[log_time]
     fn search(&self, query: &ArraySlice, params: SearchParams) -> Vec<Id> {
         let buckets2visit = self.buckets2visit(query, params.search_strategy);
+        let distance_fn = self.distance_fn.clone(); // todo solve without using clone here
         let mut results: Vec<(Id, f32)> = buckets2visit
             .par_iter()
-            .flat_map(|bucket| bucket.search(query, params.k))
+            .flat_map(|bucket| bucket.search(query, params.k, &distance_fn))
             .collect();
         results.sort_unstable_by(|(_, dist_a), (_, dist_b)| self.distance_fn.cmp(dist_a, dist_b));
         results
@@ -401,8 +401,7 @@ impl LevelIndexBuilder {
         bucket_builder
             .input_shape(input_shape)
             .size(bucket_size)
-            .is_dynamic(true)
-            .distance_fn(distance_fn);
+            .is_dynamic(true);
         let buckets = (0..n_buckets)
             .map(|bucket_id| bucket_builder.id(format!("{id}:{bucket_id}")).build())
             .collect::<Result<Vec<_>, _>>()?;
