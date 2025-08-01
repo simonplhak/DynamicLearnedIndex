@@ -33,7 +33,12 @@ pub fn eval_queries(
     let start = std::time::Instant::now();
     let results: Vec<_> = queries
         .iter()
-        .map(|query| index.search(query, (max_k, search_strategy)))
+        .map(|query| {
+            if let Some(bar) = &bar {
+                bar.inc(1);
+            }
+            index.search(query, (max_k, search_strategy))
+        })
         .collect();
     let elapsed_time = start.elapsed();
     let (recall_top1, recall_top5, recall_top10) = results
@@ -58,9 +63,6 @@ pub fn eval_queries(
             let recall_top1 = recall_at_k(1);
             let recall_top5 = recall_at_k(5);
             let recall_top10 = recall_at_k(10);
-            if let Some(bar) = &bar {
-                bar.inc(1);
-            }
             (recall_top1, recall_top5, recall_top10)
         })
         .fold((0.0, 0.0, 0.0), |(top1, top5, top10), (x, y, z)| {
