@@ -389,6 +389,7 @@ impl LevelIndexBuilder {
             .device(self.model_device.to_tch_device())
             .input_nodes(input_shape as i64)
             .train_params(model_config.train_params.clone())
+            .retrain_params(model_config.retrain_params.clone())
             .labels(n_buckets)
             .label_method(distance_fn.clone().into());
         model_config.layers.iter().for_each(|layer| {
@@ -524,6 +525,7 @@ mod tests {
                 epochs: 1,
                 ..Default::default()
             },
+            retrain_params: Default::default(),
         }
     }
 

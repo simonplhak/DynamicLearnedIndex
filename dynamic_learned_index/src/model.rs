@@ -1,3 +1,4 @@
+use log::info;
 use serde::{Deserialize, Serialize};
 use tch::{
     nn::{self, OptimizerConfig},
@@ -36,6 +37,7 @@ impl Default for TrainParams {
 pub struct ModelConfig {
     pub layers: Vec<ModelLayer>,
     pub train_params: TrainParams,
+    pub retrain_params: TrainParams,
 }
 
 impl Default for ModelConfig {
@@ -48,6 +50,7 @@ impl Default for ModelConfig {
                 ModelLayer::ReLU,
             ],
             train_params: Default::default(),
+            retrain_params: Default::default(),
         }
     }
 }
@@ -69,6 +72,7 @@ pub(crate) struct ModelBuilder {
     labels: Option<usize>,
     train_params: Option<TrainParams>,
     label_method: Option<LabelMethod>,
+    retrain_params: Option<TrainParams>,
 }
 
 impl ModelBuilder {
@@ -89,6 +93,11 @@ impl ModelBuilder {
 
     pub fn labels(&mut self, labels: usize) -> &mut Self {
         self.labels = Some(labels);
+        self
+    }
+
+    pub fn retrain_params(&mut self, retrain_params: TrainParams) -> &mut Self {
+        self.retrain_params = Some(retrain_params);
         self
     }
 
@@ -135,12 +144,14 @@ impl ModelBuilder {
             Default::default(),
         ));
         let train_params = self.train_params.clone().unwrap_or_default();
+        let retrain_params = self.retrain_params.clone().unwrap_or_default();
         let model = Model {
             model: Box::new(model),
             vs,
             labels,
             device,
             train_params,
+            retrain_params,
             input_shape: input_nodes as usize,
             label_method,
         };
@@ -157,6 +168,7 @@ pub(crate) struct Model {
     device: Device,
     pub input_shape: usize,
     train_params: TrainParams,
+    retrain_params: TrainParams,
     label_method: LabelMethod,
 }
 
@@ -205,7 +217,9 @@ impl Model {
         }
     }
 
-    pub fn retrain(&mut self, _xs: &ArraySlice) {}
+    pub fn retrain(&mut self, _xs: &ArraySlice) {
+        info!(epochs = self.retrain_params.epochs; "model:retrain");
+    }
 
     fn dataset(&self, xs: &[f32], ys: &[i32]) -> Dataset {
         let total_queries = ys.len();

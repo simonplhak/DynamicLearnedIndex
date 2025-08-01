@@ -22,6 +22,11 @@ levels:
         batch_size: 8
         threshold_samples: 100
         max_iters: 10
+      retrain_params:
+        epochs: 1
+        batch_size: 8
+        threshold_samples: 100
+        max_iters: 10
     bucket_size: 30
 
 distance_fn: dot
