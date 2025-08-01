@@ -163,7 +163,12 @@ pub(crate) struct Model {
 impl Model {
     /// returns vec of tuples (label, confidence) sorted by confidence
     pub fn predict(&self, xs: &ArraySlice) -> Vec<(usize, f32)> {
-        let xs = vec2tensor(xs).to_device(self.device);
+        let xs = vec2tensor(xs);
+        let xs = match self.device {
+            Device::Cpu => xs,
+            _ => xs.to_device(self.device),
+        };
+        let xs = xs.to_device(self.device);
         let predictions = tensor2vec(&self.model.forward(&xs));
         let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
         predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
@@ -204,22 +209,26 @@ impl Model {
         let total_queries = ys.len();
         assert!(xs.len() % self.input_shape == 0);
         assert!(xs.len() / self.input_shape == ys.len());
-        let tensors = (0..total_queries)
-            .map(|i| {
-                Tensor::from_slice(&xs[i * self.input_shape..(i + 1) * self.input_shape])
-                    .unsqueeze(0)
-            })
-            .collect::<Vec<_>>();
-        let xs = Tensor::cat(&tensors, 0).to_device(self.device);
+        let xs = Tensor::from_slice(xs);
+        let xs = xs.view((
+            xs.size()[0] / self.input_shape as i64,
+            self.input_shape as i64,
+        ));
+        let xs = match self.device {
+            Device::Cpu => xs,
+            _ => xs.to_device(self.device),
+        };
         assert!(
             xs.size()[0] as usize == total_queries,
             "{} != {total_queries}, {:?}",
             xs.size()[0],
             xs.size()
         );
-        let ys = Tensor::from_slice(ys)
-            .to_kind(tch::Kind::Int64)
-            .to_device(self.device);
+        let ys = Tensor::from_slice(ys).to_kind(tch::Kind::Int64);
+        let ys = match self.device {
+            Device::Cpu => ys,
+            _ => ys.to_device(self.device),
+        };
         assert!(xs.size()[0] == ys.size()[0]);
         assert!(xs.size()[0] == ys.size()[0]);
         assert!(ys.kind() == tch::Kind::Int64);
@@ -244,5 +253,5 @@ fn tensor2vec_usize(tensor: &tch::Tensor) -> Vec<usize> {
 }
 
 fn vec2tensor(vec: &ArraySlice) -> tch::Tensor {
-    tch::Tensor::from_slice(vec).to_kind(tch::kind::Kind::Float)
+    tch::Tensor::from_slice(vec)
 }
