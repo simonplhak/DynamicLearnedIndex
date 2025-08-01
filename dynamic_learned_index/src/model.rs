@@ -186,12 +186,12 @@ impl Model {
         tensor2vec_usize(&labels)
     }
 
-    pub fn train(&mut self, xs: &ArraySlice, k: usize) {
+    pub fn train(&mut self, xs: &ArraySlice) {
         let xs = sampling::sample(xs, self.train_params.threshold_samples, self.input_shape);
         let ys = clustering::compute_labels(
             &xs,
             &self.label_method,
-            k,
+            self.labels,
             self.input_shape,
             self.train_params.max_iters,
         );

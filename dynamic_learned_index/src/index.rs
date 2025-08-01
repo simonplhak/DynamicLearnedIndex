@@ -296,7 +296,7 @@ impl BentleySaxeIndex {
                 let level_idx = self.add_level();
                 let (data, ids) = self.lower_level_data(level_idx);
                 let level = &mut self.levels[level_idx];
-                level.train(&data, level.n_buckets());
+                level.train(&data);
                 level.insert_many(data, ids);
             }
         };
@@ -425,8 +425,8 @@ impl LevelIndex {
     }
 
     #[log_time]
-    fn train(&mut self, xs: &ArraySlice, k: usize) {
-        self.model.train(xs, k);
+    fn train(&mut self, xs: &ArraySlice) {
+        self.model.train(xs);
     }
 
     fn insert_many(&mut self, records: Array, ids: Vec<Id>) {
