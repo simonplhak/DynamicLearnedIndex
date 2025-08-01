@@ -224,8 +224,8 @@ impl BentleySaxeIndex {
         self.levels.len() - 1
     }
 
-    fn lower_level_data(&mut self, level_idx: usize) -> (Vec<Array>, Vec<Id>) {
-        let (data, ids): (Vec<Vec<Array>>, Vec<Vec<Id>>) = self
+    fn lower_level_data(&mut self, level_idx: usize) -> (Array, Vec<Id>) {
+        let (data, ids): (Vec<Array>, Vec<Vec<Id>>) = self
             .levels
             .iter_mut()
             .take(level_idx)
@@ -426,24 +426,46 @@ impl LevelIndex {
     }
 
     #[log_time]
-    fn train(&mut self, xs: &[Array], k: usize) {
+    fn train(&mut self, xs: &ArraySlice, k: usize) {
         self.model.train(xs, k);
     }
 
-    fn insert_many(&mut self, data: Vec<Array>, ids: Vec<Id>) {
-        assert!(data.len() == ids.len());
-        let asigments = self.model.predict_many(&data);
-        assert!(asigments.len() == data.len());
-        asigments
-            .into_iter()
-            .zip(data.into_iter().zip(ids))
-            .for_each(|(bucket_idx, (query, id))| {
-                self.buckets[bucket_idx].insert(query, id);
+    fn insert_many(&mut self, records: Array, ids: Vec<Id>) {
+        let input_shape = self.model.input_shape;
+        assert!(records.len() / input_shape == ids.len());
+        let assignments = self.model.predict_many(&records);
+        assert!(assignments.len() == ids.len());
+        // Calculate frequency of each bucket index in assignments
+        let mut frequencies = vec![0; self.buckets.len()];
+        for &bucket_idx in &assignments {
+            frequencies[bucket_idx] += 1;
+        }
+        // Pre-resize buckets based on calculated frequencies
+        frequencies
+            .iter()
+            .enumerate()
+            .filter(|(_, &count)| count > 0)
+            .for_each(|(bucket_idx, count)| {
+                self.buckets[bucket_idx].resize(*count);
             });
+        {
+            let mut records = records;
+            let mut ids = ids;
+            let mut assignments = assignments;
+            while !records.is_empty() {
+                let query = records.split_off(records.len() - input_shape);
+                let id = ids.pop().unwrap();
+                let bucket_idx = assignments.pop().unwrap();
+                self.buckets[bucket_idx].insert(query, id);
+            }
+            assert!(assignments.is_empty());
+            assert!(ids.is_empty());
+            assert!(records.is_empty());
+        }
     }
 
-    fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
-        let (data, ids): (Vec<Vec<Array>>, Vec<Vec<Id>>) = self
+    fn get_data(&mut self) -> (Array, Vec<Id>) {
+        let (data, ids): (Vec<Array>, Vec<Vec<Id>>) = self
             .buckets
             .iter_mut()
             .filter(|bucket| bucket.occupied() > 0)

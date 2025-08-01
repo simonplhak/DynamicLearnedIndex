@@ -1,4 +1,4 @@
-use crate::types::Array;
+use crate::types::{Array, ArraySlice};
 use log::info;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
@@ -25,19 +25,15 @@ pub(crate) fn get_global_rng() -> &'static mut SmallRng {
     }
 }
 
-pub(crate) fn sample(queries: &[Array], n: usize) -> Array {
+pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
+    // todo possibility to return ArraySlice to avoid cloning??
     info!(n=n ;"sampling");
     assert!(!queries.is_empty(), "Queries cannot be empty");
+    assert!(queries.len() % shape == 0);
     assert!(n > 0, "Sample size must be greater than zero");
-    let num_queries = queries.len();
-    let input_len = queries[0].len();
+    let num_queries = queries.len() / shape;
     if n >= num_queries {
-        let total = num_queries * input_len;
-        let mut flat = Vec::with_capacity(total);
-        for q in queries {
-            flat.extend_from_slice(q);
-        }
-        return flat;
+        return queries.to_vec();
     }
 
     // Sample `n` distinct indices efficiently:
@@ -45,11 +41,13 @@ pub(crate) fn sample(queries: &[Array], n: usize) -> Array {
     let idxs = rand::seq::index::sample(&mut rng, num_queries, n).into_vec();
 
     // Pre-allocate exactly what we need:
-    let mut out = Vec::with_capacity(n * input_len);
+    let mut out = Array::with_capacity(n * shape);
 
     // Bulk-copy each selected slice:
     for &i in &idxs {
-        let slice = &queries[i];
+        let start = i * shape;
+        let end = start + shape;
+        let slice = &queries[start..end];
         // Safety: `slice.len() == input_len`
         out.extend_from_slice(slice);
     }
@@ -62,22 +60,15 @@ mod tests {
     use super::*;
     use crate::types::ArrayNumType;
 
-    fn create_test_queries() -> Vec<Array> {
-        vec![
-            vec![1.0, 2.0, 3.0],
-            vec![4.0, 5.0, 6.0],
-            vec![7.0, 8.0, 9.0],
-            vec![10.0, 11.0, 12.0],
-            vec![13.0, 14.0, 15.0],
-        ]
-    }
-
     #[test]
     fn test_sample_basic_functionality() {
-        let queries = create_test_queries();
-        let sampled = sample(&queries, 3);
+        init_global_rng(); // Initialize with fixed seed
+        let queries = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+        ];
+        let sampled = sample(&queries, 3, 3);
 
-        // Should return flattened array with 3 * 3 = 9 elements
+        // Should return 3 samples with 3 elements each
         assert_eq!(sampled.len(), 9);
 
         // All values should be from the original queries
@@ -88,8 +79,8 @@ mod tests {
 
     #[test]
     fn test_sample_single_query() {
-        let queries = vec![vec![1.0, 2.0, 3.0]];
-        let sampled = sample(&queries, 1);
+        let queries = vec![1.0, 2.0, 3.0];
+        let sampled = sample(&queries, 1, 3);
 
         assert_eq!(sampled.len(), 3);
         assert_eq!(sampled, vec![1.0, 2.0, 3.0]);
@@ -97,103 +88,109 @@ mod tests {
 
     #[test]
     fn test_sample_all_queries() {
-        let queries = create_test_queries();
-        let original_count = queries.len();
-        let sampled = sample(&queries, original_count);
+        init_global_rng();
+        let queries = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+        ];
+        let original_count = queries.len() / 3;
+        let sampled = sample(&queries, original_count, 3);
 
-        // Should return all queries flattened
-        assert_eq!(sampled.len(), original_count * 3);
+        // Should return all queries
+        assert_eq!(sampled.len(), queries.len());
     }
 
     #[test]
     fn test_sample_more_than_available() {
-        let queries = create_test_queries();
-        let sampled = sample(&queries, 10); // More than 5 available
+        let queries = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+        ];
+        let sampled = sample(&queries, 10, 3); // More than 5 available
 
-        // Should return all available queries (5 * 3 = 15 elements)
-        assert_eq!(sampled.len(), 15);
+        // Should return all available queries
+        assert_eq!(sampled.len(), queries.len());
     }
 
     #[test]
     fn test_sample_preserves_array_structure() {
-        let queries = vec![vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]];
-        let sampled = sample(&queries, 2);
+        init_global_rng();
+        let queries = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let sampled = sample(&queries, 2, 2);
 
         // Should have 2 * 2 = 4 elements
         assert_eq!(sampled.len(), 4);
 
         // Check that we have pairs of values from original arrays
-        assert_eq!(sampled.len() % 2, 0);
         for chunk in sampled.chunks(2) {
+            assert_eq!(chunk.len(), 2);
             // Each pair should be consecutive values from original data
+            // (since we're sampling from a flattened array with shape=2)
             let diff = chunk[1] - chunk[0];
             assert!((diff - 1.0).abs() < f32::EPSILON);
         }
     }
 
     #[test]
-    fn test_sample_different_sized_arrays() {
-        let queries = vec![vec![1.0, 2.0, 3.0, 4.0], vec![5.0, 6.0, 7.0, 8.0]];
-        let sampled = sample(&queries, 1);
+    fn test_sample_different_sized_shape() {
+        let queries = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+        let sampled = sample(&queries, 1, 4);
 
         assert_eq!(sampled.len(), 4);
     }
 
     #[test]
     fn test_sample_randomness() {
-        let queries = create_test_queries();
-        let sample1 = sample(&queries, 3);
-        let sample2 = sample(&queries, 3);
+        init_global_rng();
+        let queries = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+        ];
 
-        // With randomness, samples should potentially be different
-        // Note: This test might rarely fail due to random chance,
-        // but with 5 queries and sampling 3, it's very unlikely
-        // they'll be identical in the same order
-        // We'll just check they have the same length for now
-        assert_eq!(sample1.len(), sample2.len());
+        // Reset RNG for predictable sequence
+        unsafe {
+            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
+        }
+        let sample1 = sample(&queries, 3, 3);
+
+        // Reset RNG again to get same sequence
+        unsafe {
+            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
+        }
+        let sample2 = sample(&queries, 3, 3);
+
+        // With fixed seed, samples should be identical
+        assert_eq!(sample1, sample2);
     }
 
     #[test]
     fn test_sample_maintains_value_integrity() {
-        let queries = vec![vec![1.1, 2.2, 3.3], vec![4.4, 5.5, 6.6]];
-        let sampled = sample(&queries, 2);
+        let queries = vec![1.1, 2.2, 3.3, 4.4, 5.5, 6.6];
+        let sampled = sample(&queries, 2, 3);
 
         assert_eq!(sampled.len(), 6);
 
         // Check that all sampled values exist in original data
-        let original_values: Vec<ArrayNumType> = queries.iter().flatten().copied().collect();
         for value in &sampled {
-            assert!(original_values.contains(value));
+            assert!(queries.contains(value));
         }
     }
 
     #[test]
     #[should_panic(expected = "Queries cannot be empty")]
     fn test_sample_empty_queries_panics() {
-        let queries: Vec<Array> = vec![];
-        sample(&queries, 1);
+        let queries: Array = vec![];
+        sample(&queries, 1, 1);
     }
 
     #[test]
     #[should_panic(expected = "Sample size must be greater than zero")]
     fn test_sample_zero_size_panics() {
-        let queries = create_test_queries();
-        sample(&queries, 0);
+        let queries = vec![1.0, 2.0, 3.0];
+        sample(&queries, 0, 3);
     }
 
     #[test]
-    fn test_sample_empty_arrays_in_queries() {
-        let queries = vec![vec![], vec![], vec![]];
-        let sampled = sample(&queries, 2);
-
-        // Should return empty result when input arrays are empty
-        assert_eq!(sampled.len(), 0);
-    }
-
-    #[test]
-    fn test_sample_single_element_arrays() {
-        let queries = vec![vec![1.0], vec![2.0], vec![3.0], vec![4.0]];
-        let sampled = sample(&queries, 2);
+    fn test_sample_single_element_shape() {
+        let queries = vec![1.0, 2.0, 3.0, 4.0];
+        let sampled = sample(&queries, 2, 1);
 
         assert_eq!(sampled.len(), 2);
         for value in &sampled {
@@ -203,26 +200,31 @@ mod tests {
 
     #[test]
     fn test_sample_large_arrays() {
-        let queries = vec![
-            (0..100).map(|i| i as ArrayNumType).collect::<Vec<_>>(),
-            (100..200).map(|i| i as ArrayNumType).collect::<Vec<_>>(),
-            (200..300).map(|i| i as ArrayNumType).collect::<Vec<_>>(),
-        ];
-        let sampled = sample(&queries, 2);
+        let queries: Array = (0..300).map(|i| i as ArrayNumType).collect();
+        let sampled = sample(&queries, 2, 100);
 
         assert_eq!(sampled.len(), 200); // 2 * 100
     }
 
     #[test]
     fn test_sample_deterministic_with_fixed_seed() {
-        // Note: This test would require setting a seed for the RNG
-        // The current implementation uses rand::rng() which doesn't allow seed setting
-        // This test documents the expected behavior if seeding were implemented
-        let queries = create_test_queries();
-        let sampled = sample(&queries, 3);
+        // Reset RNG for predictable results
+        unsafe {
+            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
+        }
 
-        // Just verify basic properties
-        assert_eq!(sampled.len(), 9);
-        assert!(sampled.len() % 3 == 0);
+        let queries = vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
+        ];
+        let first_run = sample(&queries, 3, 3);
+
+        // Reset RNG again
+        unsafe {
+            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
+        }
+        let second_run = sample(&queries, 3, 3);
+
+        // With fixed seed, results should be identical
+        assert_eq!(first_run, second_run);
     }
 }

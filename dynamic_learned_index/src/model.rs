@@ -10,7 +10,7 @@ use crate::{
     distance_fn::LabelMethod,
     errors::BuildError,
     sampling,
-    types::{Array, ArraySlice},
+    types::ArraySlice,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -155,7 +155,7 @@ pub(crate) struct Model {
     vs: nn::VarStore,
     labels: i64,
     device: Device,
-    input_shape: usize,
+    pub input_shape: usize,
     train_params: TrainParams,
     label_method: LabelMethod,
 }
@@ -171,20 +171,18 @@ impl Model {
         predictions
     }
 
-    pub fn predict_many(&self, xs: &[Array]) -> Vec<usize> {
-        let xs = Tensor::cat(
-            &xs.iter()
-                .map(|x| vec2tensor(x).unsqueeze(0))
-                .collect::<Vec<_>>(),
-            0,
-        )
-        .to_device(self.device);
-        let labels = self.model.forward(&xs).argmax(1, false);
+    pub fn predict_many(&self, xs: &ArraySlice) -> Vec<usize> {
+        let xs_tensor = Tensor::from_slice(xs);
+        let xs_tensor = xs_tensor.view((
+            (xs.len() / self.input_shape) as i64,
+            self.input_shape as i64,
+        ));
+        let labels = self.model.forward(&xs_tensor).argmax(1, false);
         tensor2vec_usize(&labels)
     }
 
-    pub fn train(&mut self, xs: &[Array], k: usize) {
-        let xs = sampling::sample(xs, self.train_params.threshold_samples);
+    pub fn train(&mut self, xs: &ArraySlice, k: usize) {
+        let xs = sampling::sample(xs, self.train_params.threshold_samples, self.input_shape);
         let ys = clustering::compute_labels(
             &xs,
             &self.label_method,

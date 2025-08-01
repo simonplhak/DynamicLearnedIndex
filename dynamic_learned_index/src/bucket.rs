@@ -57,24 +57,14 @@ impl Buffer {
         self.ids.push(id);
     }
 
-    pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
-        let mut records = std::mem::replace(
+    pub fn get_data(&mut self) -> (Array, Vec<Id>) {
+        let records = std::mem::replace(
             &mut self.records,
             Vec::with_capacity(self.size * self.input_shape),
         );
         let ids = std::mem::replace(&mut self.ids, Vec::with_capacity(self.size));
 
-        let chunk = self.input_shape;
-        assert!(records.len() % chunk == 0);
-
-        let mut out = Vec::with_capacity(records.len() / chunk);
-        while !records.is_empty() {
-            let tail = records.split_off(records.len() - chunk);
-            out.push(tail);
-        }
-
-        out.reverse(); // since split_off takes from the end
-        (out, ids)
+        (records, ids)
     }
 
     pub fn has_space(&self, count: usize) -> bool {
@@ -142,25 +132,16 @@ impl Bucket {
         self.ids.push(id);
     }
 
-    fn resize(&mut self, new_n_objects: usize) {
+    pub fn resize(&mut self, new_n_objects: usize) {
         assert!(new_n_objects > 0);
+        self.records.reserve(new_n_objects * self.input_shape);
+        self.ids.reserve(new_n_objects);
     }
 
-    pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
-        let mut records = std::mem::take(&mut self.records);
+    pub fn get_data(&mut self) -> (Array, Vec<Id>) {
+        let records = std::mem::take(&mut self.records);
         let ids = std::mem::take(&mut self.ids);
-
-        let chunk = self.input_shape;
-        assert!(records.len() % chunk == 0);
-
-        let mut out = Vec::with_capacity(records.len() / chunk);
-        while !records.is_empty() {
-            let tail = records.split_off(records.len() - chunk);
-            out.push(tail);
-        }
-
-        out.reverse(); // since split_off takes from the end
-        (out, ids)
+        (records, ids)
     }
 
     pub fn has_space(&self, count: usize) -> bool {
@@ -361,10 +342,9 @@ mod tests {
 
         let (records, ids) = bucket.get_data();
 
-        assert_eq!(records.len(), 2);
-        assert_eq!(ids.len(), 2);
-        assert_eq!(records[0], record1);
-        assert_eq!(records[1], record2);
+        // Records should be a flattened array containing all values
+        let expected_records = vec![1.0, 2.0, 3.0, 4.0, 5.0, 5.0, 4.0, 3.0, 2.0, 1.0];
+        assert_eq!(records, expected_records);
         assert_eq!(ids, vec![10, 20]);
 
         // After get_data, bucket should be empty
