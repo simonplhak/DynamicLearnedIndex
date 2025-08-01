@@ -21,10 +21,7 @@ levels:
         epochs: 3
         batch_size: 8
         threshold_samples: 100
-        label_method:
-          type: knn
-          value:
-            max_iters: 10
+        max_iters: 10
     bucket_size: 30
 
 distance_fn: dot
