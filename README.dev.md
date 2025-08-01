@@ -7,7 +7,7 @@ Then you can run the comparison with the following command in main branch:
 python experiments/compare2rust_experiment.py
 ```
 
-Then copy df_plot.csv content into `scripts/python_impl.csv`.
+Then copy df_plot.csv content into `comparison/<current_date>.python_impl.csv`.
 
 Then run experiment with rust implementation:
 
@@ -22,4 +22,4 @@ Then you can plot the results with:
 python scripts/compare2python.py
 ```
 
-Plot can be found in [`plots/rust2python.jpg`](plots/rust2python.jpg).
+Plot can be found in `comparison/<current_date>.rust2python.jpg`.
