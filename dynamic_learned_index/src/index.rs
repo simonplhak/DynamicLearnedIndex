@@ -78,7 +78,6 @@ impl IndexConfig {
             return Err(BuildError::MissingAttribute);
         }
         let buffer = BucketBuilder::default()
-            .id("buffer".to_string())
             .input_shape(self.input_shape)
             .size(self.buffer_size)
             .build()?;
@@ -376,7 +375,6 @@ impl LevelIndexBuilder {
     pub fn build(&self) -> Result<LevelIndex, BuildError> {
         let n_buckets = self.n_buckets.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
-        let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
         let bucket_size = self.bucket_size.ok_or(BuildError::MissingAttribute)?;
         let distance_fn = self
             .distance_fn
@@ -403,7 +401,7 @@ impl LevelIndexBuilder {
             .size(bucket_size)
             .is_dynamic(true);
         let buckets = (0..n_buckets)
-            .map(|bucket_id| bucket_builder.id(format!("{id}:{bucket_id}")).build())
+            .map(|_| bucket_builder.build())
             .collect::<Result<Vec<_>, _>>()?;
         let level_index = LevelIndex { model, buckets };
         Ok(level_index)

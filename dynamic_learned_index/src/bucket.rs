@@ -9,7 +9,6 @@ use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Bucket {
-    id: String,
     records: Vec<ArrayNumType>,
     ids: Vec<Id>,
     size: usize,
@@ -19,9 +18,8 @@ pub(crate) struct Bucket {
 }
 
 impl Bucket {
-    fn new(id: String, size: usize, input_shape: usize, is_dynamic: bool) -> Self {
+    fn new(size: usize, input_shape: usize, is_dynamic: bool) -> Self {
         Self {
-            id,
             records: Vec::with_capacity(size * input_shape),
             ids: Vec::with_capacity(size),
             size,
@@ -96,16 +94,11 @@ impl Bucket {
     pub fn size(&self) -> usize {
         self.size
     }
-
-    fn id(&self) -> &str {
-        &self.id
-    }
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct BucketBuilder {
     input_shape: Option<usize>,
-    id: Option<String>,
     size: Option<usize>,
     is_dynamic: bool,
 }
@@ -113,11 +106,6 @@ pub(crate) struct BucketBuilder {
 impl BucketBuilder {
     pub fn input_shape(&mut self, input_shape: usize) -> &mut Self {
         self.input_shape = Some(input_shape);
-        self
-    }
-
-    pub fn id(&mut self, id: String) -> &mut Self {
-        self.id = Some(id);
         self
     }
 
@@ -134,8 +122,7 @@ impl BucketBuilder {
     pub fn build(&self) -> Result<Bucket, BuildError> {
         let size = self.size.ok_or(BuildError::MissingAttribute)?;
         let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
-        let id = self.id.clone().ok_or(BuildError::MissingAttribute)?;
-        Ok(Bucket::new(id, size, input_shape, self.is_dynamic))
+        Ok(Bucket::new(size, input_shape, self.is_dynamic))
     }
 }
 
@@ -146,17 +133,16 @@ mod tests {
     use super::*;
 
     fn create_bucket() -> Bucket {
-        Bucket::new("test_bucket".to_string(), 10, 5, true)
+        Bucket::new(10, 5, true)
     }
 
     fn create_static_bucket() -> Bucket {
-        Bucket::new("static_bucket".to_string(), 3, 2, false)
+        Bucket::new(3, 2, false)
     }
 
     #[test]
     fn test_new_bucket() {
         let bucket = create_bucket();
-        assert_eq!(bucket.id, "test_bucket");
         assert_eq!(bucket.size, 10);
         assert_eq!(bucket.input_shape, 5);
         assert!(bucket.is_dynamic);
@@ -167,14 +153,12 @@ mod tests {
     #[test]
     fn test_bucket_builder() {
         let bucket = BucketBuilder::default()
-            .id("builder_test".to_string())
             .size(20)
             .input_shape(3)
             .is_dynamic(false)
             .build()
             .unwrap();
 
-        assert_eq!(bucket.id(), "builder_test");
         assert_eq!(bucket.size(), 20);
         assert_eq!(bucket.input_shape, 3);
         assert!(!bucket.is_dynamic);
@@ -311,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_resize_dynamic_bucket() {
-        let mut bucket = Bucket::new("test".to_string(), 2, 3, true);
+        let mut bucket = Bucket::new(2, 3, true);
         assert_eq!(bucket.current_size, 2);
 
         // Fill the bucket
