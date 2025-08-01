@@ -15,8 +15,10 @@ pub(crate) fn compute_labels(
     assert!(data_len * input_shape == data.len());
     debug!(data_len = data_len, k = k; "clustering:compute_labels");
     match label_method {
-        LabelMethod::Knn => k_means_clustering_new(data, input_shape, k, max_iters),
-        LabelMethod::SphericalKnn => k_means_clustering_spherical(data, input_shape, k, max_iters),
+        LabelMethod::KMeans => k_means_clustering(data, input_shape, k, max_iters),
+        LabelMethod::SphericalKMeans => {
+            k_means_clustering_spherical(data, input_shape, k, max_iters)
+        }
     }
 }
 

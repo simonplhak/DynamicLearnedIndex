@@ -34,14 +34,14 @@ impl DistanceFn {
 impl From<DistanceFn> for LabelMethod {
     fn from(val: DistanceFn) -> Self {
         match val {
-            DistanceFn::L2 => LabelMethod::Knn,
-            DistanceFn::Dot => LabelMethod::SphericalKnn,
+            DistanceFn::L2 => LabelMethod::KMeans,
+            DistanceFn::Dot => LabelMethod::SphericalKMeans,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
 pub enum LabelMethod {
-    Knn,
-    SphericalKnn,
+    KMeans,
+    SphericalKMeans,
 }
