@@ -205,6 +205,8 @@ impl Model {
         }
     }
 
+    pub fn retrain(&mut self, _xs: &ArraySlice) {}
+
     fn dataset(&self, xs: &[f32], ys: &[i32]) -> Dataset {
         let total_queries = ys.len();
         assert!(xs.len() % self.input_shape == 0);

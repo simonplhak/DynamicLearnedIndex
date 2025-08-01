@@ -290,6 +290,9 @@ impl BentleySaxeIndex {
             Some(level_idx) => {
                 let (data, ids) = self.lower_level_data(level_idx);
                 let level = &mut self.levels[level_idx];
+                if level.size() == 0 {
+                    level.retrain(&data);
+                }
                 level.insert_many(data, ids);
             }
             None => {
@@ -429,6 +432,10 @@ impl LevelIndex {
         self.model.train(xs);
     }
 
+    #[log_time]
+    fn retrain(&mut self, xs: &ArraySlice) {
+        self.model.retrain(xs);
+    }
     fn insert_many(&mut self, records: Array, ids: Vec<Id>) {
         let input_shape = self.model.input_shape;
         assert!(records.len() / input_shape == ids.len());
