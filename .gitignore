@@ -11,3 +11,6 @@ target/
 experiments_data/*
 .env
 images/random.excalidraw.png
+flamegraph.svg
+perf.data
+perf.data.old
