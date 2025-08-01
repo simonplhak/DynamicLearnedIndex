@@ -86,7 +86,6 @@ pub(crate) struct Bucket {
     ids: Vec<Id>,
     size: usize,
     input_shape: usize,
-    current_size: usize,
 }
 
 impl Bucket {
@@ -96,7 +95,6 @@ impl Bucket {
             ids: Vec::with_capacity(size),
             size,
             input_shape,
-            current_size: size,
         }
     }
 
@@ -145,7 +143,7 @@ impl Bucket {
     }
 
     pub fn has_space(&self, count: usize) -> bool {
-        self.occupied() + count <= self.current_size
+        self.occupied() + count <= self.size
     }
 
     pub fn occupied(&self) -> usize {
@@ -206,7 +204,6 @@ mod tests {
         let bucket = create_bucket();
         assert_eq!(bucket.size, 10);
         assert_eq!(bucket.input_shape, 5);
-        assert_eq!(bucket.current_size, 10);
         assert_eq!(bucket.occupied(), 0);
     }
 
@@ -354,7 +351,6 @@ mod tests {
     #[test]
     fn test_resize_dynamic_bucket() {
         let mut bucket = Bucket::new(2, 3);
-        assert_eq!(bucket.current_size, 2);
 
         // Fill the bucket
         bucket.insert(vec![1.0, 2.0, 3.0], 1);
@@ -365,7 +361,6 @@ mod tests {
         // Insert one more - should trigger resize
         bucket.insert(vec![7.0, 8.0, 9.0], 3);
         assert_eq!(bucket.occupied(), 3);
-        assert!(bucket.current_size > 2); // Should have been resized
     }
 
     #[test]
