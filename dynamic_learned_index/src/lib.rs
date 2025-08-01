@@ -1,7 +1,6 @@
 #![feature(portable_simd)]
 mod bucket;
 mod clustering;
-mod config;
 mod constants;
 mod distance_fn;
 mod errors;
