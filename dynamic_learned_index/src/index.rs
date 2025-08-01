@@ -1,5 +1,5 @@
 use crate::{
-    bucket::{self, Bucket, BucketBuilder},
+    bucket::{self, Bucket, Buffer},
     errors::BuildError,
     model::{self, Model, ModelConfig},
     types::{Array, ArraySlice},
@@ -77,10 +77,7 @@ impl IndexConfig {
         if !self.levels.contains_key(&0) {
             return Err(BuildError::MissingAttribute);
         }
-        let buffer = BucketBuilder::default()
-            .input_shape(self.input_shape)
-            .size(self.buffer_size)
-            .build()?;
+        let buffer = Buffer::new(self.buffer_size, self.input_shape);
         let index = match self.levelling {
             Levelling::BentleySaxe => {
                 let index = BentleySaxeIndex {
@@ -179,7 +176,7 @@ pub struct BentleySaxeIndex {
     arity: usize,
     device: ModelDevice,
     levels: Vec<LevelIndex>,
-    buffer: Bucket,
+    buffer: Buffer,
     distance_fn: DistanceFn,
 }
 

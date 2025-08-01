@@ -8,6 +8,89 @@ use crate::{
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
+pub(crate) struct Buffer {
+    records: Vec<ArrayNumType>,
+    ids: Vec<Id>,
+    size: usize,
+    input_shape: usize,
+}
+
+impl Buffer {
+    pub fn new(size: usize, input_shape: usize) -> Self {
+        Self {
+            records: Vec::with_capacity(size * input_shape),
+            ids: Vec::with_capacity(size),
+            size,
+            input_shape,
+        }
+    }
+
+    fn record(&self, i: usize) -> &ArraySlice {
+        let start = i * self.input_shape;
+        let end = start + self.input_shape;
+        &self.records[start..end]
+    }
+
+    pub fn search(
+        &self,
+        query: &ArraySlice,
+        k: usize,
+        distance_fn: &DistanceFn,
+    ) -> Vec<(Id, ArrayNumType)> {
+        assert!(k > 0);
+        let mut distances = self
+            .ids
+            .iter()
+            .enumerate()
+            .map(|(i, id)| (*id, distance_fn.distance(query, self.record(i))))
+            .collect::<Vec<_>>();
+        distances.sort_unstable_by(|a, b| distance_fn.cmp(&a.1, &b.1));
+        distances.truncate(k);
+        distances
+    }
+
+    pub fn insert(&mut self, record: Array, id: Id) {
+        if !self.has_space(1) {
+            panic!("Buffer is full, cannot insert new record");
+        }
+        self.records.extend(record);
+        self.ids.push(id);
+    }
+
+    pub fn get_data(&mut self) -> (Vec<Array>, Vec<Id>) {
+        let mut records = std::mem::replace(
+            &mut self.records,
+            Vec::with_capacity(self.size * self.input_shape),
+        );
+        let ids = std::mem::replace(&mut self.ids, Vec::with_capacity(self.size));
+
+        let chunk = self.input_shape;
+        assert!(records.len() % chunk == 0);
+
+        let mut out = Vec::with_capacity(records.len() / chunk);
+        while !records.is_empty() {
+            let tail = records.split_off(records.len() - chunk);
+            out.push(tail);
+        }
+
+        out.reverse(); // since split_off takes from the end
+        (out, ids)
+    }
+
+    pub fn has_space(&self, count: usize) -> bool {
+        self.occupied() + count <= self.size
+    }
+
+    pub fn occupied(&self) -> usize {
+        self.ids.len()
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
+    }
+}
+
+#[derive(Debug, Serialize)]
 pub(crate) struct Bucket {
     records: Vec<ArrayNumType>,
     ids: Vec<Id>,
