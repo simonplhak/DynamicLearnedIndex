@@ -271,6 +271,7 @@ impl BentleySaxeIndex {
         let mut results: Vec<(Id, f32)> = buckets2visit
             .par_iter()
             .flat_map(|bucket| bucket.search(query, params.k, &distance_fn))
+            .chain(self.buffer.search(query, params.k, &distance_fn))
             .collect();
         results.sort_unstable_by(|(_, dist_a), (_, dist_b)| self.distance_fn.cmp(dist_a, dist_b));
         results
