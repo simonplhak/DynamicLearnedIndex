@@ -22,12 +22,7 @@ pub(crate) fn compute_labels(
     }
 }
 
-fn k_means_clustering_new(
-    data: &Vec<f32>,
-    input_shape: usize,
-    k: usize,
-    max_iters: usize,
-) -> Vec<i32> {
+fn k_means_clustering(data: &Vec<f32>, input_shape: usize, k: usize, max_iters: usize) -> Vec<i32> {
     let count = data.len() / input_shape;
     assert!(count * input_shape == data.len());
     assert!(k > 0);
