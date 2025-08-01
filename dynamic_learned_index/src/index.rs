@@ -264,7 +264,6 @@ impl BentleySaxeIndex {
             .collect::<Vec<_>>()
     }
 
-    #[log_time]
     fn search(&self, query: &ArraySlice, params: SearchParams) -> Vec<Id> {
         let buckets2visit = self.buckets2visit(query, params.search_strategy);
         let distance_fn = self.distance_fn.clone(); // todo solve without using clone here
