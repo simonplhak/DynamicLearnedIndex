@@ -36,7 +36,6 @@ pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
         return queries.to_vec();
     }
 
-    // Sample `n` distinct indices efficiently:
     let mut rng = get_global_rng(); // Fixed seed for consistency, or use: SmallRng::from_entropy()
     let idxs = rand::seq::index::sample(&mut rng, num_queries, n).into_vec();
 
@@ -48,7 +47,6 @@ pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
         let start = i * shape;
         let end = start + shape;
         let slice = &queries[start..end];
-        // Safety: `slice.len() == input_len`
         out.extend_from_slice(slice);
     }
 
