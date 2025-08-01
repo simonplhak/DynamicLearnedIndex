@@ -1,9 +1,9 @@
 use crate::{
-    bucket::{self, Bucket, BucketBuilder, DistanceFn},
+    bucket::{self, Bucket, BucketBuilder},
     errors::BuildError,
     model::{self, Model, ModelConfig},
     types::{Array, ArraySlice},
-    Id, SearchStrategy,
+    DistanceFn, Id, SearchStrategy,
 };
 use log::{debug, info};
 use measure_time_macro::log_time;
@@ -391,7 +391,8 @@ impl LevelIndexBuilder {
             .device(self.model_device.to_tch_device())
             .input_nodes(input_shape as i64)
             .train_params(model_config.train_params.clone())
-            .labels(n_buckets as i64);
+            .labels(n_buckets as i64)
+            .label_method(distance_fn.clone().into());
         model_config.layers.iter().for_each(|layer| {
             model_builder.add_layer(*layer);
         });
@@ -468,7 +469,7 @@ impl LevelIndex {
 mod tests {
     use super::*;
     use crate::{
-        bucket::DistanceFn,
+        distance_fn::DistanceFn,
         model::{ModelConfig, ModelLayer, TrainParams},
         search_strategy::SearchStrategy,
     };

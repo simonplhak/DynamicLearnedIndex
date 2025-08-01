@@ -1,44 +1,22 @@
 use log::debug;
 use ndarray::Array2;
-use serde::{Deserialize, Serialize};
 
-use crate::constants;
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type", content = "value")]
-pub enum LabelMethod {
-    #[serde(rename = "knn")]
-    Knn(KMeansConfig),
-    #[serde(rename = "spherical_knn")]
-    SphericalKnn(KMeansConfig),
-}
+use crate::{constants, distance_fn::LabelMethod};
 
 pub(crate) fn compute_labels(
     data: &Vec<f32>,
     label_method: &LabelMethod,
     k: usize,
     input_shape: usize,
+    max_iters: usize,
 ) -> Vec<i32> {
     debug_assert!(!data.is_empty());
     let data_len = data.len() / input_shape;
     assert!(data_len * input_shape == data.len());
     debug!(data_len = data_len, k = k; "clustering:compute_labels");
     match label_method {
-        LabelMethod::Knn(kmeans) => k_means_clustering_new(data, input_shape, k, kmeans.max_iters),
-        LabelMethod::SphericalKnn(kmeans) => {
-            k_means_clustering_spherical(data, input_shape, k, kmeans.max_iters)
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct KMeansConfig {
-    max_iters: usize,
-}
-
-impl Default for KMeansConfig {
-    fn default() -> Self {
-        KMeansConfig { max_iters: 10 }
+        LabelMethod::Knn => k_means_clustering_new(data, input_shape, k, max_iters),
+        LabelMethod::SphericalKnn => k_means_clustering_spherical(data, input_shape, k, max_iters),
     }
 }
 

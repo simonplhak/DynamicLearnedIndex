@@ -3,10 +3,9 @@ use std::fmt::Debug;
 use crate::{
     errors::BuildError,
     types::{Array, ArrayNumType, ArraySlice},
-    Id,
+    DistanceFn, Id,
 };
-use serde::{Deserialize, Serialize};
-use simsimd::SpatialSimilarity;
+use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Bucket {
@@ -159,36 +158,10 @@ impl BucketBuilder {
     }
 }
 
-#[derive(Default, Deserialize, Serialize, Debug, Clone)]
-pub enum DistanceFn {
-    #[default]
-    #[serde(rename = "l2")]
-    L2,
-    #[serde(rename = "dot")]
-    Dot,
-}
-
-impl DistanceFn {
-    #[inline]
-    fn distance(&self, a: &ArraySlice, b: &ArraySlice) -> ArrayNumType {
-        assert_eq!(a.len(), b.len(), "Vectors must have the same length");
-        match self {
-            DistanceFn::L2 => f32::l2(a, b).unwrap() as f32,
-            DistanceFn::Dot => f32::dot(a, b).unwrap() as f32,
-        }
-    }
-
-    #[inline]
-    pub(crate) fn cmp(&self, a: &f32, b: &f32) -> std::cmp::Ordering {
-        match self {
-            DistanceFn::L2 => a.total_cmp(b),
-            DistanceFn::Dot => b.total_cmp(a), // Higher is better for inner product
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
+    use crate::DistanceFn;
+
     use super::*;
 
     fn create_bucket(distance_fn: DistanceFn) -> Bucket {

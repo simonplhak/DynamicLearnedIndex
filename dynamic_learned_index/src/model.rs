@@ -6,7 +6,8 @@ use tch::{
 };
 
 use crate::{
-    clustering::{self, KMeansConfig, LabelMethod},
+    clustering::{self},
+    distance_fn::LabelMethod,
     errors::BuildError,
     sampling,
     types::{Array, ArraySlice},
@@ -17,7 +18,7 @@ pub struct TrainParams {
     pub threshold_samples: usize,
     pub batch_size: i64,
     pub epochs: usize,
-    pub label_method: LabelMethod,
+    pub max_iters: usize, // Added for clustering iterations
 }
 
 impl Default for TrainParams {
@@ -26,7 +27,7 @@ impl Default for TrainParams {
             threshold_samples: 1000,
             batch_size: 8,
             epochs: 3,
-            label_method: LabelMethod::Knn(KMeansConfig::default()),
+            max_iters: 10, // Default max iterations for clustering
         }
     }
 }
@@ -67,6 +68,7 @@ pub(crate) struct ModelBuilder {
     layers: Vec<ModelLayer>,
     labels: Option<i64>,
     train_params: Option<TrainParams>,
+    label_method: Option<LabelMethod>,
 }
 
 impl ModelBuilder {
@@ -95,8 +97,14 @@ impl ModelBuilder {
         self
     }
 
+    pub fn label_method(&mut self, label_method: LabelMethod) -> &mut Self {
+        self.label_method = Some(label_method);
+        self
+    }
+
     pub fn build(&self) -> Result<Model, BuildError> {
         let device = self.device.ok_or(BuildError::MissingAttribute)?;
+        let label_method = self.label_method.ok_or(BuildError::MissingAttribute)?;
         let vs = nn::VarStore::new(device);
         let vs_root = vs.root();
         let input_nodes = self.input_nodes.ok_or(BuildError::MissingAttribute)?;
@@ -134,6 +142,7 @@ impl ModelBuilder {
             device,
             train_params,
             input_shape: input_nodes as usize,
+            label_method,
         };
         Ok(model)
     }
@@ -148,6 +157,7 @@ pub(crate) struct Model {
     device: Device,
     input_shape: usize,
     train_params: TrainParams,
+    label_method: LabelMethod,
 }
 
 impl Model {
@@ -175,8 +185,13 @@ impl Model {
 
     pub fn train(&mut self, xs: &[Array], k: usize) {
         let xs = sampling::sample(xs, self.train_params.threshold_samples);
-        let ys =
-            clustering::compute_labels(&xs, &self.train_params.label_method, k, self.input_shape);
+        let ys = clustering::compute_labels(
+            &xs,
+            &self.label_method,
+            k,
+            self.input_shape,
+            self.train_params.max_iters,
+        );
         let dataset = self.dataset(&xs, &ys);
         let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap();
         for _ in 0..self.train_params.epochs {
