@@ -82,9 +82,9 @@ working_dir = Path(__file__).parent.parent / 'comparison'
 metrics_data, test_dataset_size = load_metrics_data(Path(__file__).parent.parent / 'experiments_data' / 'compare2python' / 'logs.jsonl')
 stats = defaultdict(dict)
 df_rust = pd.DataFrame([metric for metric in metrics_data if metric['message'] == 'metrics'])
-df_rust['avg_time_per_query'] = df_rust['elapsed_time'] / df_rust['total']
+df_rust['avg_time_per_query'] = df_rust['elapsed_time'] / df_rust['total'] * 1000
 df_rust['avg_recall'] = df_rust['recall_top10'] * 100
-df_rust['queries_per_second'] = 60 / df_rust['avg_time_per_query']
+df_rust['queries_per_second'] =  df_rust['total'] / df_rust['elapsed_time']
 df_rust['type'] = 'rust'
 build_time = None
 for metric in metrics_data:
