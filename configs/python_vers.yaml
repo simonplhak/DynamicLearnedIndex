@@ -6,16 +6,16 @@ levels:
       - type: linear
         value: 256
       - type: relu
-      - type: linear
-        value: 256
       train_params:
         threshold_samples: 100000
         batch_size: 8
         epochs: 10
-        label_method:
-          type: knn
-          value:
-            max_iters: 10
+        max_iters: 10
+      retrain_params:
+        threshold_samples: 100000
+        batch_size: 8
+        epochs: 10
+        max_iters: 10
     bucket_size: 5000
 buffer_size: 5000
 input_shape: 768
