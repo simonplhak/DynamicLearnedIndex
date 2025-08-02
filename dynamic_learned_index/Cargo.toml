@@ -18,6 +18,8 @@ kentro = { version = "0.1.0" }
 rayon = { version = "1.10.0" }
 simsimd = { version = "6.4.9" }
 ndarray = "0.16.1"
+candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.9.1" }
+candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.9.1" }
 
 [dev-dependencies]
 tempfile = "3.14.0"
