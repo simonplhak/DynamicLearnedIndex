@@ -15,7 +15,7 @@ use crate::types::ArraySlice;
 use crate::{clustering, sampling, ModelDevice};
 
 #[derive(Debug, Default)]
-pub(crate) struct ModelNewBuilder {
+pub struct ModelNewBuilder {
     device: Option<ModelDevice>,
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,

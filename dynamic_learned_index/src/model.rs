@@ -65,7 +65,7 @@ pub enum ModelLayer {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct ModelBuilder {
+pub struct ModelBuilder {
     device: Option<Device>,
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,
@@ -161,7 +161,7 @@ impl ModelBuilder {
 
 // todo reset model after flush
 #[derive(Debug)]
-pub(crate) struct Model {
+pub struct Model {
     model: Box<dyn nn::Module>,
     vs: nn::VarStore,
     labels: usize,

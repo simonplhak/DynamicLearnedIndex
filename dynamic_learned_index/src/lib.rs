@@ -1,12 +1,12 @@
 #![feature(portable_simd)]
 mod bucket;
-mod candle_model;
+pub mod candle_model;
 mod clustering;
 mod constants;
-mod distance_fn;
+pub mod distance_fn;
 mod errors;
 pub mod index;
-mod model;
+pub mod model;
 mod sampling;
 mod search_strategy;
 pub mod types;
