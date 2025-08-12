@@ -23,3 +23,12 @@ python scripts/compare2python.py
 ```
 
 Plot can be found in `comparison/<current_date>.rust2python.jpg`.
+
+Experiments info
+
+| Name | Note |
+|------|------|
+| 20250801 | initial comparison     |
+| 20250802 | increase batch size for training     |
+| 20250812 | usage of flat-knn lib inside a bucket      |
+| 20250812.2 |       |
