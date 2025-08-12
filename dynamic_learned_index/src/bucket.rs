@@ -38,15 +38,18 @@ impl Buffer {
         distance_fn: &DistanceFn,
     ) -> Vec<(Id, ArrayNumType)> {
         assert!(k > 0);
-        let mut distances = self
-            .ids
-            .iter()
-            .enumerate()
-            .map(|(i, id)| (*id, distance_fn.distance(query, self.record(i))))
-            .collect::<Vec<_>>();
-        distances.sort_unstable_by(|a, b| distance_fn.cmp(&a.1, &b.1));
-        distances.truncate(k);
-        distances
+        let res = flat_knn::knn(
+            (&self.records, self.input_shape),
+            query,
+            k,
+            match distance_fn {
+                DistanceFn::L2 => flat_knn::Metric::L2,
+                DistanceFn::Dot => flat_knn::Metric::Dot,
+            },
+        );
+        res.into_iter()
+            .map(|(dist, idx)| (self.ids[idx], dist))
+            .collect()
     }
 
     pub fn insert(&mut self, record: Array, id: Id) {
@@ -111,15 +114,18 @@ impl Bucket {
         distance_fn: &DistanceFn,
     ) -> Vec<(Id, ArrayNumType)> {
         assert!(k > 0);
-        let mut distances = self
-            .ids
-            .iter()
-            .enumerate()
-            .map(|(i, id)| (*id, distance_fn.distance(query, self.record(i))))
-            .collect::<Vec<_>>();
-        distances.sort_unstable_by(|a, b| distance_fn.cmp(&a.1, &b.1));
-        distances.truncate(k);
-        distances
+        let res = flat_knn::knn(
+            (&self.records, self.input_shape),
+            query,
+            k,
+            match distance_fn {
+                DistanceFn::L2 => flat_knn::Metric::L2,
+                DistanceFn::Dot => flat_knn::Metric::Dot,
+            },
+        );
+        res.into_iter()
+            .map(|(dist, idx)| (self.ids[idx], dist))
+            .collect()
     }
 
     pub fn insert(&mut self, record: Array, id: Id) {
