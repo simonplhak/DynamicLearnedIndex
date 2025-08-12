@@ -92,7 +92,13 @@ for metric in metrics_data:
          build_time = float(metric['time'].replace('s', ''))
 assert build_time is not None
 df_rust['build_time'] = build_time
-df_rust.to_csv(working_dir / f'{current_date}.rust_impl.csv')
+
+csv_path = working_dir / f'{current_date}.rust_impl.csv'
+i = 2
+while csv_path.exists():
+    csv_path = working_dir / f'{current_date}.{i}.rust_impl.csv'
+    i += 1
+df_rust.to_csv(csv_path)
 
         
 df_python = pd.read_csv(working_dir / '20250731.python_impl.csv')
@@ -112,4 +118,9 @@ handles, labels = axs[2].get_legend_handles_labels()
 fig.subplots_adjust(hspace=0.1, wspace=0.1) 
 fig.legend(handles, labels, loc='right', bbox_to_anchor=(0.3, 0.91))
 
-plt.savefig(working_dir / f'{current_date}.rust2python.jpg')
+plot_path = working_dir / f'{current_date}.rust2python.jpg'
+i = 2
+while plot_path.exists():
+    plot_path = working_dir / f'{current_date}.{i}.rust2python.jpg'
+    i += 1
+plt.savefig(plot_path)
