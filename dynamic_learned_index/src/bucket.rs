@@ -10,7 +10,7 @@ use serde::Serialize;
 #[derive(Debug, Serialize)]
 pub(crate) struct Buffer {
     records: Vec<ArrayNumType>,
-    ids: Vec<Id>,
+    pub ids: Vec<Id>,
     size: usize,
     input_shape: usize,
 }
@@ -25,7 +25,7 @@ impl Buffer {
         }
     }
 
-    fn _record(&self, i: usize) -> &ArraySlice {
+    pub fn record(&self, i: usize) -> &ArraySlice {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
         &self.records[start..end]
@@ -86,7 +86,7 @@ impl Buffer {
 #[derive(Debug, Serialize)]
 pub(crate) struct Bucket {
     records: Vec<ArrayNumType>,
-    ids: Vec<Id>,
+    pub ids: Vec<Id>,
     size: usize,
     input_shape: usize,
 }
@@ -101,7 +101,7 @@ impl Bucket {
         }
     }
 
-    fn _record(&self, i: usize) -> &ArraySlice {
+    pub fn record(&self, i: usize) -> &ArraySlice {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
         &self.records[start..end]

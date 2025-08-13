@@ -7,7 +7,6 @@ use crate::{
 };
 use log::{debug, info};
 use measure_time_macro::log_time;
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tch::Device;
@@ -245,7 +244,11 @@ impl BentleySaxeIndex {
         (data, ids)
     }
 
-    fn buckets2visit(&self, query: &ArraySlice, search_strategy: SearchStrategy) -> Vec<&Bucket> {
+    fn records2visit(
+        &self,
+        query: &ArraySlice,
+        search_strategy: SearchStrategy,
+    ) -> (Vec<&[f32]>, Vec<Id>) {
         let bucket_predictions = self
             .levels
             .iter()
@@ -258,26 +261,27 @@ impl BentleySaxeIndex {
             .flat_map(|(bucket_idxs, level)| {
                 bucket_idxs
                     .into_iter()
-                    .map(|bucket_idx| &level.buckets[bucket_idx])
+                    .flat_map(|bucket_idx| {
+                        let bucket = &level.buckets[bucket_idx];
+                        (0..bucket.occupied()).map(|i| (bucket.record(i), bucket.ids[i]))
+                    })
                     .collect::<Vec<_>>()
             })
-            .collect::<Vec<_>>()
+            .unzip()
     }
 
     fn search(&self, query: &ArraySlice, params: SearchParams) -> Vec<Id> {
-        let buckets2visit = self.buckets2visit(query, params.search_strategy);
-        let distance_fn = self.distance_fn.clone(); // todo solve without using clone here
-        let mut results: Vec<(Id, f32)> = buckets2visit
-            .par_iter()
-            .flat_map(|bucket| bucket.search(query, params.k, &distance_fn))
-            .chain(self.buffer.search(query, params.k, &distance_fn))
-            .collect();
-        results.sort_unstable_by(|(_, dist_a), (_, dist_b)| self.distance_fn.cmp(dist_a, dist_b));
-        results
-            .into_iter()
-            .take(params.k)
-            .map(|(id, _)| id)
-            .collect()
+        let (records2visit, ids2visit) = self.records2visit(query, params.search_strategy);
+        let rs = flat_knn::knn(
+            records2visit,
+            query,
+            params.k,
+            match self.distance_fn {
+                DistanceFn::L2 => flat_knn::Metric::L2,
+                DistanceFn::Dot => flat_knn::Metric::Dot,
+            },
+        );
+        rs.into_iter().map(|(_, idx)| ids2visit[idx]).collect()
     }
 
     fn insert(&mut self, value: Array, id: Id) {
