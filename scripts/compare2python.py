@@ -34,10 +34,10 @@ def create_lineplot(
     # Remove the legend for this specific axis
     ax.get_legend().remove() if ax.get_legend() else None
 
-def plot_recall_vs_nprobe(df: pd.DataFrame, ax) -> None:
+def plot_recall_vs_ncandidates(df: pd.DataFrame, ax) -> None:
     create_lineplot(
         df=df,
-        x='nprobe',
+        x='ncandidates',
         y='avg_recall',
         title='Number of visited buckets vs. average recall',
         xlabel='Number of visited buckets',
@@ -46,12 +46,12 @@ def plot_recall_vs_nprobe(df: pd.DataFrame, ax) -> None:
     )
 
 
-def plot_recall_vs_avg_time_per_query(df: pd.DataFrame, ax) -> None:
+def plot_avg_time_per_query_vs_ncandidates(df: pd.DataFrame, ax) -> None:
     create_lineplot(
         df=df,
-        x='nprobe',
+        x='ncandidates',
         y='avg_time_per_query',
-        title='Number of visited buckets vs. average time per query',
+        title='Number of candidates vs. average time per query',
         xlabel='Number of visited buckets',
         ylabel='Average time per query',
         ax=ax,
@@ -101,7 +101,7 @@ while csv_path.exists():
 df_rust.to_csv(csv_path)
 
         
-df_python = pd.read_csv(working_dir / '20250731.python_impl.csv')
+df_python = pd.read_csv(working_dir / '20250813.python_impl.csv')
 df_python['type'] = 'python'
 df = pd.concat([df_python, df_rust])
 
@@ -109,9 +109,9 @@ plt.rcParams['figure.figsize'] = 30, 18
 fig, axs = plt.subplots(2, 2)
 axs = axs.flat
 
-plot_recall_vs_nprobe(df, axs[0])
+plot_recall_vs_ncandidates(df, axs[0])
 plot_queries_per_second_vs_recall(df, axs[1])
-plot_recall_vs_avg_time_per_query(df, axs[2])
+plot_avg_time_per_query_vs_ncandidates(df, axs[2])
 plot_build_index_time(df, axs[3])
 
 handles, labels = axs[2].get_legend_handles_labels()

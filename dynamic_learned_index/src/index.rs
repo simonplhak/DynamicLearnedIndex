@@ -424,8 +424,12 @@ impl LevelIndex {
         self.buckets.iter().map(|bucket| bucket.occupied()).sum()
     }
 
-    fn buckets2visit_predictions(&self, query: &ArraySlice) -> Vec<(usize, f32)> {
-        self.model.predict(query).into_iter().collect()
+    fn buckets2visit_predictions(&self, query: &ArraySlice) -> Vec<(usize, f32, usize)> {
+        self.model
+            .predict(query)
+            .into_iter()
+            .map(|(bucket_id, prob)| (bucket_id, prob, self.buckets[bucket_id].occupied()))
+            .collect()
     }
 
     #[log_time]
@@ -765,7 +769,7 @@ mod tests {
         // Each prediction should have bucket index and probability
         assert!(predictions
             .iter()
-            .all(|(bucket_idx, _prob)| *bucket_idx < 2));
+            .all(|(bucket_idx, _prob, _occupied)| *bucket_idx < 2));
     }
 
     #[test]

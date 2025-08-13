@@ -13,7 +13,7 @@ Then run experiment with rust implementation:
 
 ```shell
 cargo build --release
-./target/release/cli_dynamic_learned_index experiment compare2python  data/k300/ --skip-validation --start-from-one --force -n 1 2 3 4 5 10 --search-strategy model -i configs/python_vers.yaml
+./target/release/cli_dynamic_learned_index experiment compare2python  data/k300/ --skip-validation --start-from-one --force -n 1 5000 10000 30000 40000 50000 100000 --search-strategy model -i configs/python_vers.yaml
 ```
 
 Then you can plot the results with:
@@ -31,4 +31,4 @@ Experiments info
 | 20250801 | initial comparison     |
 | 20250802 | increase batch size for training     |
 | 20250812 | usage of flat-knn lib inside a bucket      |
-| 20250812.2 |       |
+| 20250813 | usage of ncandidates       |

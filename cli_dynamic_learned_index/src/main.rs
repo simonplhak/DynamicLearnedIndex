@@ -78,8 +78,8 @@ struct ExperimentConfig {
     #[arg(long, default_value = "model")]
     search_strategy: CLISearchStrategy,
     /// Number of buckets to visit in each level
-    #[arg(short, long, default_value = "1", num_args = 0..)]
-    nprobe: Vec<usize>,
+    #[arg(short, long, default_value = "10_000", num_args = 0..)]
+    ncandidates: Vec<usize>,
     /// Limits original dataset size
     #[arg(short, long)]
     limit: Option<usize>,
@@ -146,8 +146,8 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         }),
     };
     let search_strategy = match config.search_strategy {
-        CLISearchStrategy::Knn => SearchStrategy::Base(config.nprobe[0]),
-        CLISearchStrategy::Model => SearchStrategy::ModelDriven(config.nprobe[0]),
+        CLISearchStrategy::Knn => SearchStrategy::Base(config.ncandidates[0]),
+        CLISearchStrategy::Model => SearchStrategy::ModelDriven(config.ncandidates[0]),
     };
     insert_all_data(
         &mut index,
@@ -157,13 +157,13 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         config.start_from_one,
         search_strategy,
     );
-    for nprobe in &config.nprobe {
+    for ncandidates in &config.ncandidates {
         let search_strategy = match config.search_strategy {
-            CLISearchStrategy::Knn => SearchStrategy::Base(*nprobe),
-            CLISearchStrategy::Model => SearchStrategy::ModelDriven(*nprobe),
+            CLISearchStrategy::Knn => SearchStrategy::Base(*ncandidates),
+            CLISearchStrategy::Model => SearchStrategy::ModelDriven(*ncandidates),
         };
         let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true);
-        info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, nprobe=nprobe, elapsed_time=metrics.elapsed_time.as_secs_f32(); "metrics");
+        info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, ncandidates=ncandidates, elapsed_time=metrics.elapsed_time.as_secs_f32(); "metrics");
     }
     info!(buckets = index.n_buckets();"index:filled");
 
