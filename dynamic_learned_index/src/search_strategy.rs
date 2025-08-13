@@ -11,7 +11,11 @@ impl Default for SearchStrategy {
 }
 
 impl SearchStrategy {
-    pub fn buckets2visit(&self, predictions: Vec<Vec<(usize, f32, usize)>>) -> Vec<Vec<usize>> {
+    pub fn buckets2visit(
+        &self,
+        predictions: Vec<Vec<(usize, f32, usize)>>,
+        occupied: usize,
+    ) -> Vec<Vec<usize>> {
         assert!(!predictions.is_empty(), "Predictions cannot be empty");
         match self {
             SearchStrategy::Base(_nprobe) => todo!(),
@@ -41,6 +45,10 @@ impl SearchStrategy {
                 let mut res = vec![vec![]; levels];
                 let mut i = 0;
                 let mut remaining_candidates = *ncandidates;
+                if occupied > remaining_candidates {
+                    return res;
+                }
+                remaining_candidates -= occupied;
                 while remaining_candidates > 0 && i < buckets2visit.len() {
                     let (level_idx, bucket_id, _prob, occupied) = buckets2visit[i];
                     if occupied > 0 {

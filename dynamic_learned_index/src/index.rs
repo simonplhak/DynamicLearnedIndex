@@ -254,7 +254,8 @@ impl BentleySaxeIndex {
             .iter()
             .map(|level| level.buckets2visit_predictions(query))
             .collect::<Vec<_>>();
-        let level_bucket_idxs = search_strategy.buckets2visit(bucket_predictions);
+        let level_bucket_idxs =
+            search_strategy.buckets2visit(bucket_predictions, self.buffer.occupied());
         level_bucket_idxs
             .into_iter()
             .zip(self.levels.iter())
@@ -267,6 +268,7 @@ impl BentleySaxeIndex {
                     })
                     .collect::<Vec<_>>()
             })
+            .chain((0..self.buffer.occupied()).map(|i| (self.buffer.record(i), self.buffer.ids[i])))
             .unzip()
     }
 
