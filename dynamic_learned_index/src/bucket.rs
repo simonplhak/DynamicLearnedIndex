@@ -25,7 +25,7 @@ impl Buffer {
         }
     }
 
-    fn record(&self, i: usize) -> &ArraySlice {
+    fn _record(&self, i: usize) -> &ArraySlice {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
         &self.records[start..end]
@@ -101,7 +101,7 @@ impl Bucket {
         }
     }
 
-    fn record(&self, i: usize) -> &ArraySlice {
+    fn _record(&self, i: usize) -> &ArraySlice {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
         &self.records[start..end]
@@ -240,7 +240,7 @@ mod tests {
         bucket.insert(record.clone(), 100);
 
         assert_eq!(bucket.occupied(), 1);
-        assert_eq!(bucket.record(0), record.as_slice());
+        assert_eq!(bucket._record(0), record.as_slice());
         assert_eq!(bucket.ids[0], 100);
     }
 
@@ -256,9 +256,9 @@ mod tests {
         bucket.insert(record3.clone(), 3);
 
         assert_eq!(bucket.occupied(), 3);
-        assert_eq!(bucket.record(0), record1.as_slice());
-        assert_eq!(bucket.record(1), record2.as_slice());
-        assert_eq!(bucket.record(2), record3.as_slice());
+        assert_eq!(bucket._record(0), record1.as_slice());
+        assert_eq!(bucket._record(1), record2.as_slice());
+        assert_eq!(bucket._record(2), record3.as_slice());
         assert_eq!(bucket.ids, vec![1, 2, 3]);
     }
 
@@ -431,7 +431,7 @@ mod tests {
         bucket.insert(record1.clone(), 1);
         bucket.insert(record2.clone(), 2);
 
-        assert_eq!(bucket.record(0), record1.as_slice());
-        assert_eq!(bucket.record(1), record2.as_slice());
+        assert_eq!(bucket._record(0), record1.as_slice());
+        assert_eq!(bucket._record(1), record2.as_slice());
     }
 }
