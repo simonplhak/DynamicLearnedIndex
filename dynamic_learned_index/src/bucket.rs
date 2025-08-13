@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use crate::{
     errors::BuildError,
     types::{Array, ArrayNumType, ArraySlice},
-    DistanceFn, Id,
+    Id,
 };
 use serde::Serialize;
 
@@ -29,27 +29,6 @@ impl Buffer {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
         &self.records[start..end]
-    }
-
-    pub fn search(
-        &self,
-        query: &ArraySlice,
-        k: usize,
-        distance_fn: &DistanceFn,
-    ) -> Vec<(Id, ArrayNumType)> {
-        assert!(k > 0);
-        let res = flat_knn::knn(
-            (&self.records, self.input_shape),
-            query,
-            k,
-            match distance_fn {
-                DistanceFn::L2 => flat_knn::Metric::L2,
-                DistanceFn::Dot => flat_knn::Metric::Dot,
-            },
-        );
-        res.into_iter()
-            .map(|(dist, idx)| (self.ids[idx], dist))
-            .collect()
     }
 
     pub fn insert(&mut self, record: Array, id: Id) {
@@ -105,27 +84,6 @@ impl Bucket {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
         &self.records[start..end]
-    }
-
-    pub fn search(
-        &self,
-        query: &ArraySlice,
-        k: usize,
-        distance_fn: &DistanceFn,
-    ) -> Vec<(Id, ArrayNumType)> {
-        assert!(k > 0);
-        let res = flat_knn::knn(
-            (&self.records, self.input_shape),
-            query,
-            k,
-            match distance_fn {
-                DistanceFn::L2 => flat_knn::Metric::L2,
-                DistanceFn::Dot => flat_knn::Metric::Dot,
-            },
-        );
-        res.into_iter()
-            .map(|(dist, idx)| (self.ids[idx], dist))
-            .collect()
     }
 
     pub fn insert(&mut self, record: Array, id: Id) {
@@ -193,7 +151,6 @@ impl BucketBuilder {
 
 #[cfg(test)]
 mod tests {
-    use crate::DistanceFn;
 
     use super::*;
 
@@ -240,7 +197,7 @@ mod tests {
         bucket.insert(record.clone(), 100);
 
         assert_eq!(bucket.occupied(), 1);
-        assert_eq!(bucket._record(0), record.as_slice());
+        assert_eq!(bucket.record(0), record.as_slice());
         assert_eq!(bucket.ids[0], 100);
     }
 
@@ -256,9 +213,9 @@ mod tests {
         bucket.insert(record3.clone(), 3);
 
         assert_eq!(bucket.occupied(), 3);
-        assert_eq!(bucket._record(0), record1.as_slice());
-        assert_eq!(bucket._record(1), record2.as_slice());
-        assert_eq!(bucket._record(2), record3.as_slice());
+        assert_eq!(bucket.record(0), record1.as_slice());
+        assert_eq!(bucket.record(1), record2.as_slice());
+        assert_eq!(bucket.record(2), record3.as_slice());
         assert_eq!(bucket.ids, vec![1, 2, 3]);
     }
 
@@ -370,51 +327,6 @@ mod tests {
     }
 
     #[test]
-    fn test_distance_fn_l2() {
-        let distance_fn = DistanceFn::L2;
-        let a = vec![1.0, 2.0, 3.0];
-        let b = vec![4.0, 5.0, 6.0];
-
-        let distance = distance_fn.distance(&a, &b);
-        // L2 distance between [1,2,3] and [4,5,6] should be sqrt(27) ≈ 5.196
-        assert!((distance - 5.196).abs() < 0.01);
-    }
-
-    #[test]
-    fn test_distance_fn_dot() {
-        let distance_fn = DistanceFn::Dot;
-        let a = vec![1.0, 2.0, 3.0];
-        let b = vec![4.0, 5.0, 6.0];
-
-        let distance = distance_fn.distance(&a, &b);
-        // Dot product of [1,2,3] and [4,5,6] should be 1*4 + 2*5 + 3*6 = 32
-        assert_eq!(distance, 32.0);
-    }
-
-    #[test]
-    fn test_distance_fn_cmp() {
-        let l2_fn = DistanceFn::L2;
-        let dot_fn = DistanceFn::Dot;
-
-        // For L2, smaller is better
-        assert_eq!(l2_fn.cmp(&1.0, &2.0), std::cmp::Ordering::Less);
-        assert_eq!(l2_fn.cmp(&2.0, &1.0), std::cmp::Ordering::Greater);
-
-        // For Dot, larger is better (reversed comparison)
-        assert_eq!(dot_fn.cmp(&1.0, &2.0), std::cmp::Ordering::Greater);
-        assert_eq!(dot_fn.cmp(&2.0, &1.0), std::cmp::Ordering::Less);
-    }
-
-    #[test]
-    #[should_panic(expected = "Vectors must have the same length")]
-    fn test_distance_fn_mismatched_lengths() {
-        let distance_fn = DistanceFn::L2;
-        let a = vec![1.0, 2.0];
-        let b = vec![1.0, 2.0, 3.0];
-        distance_fn.distance(&a, &b);
-    }
-
-    #[test]
     #[should_panic]
     fn test_resize_static_bucket_panics() {
         let mut bucket = create_static_bucket();
@@ -431,7 +343,7 @@ mod tests {
         bucket.insert(record1.clone(), 1);
         bucket.insert(record2.clone(), 2);
 
-        assert_eq!(bucket._record(0), record1.as_slice());
-        assert_eq!(bucket._record(1), record2.as_slice());
+        assert_eq!(bucket.record(0), record1.as_slice());
+        assert_eq!(bucket.record(1), record2.as_slice());
     }
 }
