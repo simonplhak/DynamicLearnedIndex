@@ -3,28 +3,6 @@ use log::info;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
-/// A global RNG instance with a fixed seed for reproducibility
-pub(crate) static mut GLOBAL_RNG: Option<SmallRng> = None;
-
-/// Initialize the global RNG with a fixed seed
-pub(crate) fn init_global_rng() {
-    unsafe {
-        if GLOBAL_RNG.is_none() {
-            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
-        }
-    }
-}
-
-/// Get a reference to the global RNG, initializing if needed
-pub(crate) fn get_global_rng() -> &'static mut SmallRng {
-    unsafe {
-        if GLOBAL_RNG.is_none() {
-            init_global_rng();
-        }
-        GLOBAL_RNG.as_mut().unwrap()
-    }
-}
-
 pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
     // todo possibility to return ArraySlice to avoid cloning??
     info!(n=n ;"sampling");
@@ -36,7 +14,7 @@ pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
         return queries.to_vec();
     }
 
-    let mut rng = get_global_rng(); // Fixed seed for consistency, or use: SmallRng::from_entropy()
+    let mut rng = SmallRng::seed_from_u64(42); // Fixed seed for consistency, or use: SmallRng::from_entropy()
     let idxs = rand::seq::index::sample(&mut rng, num_queries, n).into_vec();
 
     // Pre-allocate exactly what we need:
@@ -60,7 +38,6 @@ mod tests {
 
     #[test]
     fn test_sample_basic_functionality() {
-        init_global_rng(); // Initialize with fixed seed
         let queries = vec![
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
         ];
@@ -86,7 +63,6 @@ mod tests {
 
     #[test]
     fn test_sample_all_queries() {
-        init_global_rng();
         let queries = vec![
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
         ];
@@ -110,7 +86,6 @@ mod tests {
 
     #[test]
     fn test_sample_preserves_array_structure() {
-        init_global_rng();
         let queries = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let sampled = sample(&queries, 2, 2);
 
@@ -137,21 +112,14 @@ mod tests {
 
     #[test]
     fn test_sample_randomness() {
-        init_global_rng();
         let queries = vec![
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
         ];
 
         // Reset RNG for predictable sequence
-        unsafe {
-            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
-        }
         let sample1 = sample(&queries, 3, 3);
 
         // Reset RNG again to get same sequence
-        unsafe {
-            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
-        }
         let sample2 = sample(&queries, 3, 3);
 
         // With fixed seed, samples should be identical
@@ -207,9 +175,6 @@ mod tests {
     #[test]
     fn test_sample_deterministic_with_fixed_seed() {
         // Reset RNG for predictable results
-        unsafe {
-            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
-        }
 
         let queries = vec![
             1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0,
@@ -217,9 +182,6 @@ mod tests {
         let first_run = sample(&queries, 3, 3);
 
         // Reset RNG again
-        unsafe {
-            GLOBAL_RNG = Some(SmallRng::seed_from_u64(42));
-        }
         let second_run = sample(&queries, 3, 3);
 
         // With fixed seed, results should be identical
