@@ -184,10 +184,6 @@ impl DynamicLearnedIndex {
         let record = array2vec(record);
         self.index.insert(record, id);
     }
-
-    fn __repr__(&self) -> String {
-        format!("DynamicLearnedIndex(index={:?})", self.index)
-    }
 }
 
 fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {

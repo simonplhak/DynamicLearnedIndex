@@ -2,12 +2,11 @@
 
 extern crate test;
 
-use dynamic_learned_index::candle_model::{ModelNew, ModelNewBuilder};
+use dynamic_learned_index::candle_model::{Model as ModelNew, ModelBuilder as ModelNewBuilder};
 use dynamic_learned_index::distance_fn::LabelMethod;
 use dynamic_learned_index::model::{Model, ModelBuilder, ModelLayer, TrainParams};
 use dynamic_learned_index::ModelDevice;
 use rand::Rng;
-use tch::Device;
 use test::Bencher;
 
 const VECTOR_DIM: usize = 768;
@@ -26,7 +25,7 @@ fn generate_random_data(size: usize, dim: usize) -> Vec<f32> {
 
 fn pytorch_model() -> Model {
     ModelBuilder::default()
-        .device(Device::Cpu)
+        .device(ModelDevice::Cpu)
         .input_nodes(VECTOR_DIM as i64)
         .add_layer(ModelLayer::Linear(HIDDEN_NEURONS))
         .add_layer(ModelLayer::ReLU)

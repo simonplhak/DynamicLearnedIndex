@@ -14,6 +14,24 @@ use crate::{
     types::ArraySlice,
 };
 
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub enum ModelDevice {
+    #[default]
+    #[serde(rename = "cpu")]
+    Cpu,
+    #[serde(rename = "gpu")]
+    Gpu(usize),
+}
+
+impl ModelDevice {
+    pub fn to_tch_device(&self) -> Device {
+        match self {
+            ModelDevice::Cpu => Device::Cpu,
+            ModelDevice::Gpu(gpu_no) => Device::Cuda(*gpu_no),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrainParams {
     pub threshold_samples: usize,
@@ -76,8 +94,8 @@ pub struct ModelBuilder {
 }
 
 impl ModelBuilder {
-    pub fn device(&mut self, device: Device) -> &mut Self {
-        self.device = Some(device);
+    pub fn device(&mut self, device: ModelDevice) -> &mut Self {
+        self.device = Some(device.to_tch_device());
         self
     }
 

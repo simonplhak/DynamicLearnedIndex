@@ -1,21 +1,40 @@
-use std::env::var;
-
 use candle_core::{DType, Tensor, D};
 use candle_core::{Device, Result as CandleResult};
-use candle_nn::{
-    linear, loss::mse, Activation, AdamW, Linear, Module, Optimizer, VarBuilder, VarMap,
-};
+use candle_nn::{linear, Linear, Module, Optimizer, VarBuilder, VarMap};
 use candle_nn::{loss, ops};
 use log::info;
+use serde::{Deserialize, Serialize};
 
 use crate::distance_fn::LabelMethod;
 use crate::errors::BuildError;
-use crate::model::{ModelLayer, TrainParams};
+use crate::model::{ModelDevice, ModelLayer, TrainParams};
 use crate::types::ArraySlice;
-use crate::{clustering, sampling, ModelDevice};
+use crate::{clustering, sampling};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModelConfig {
+    pub layers: Vec<ModelLayer>,
+    pub train_params: TrainParams,
+    pub retrain_params: TrainParams,
+}
+
+impl Default for ModelConfig {
+    fn default() -> Self {
+        Self {
+            layers: vec![
+                ModelLayer::Linear(256),
+                ModelLayer::ReLU,
+                ModelLayer::Linear(256),
+                ModelLayer::ReLU,
+            ],
+            train_params: Default::default(),
+            retrain_params: Default::default(),
+        }
+    }
+}
 
 #[derive(Debug, Default)]
-pub struct ModelNewBuilder {
+pub struct ModelBuilder {
     device: Option<ModelDevice>,
     input_nodes: Option<i64>,
     layers: Vec<ModelLayer>,
@@ -25,7 +44,7 @@ pub struct ModelNewBuilder {
     retrain_params: Option<TrainParams>,
 }
 
-impl ModelNewBuilder {
+impl ModelBuilder {
     pub fn device(&mut self, device: ModelDevice) -> &mut Self {
         self.device = Some(device);
         self
@@ -61,7 +80,7 @@ impl ModelNewBuilder {
         self
     }
 
-    pub fn build(&self) -> Result<ModelNew, BuildError> {
+    pub fn build(&self) -> Result<Model, BuildError> {
         let device = self.device.as_ref().ok_or(BuildError::MissingAttribute)?;
         let device = match device {
             ModelDevice::Cpu => Device::Cpu,
@@ -79,7 +98,7 @@ impl ModelNewBuilder {
             ln1: linear(input_nodes as usize, 256, vs.pp("ln1")).unwrap(),
             ln2: linear(256, labels, vs.pp("ln2")).unwrap(),
         };
-        let model = ModelNew {
+        let model = Model {
             model,
             varmap,
             labels,
@@ -93,7 +112,7 @@ impl ModelNewBuilder {
     }
 }
 
-pub struct ModelNew {
+pub struct Model {
     model: CandleModel,
     varmap: VarMap,
     labels: usize,
@@ -104,7 +123,7 @@ pub struct ModelNew {
     label_method: LabelMethod,
 }
 
-impl ModelNew {
+impl Model {
     pub fn predict(&self, xs: &ArraySlice) -> Vec<(usize, f32)> {
         let tensor_test_votes = Tensor::from_vec(xs.to_vec(), (1, self.input_shape), &self.device)
             .unwrap()
@@ -177,16 +196,6 @@ impl ModelNew {
 struct CandleModel {
     ln1: Linear,
     ln2: Linear,
-}
-
-// Implement the constructor for our model.
-impl CandleModel {
-    fn new(vs: VarBuilder) -> CandleResult<Self> {
-        let ln1 = linear(10, 256, vs.pp("ln1"))?;
-        let ln2 = linear(256, 256, vs.pp("ln2"))?;
-
-        Ok(Self { ln1, ln2 })
-    }
 }
 
 // Implement the forward pass for our model, which is required by the
