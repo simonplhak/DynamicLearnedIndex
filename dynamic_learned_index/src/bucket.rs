@@ -231,62 +231,6 @@ mod tests {
         assert!(!bucket.has_space(1));
     }
 
-    // #[test]
-    // fn test_search_single_record() {
-    //     let mut bucket = create_bucket(DistanceFn::Dot);
-    //     let record = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-    //     bucket.insert(record.clone(), 42);
-
-    //     let query = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-    //     let (ids, distances) = bucket.search(&query, 1);
-
-    //     assert_eq!(ids.len(), 1);
-    //     assert_eq!(ids[0], 42);
-    //     assert_eq!(distances.len(), 1);
-    //     // For dot product with identical vectors, we expect a high similarity
-    //     assert!(distances[0] > 0.0);
-    // }
-
-    // #[test]
-    // fn test_search_multiple_records_dot() {
-    //     let mut bucket = create_bucket(DistanceFn::Dot);
-    //     let record1 = vec![1.0, 0.0, 0.0, 0.0, 0.0]; // Should have lower dot product with query
-    //     let record2 = vec![1.0, 1.0, 1.0, 1.0, 1.0]; // Should have higher dot product with query
-    //     let record3 = vec![2.0, 2.0, 2.0, 2.0, 2.0]; // Should have highest dot product with query
-
-    //     bucket.insert(record1, 1);
-    //     bucket.insert(record2, 2);
-    //     bucket.insert(record3, 3);
-
-    //     let query = vec![1.0, 1.0, 1.0, 1.0, 1.0];
-    //     let (ids, _distances) = bucket.search(&query, 2);
-
-    //     // For dot product, higher values are better, so id 3 should come first
-    //     assert_eq!(ids.len(), 2);
-    //     assert_eq!(ids[0], 3); // record3 has highest dot product
-    //     assert_eq!(ids[1], 2); // record2 has second highest
-    // }
-
-    // #[test]
-    // fn test_search_multiple_records_l2() {
-    //     let mut bucket = Bucket::new("test".to_string(), 10, 3, true, DistanceFn::L2);
-    //     let record1 = vec![1.0, 1.0, 1.0]; // Distance sqrt(3) from origin
-    //     let record2 = vec![2.0, 2.0, 2.0]; // Distance sqrt(12) from origin
-    //     let record3 = vec![0.5, 0.5, 0.5]; // Distance sqrt(0.75) from origin
-
-    //     bucket.insert(record1, 1);
-    //     bucket.insert(record2, 2);
-    //     bucket.insert(record3, 3);
-
-    //     let query = vec![0.0, 0.0, 0.0]; // Origin
-    //     let (ids, _distances) = bucket.search(&query, 2);
-
-    //     // For L2 distance, smaller values are better, so id 3 should come first
-    //     assert_eq!(ids.len(), 2);
-    //     assert_eq!(ids[0], 3); // record3 has smallest L2 distance
-    //     assert_eq!(ids[1], 1); // record1 has second smallest
-    // }
-
     #[test]
     fn test_get_data() {
         let mut bucket = create_bucket();

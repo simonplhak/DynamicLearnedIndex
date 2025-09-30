@@ -694,25 +694,6 @@ mod tests {
         assert_eq!(index.size(), 10); // Buffer size
     }
 
-    // #[test]
-    // fn test_level_index_builder() {
-    //     let model_config = create_simple_model_config();
-    //     let mut builder = LevelIndexBuilder::default();
-    //     builder
-    //         .id("test_level".to_string())
-    //         .n_buckets(2)
-    //         .input_shape(3)
-    //         .bucket_size(10)
-    //         .model(model_config)
-    //         .distance_fn(DistanceFn::Dot)
-    //         .model_device(ModelDevice::Cpu);
-
-    //     let level_index = builder.build().unwrap();
-    //     assert_eq!(level_index.n_buckets(), 2);
-    //     assert_eq!(level_index.size(), 20); // 2 buckets * 10 size each
-    //     assert_eq!(level_index.occupied(), 0);
-    // }
-
     #[test]
     fn test_level_index_builder_missing_attributes() {
         let builder = LevelIndexBuilder::default();
@@ -757,51 +738,6 @@ mod tests {
         // Size should remain the same (capacity, not occupancy)
         assert_eq!(index.size(), 10);
     }
-
-    // #[test]
-    // fn test_level_index_predictions() {
-    //     let model_config = create_simple_model_config();
-    //     let mut builder = LevelIndexBuilder::default();
-    //     builder
-    //         .id("test_level".to_string())
-    //         .n_buckets(2)
-    //         .input_shape(3)
-    //         .bucket_size(10)
-    //         .model(model_config)
-    //         .distance_fn(DistanceFn::Dot)
-    //         .model_device(ModelDevice::Cpu);
-
-    //     let level_index = builder.build().unwrap();
-    //     let query = vec![1.0, 2.0, 3.0];
-    //     let predictions = level_index.buckets2visit_predictions(&query);
-
-    //     // Should return predictions for each bucket
-    //     assert_eq!(predictions.len(), 2);
-    //     // Each prediction should have bucket index and probability
-    //     assert!(predictions
-    //         .iter()
-    //         .all(|(bucket_idx, _prob, _occupied)| *bucket_idx < 2));
-    // }
-
-    // #[test]
-    // fn test_level_index_get_data_empty() {
-    //     let model_config = create_simple_model_config();
-    //     let mut builder = LevelIndexBuilder::default();
-    //     builder
-    //         .id("test_level".to_string())
-    //         .n_buckets(2)
-    //         .input_shape(3)
-    //         .bucket_size(10)
-    //         .model(model_config)
-    //         .distance_fn(DistanceFn::Dot)
-    //         .model_device(ModelDevice::Cpu);
-
-    //     let mut level_index = builder.build().unwrap();
-    //     let (data, ids) = level_index.get_data();
-
-    //     assert!(data.is_empty());
-    //     assert!(ids.is_empty());
-    // }
 
     #[test]
     fn test_bentley_saxe_empty_levels() {
