@@ -4,21 +4,21 @@ levels:
     model:
       layers:
       - type: linear
-        value: 256
+        value: 128
       - type: relu
       train_params:
-        threshold_samples: 100000
+        threshold_samples: 5000
         batch_size: 256
         epochs: 10
         max_iters: 10
       retrain_params:
-        threshold_samples: 100000
+        threshold_samples: 5000
         batch_size: 256
         epochs: 10
         max_iters: 10
-    bucket_size: 5000
-buffer_size: 5000
+    bucket_size: 200
+buffer_size: 200
 input_shape: 768
 arity: 3
 device: cpu
-distance_fn: l2
+distance_fn: dot
