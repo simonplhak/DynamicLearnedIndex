@@ -103,7 +103,7 @@ pub fn insert_all_data(
     let bar = ProgressBar::new(limit as u64).with_message("Inserting queries");
     let range = match start_from_one {
         true => 1..=limit,
-        false => 0..=limit,
+        false => 0..=limit - 1,
     };
     range.zip(queries.into_iter()).for_each(|(id, query)| {
         if let Some(validation_options) = validation_options {
