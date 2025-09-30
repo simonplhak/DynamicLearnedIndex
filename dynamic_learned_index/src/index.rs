@@ -164,7 +164,7 @@ pub struct BentleySaxeIndex {
 
 impl BentleySaxeIndex {
     fn available_level(&self) -> Option<usize> {
-        let mut count = self.buffer.size();
+        let mut count = self.buffer.occupied();
         self.levels
             .iter()
             .enumerate()
@@ -297,7 +297,8 @@ impl BentleySaxeIndex {
             self.buffer.insert(value, id);
             return; // value fits into buffer
         }
-        debug!(buffer_size = self.buffer.size(); "index:buffer_flush");
+        let occupied = self.occupied();
+        debug!(levels = self.levels.len(), occupied = self.occupied(); "index:buffer_flush");
         match self.available_level() {
             Some(level_idx) => {
                 let (data, ids) = self.lower_level_data(level_idx);
@@ -318,7 +319,23 @@ impl BentleySaxeIndex {
     }
 
     fn size(&self) -> usize {
-        self.levels.iter().map(|level| level.size()).sum::<usize>() + self.buffer.size()
+        self.levels.iter().map(|level| level.size()).sum::<usize>() + self.buffer.size
+    }
+
+    fn occupied(&self) -> usize {
+        println!(
+            "Buffer occupied: {}, Levels occupied: {}",
+            self.buffer.occupied(),
+            self.levels
+                .iter()
+                .map(|level| level.occupied())
+                .sum::<usize>()
+        );
+        self.levels
+            .iter()
+            .map(|level| level.occupied())
+            .sum::<usize>()
+            + self.buffer.occupied()
     }
 }
 
@@ -795,7 +812,7 @@ mod tests {
         // Should have no levels initially
         assert_eq!(bs_index.levels.len(), 0);
         // Should have a buffer
-        assert_eq!(bs_index.buffer.size(), 10);
+        assert_eq!(bs_index.buffer.size, 10);
     }
 
     #[test]

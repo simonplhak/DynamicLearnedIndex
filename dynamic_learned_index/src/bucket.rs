@@ -11,7 +11,7 @@ use serde::Serialize;
 pub(crate) struct Buffer {
     records: Vec<ArrayNumType>,
     pub ids: Vec<Id>,
-    size: usize,
+    pub size: usize,
     input_shape: usize,
 }
 
@@ -55,10 +55,6 @@ impl Buffer {
 
     pub fn occupied(&self) -> usize {
         self.ids.len()
-    }
-
-    pub fn size(&self) -> usize {
-        self.size
     }
 }
 
