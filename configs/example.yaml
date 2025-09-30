@@ -1,9 +1,5 @@
 device: cpu
 input_shape: 768
-label_method:
-  type: spherical_knn
-  value:
-    max_iters: 10 
 arity: 3
 levelling: bentley_saxe
 buffer_size: 40
@@ -11,9 +7,6 @@ levels:
   0:
     model:
       layers:
-      - type: linear
-        value: 256
-      - type: relu
       - type: linear
         value: 256
       - type: relu
