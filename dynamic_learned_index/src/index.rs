@@ -297,7 +297,6 @@ impl BentleySaxeIndex {
             self.buffer.insert(value, id);
             return; // value fits into buffer
         }
-        let occupied = self.occupied();
         debug!(levels = self.levels.len(), occupied = self.occupied(); "index:buffer_flush");
         match self.available_level() {
             Some(level_idx) => {
