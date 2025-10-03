@@ -1,3 +1,5 @@
+use std::panic;
+
 use log::info;
 use serde::{Deserialize, Serialize};
 use tch::{
@@ -217,7 +219,13 @@ impl Model {
     }
 
     pub fn train(&mut self, xs: &ArraySlice) {
-        let xs = sampling::sample(xs, self.train_params.threshold_samples, self.input_shape);
+        let sample_size = sampling::select_sample_size(
+            self.labels,
+            xs.len() / self.input_shape,
+            self.train_params.threshold_samples,
+        );
+        info!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
+        let xs = sampling::sample(xs, sample_size, self.input_shape);
         let ys = clustering::compute_labels(
             &xs,
             &self.label_method,
@@ -225,6 +233,7 @@ impl Model {
             self.input_shape,
             self.train_params.max_iters,
         );
+        assert_eq!(ys.len(), sample_size);
         let dataset = self.dataset(&xs, &ys);
         let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap();
         for _ in 0..self.train_params.epochs {

@@ -31,6 +31,17 @@ pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
     out
 }
 
+/// Selects the sample size based on the total number of objects and number of clusters.
+/// See: https://github.com/facebookresearch/faiss/wiki/FAQ/5e5b0a1d95b4b12fc3fc92700e8e717c01ce7943#how-many-training-points-do-i-need-for-k-means
+pub(crate) fn select_sample_size(k: usize, total_objects: usize, sample_threshold: usize) -> usize {
+    let base_size = k * 40;
+    if base_size < sample_threshold {
+        total_objects.min(sample_threshold)
+    } else {
+        total_objects.min(base_size)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
