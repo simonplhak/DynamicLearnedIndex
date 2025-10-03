@@ -101,7 +101,7 @@ while csv_path.exists():
 df_rust.to_csv(csv_path)
 
         
-df_python = pd.read_csv(working_dir / '20250813.python_impl.csv')
+df_python = pd.read_csv(working_dir / '20250926.python_impl.csv')
 df_python['type'] = 'python'
 df = pd.concat([df_python, df_rust])
 
