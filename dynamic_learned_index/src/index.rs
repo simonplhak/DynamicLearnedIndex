@@ -1,9 +1,9 @@
 use crate::{
     bucket::{self, Bucket, Buffer},
-    candle_model::{Model, ModelBuilder, ModelConfig},
-    // model::{Model, ModelBuilder, ModelConfig},
     errors::BuildError,
     model::ModelDevice,
+    // candle_model::{Model, ModelBuilder, ModelConfig},
+    model::{Model, ModelBuilder, ModelConfig},
     types::{Array, ArraySlice},
     DistanceFn,
     Id,
