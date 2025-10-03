@@ -43,19 +43,18 @@ impl SearchStrategy {
                     .collect::<Vec<_>>();
                 buckets2visit.sort_by(|a, b| b.2.total_cmp(&a.2));
                 let mut res = vec![vec![]; levels];
-                let mut i = 0;
-                let mut remaining_candidates = *ncandidates;
-                if occupied > remaining_candidates {
+                if occupied > *ncandidates {
                     return res;
                 }
-                remaining_candidates -= occupied;
-                while remaining_candidates > 0 && i < buckets2visit.len() {
-                    let (level_idx, bucket_id, _prob, occupied) = buckets2visit[i];
-                    if occupied > 0 {
+                let mut total_occupied = occupied;
+                for (level_idx, bucket_id, _prob, occupied) in buckets2visit {
+                    if occupied > 0 && total_occupied < *ncandidates {
                         res[level_idx].push(bucket_id);
-                        remaining_candidates -= occupied;
+                        total_occupied += occupied;
                     }
-                    i += 1;
+                    if total_occupied >= *ncandidates {
+                        break;
+                    }
                 }
                 res
             }
