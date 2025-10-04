@@ -1,5 +1,3 @@
-use std::panic;
-
 use log::info;
 use serde::{Deserialize, Serialize};
 use tch::{
