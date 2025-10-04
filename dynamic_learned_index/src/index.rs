@@ -150,6 +150,12 @@ impl Index {
             Index::BentleySaxe(index) => index.levels.iter().map(|level| level.n_buckets()).sum(),
         }
     }
+
+    pub fn occupied(&self) -> usize {
+        match self {
+            Index::BentleySaxe(index) => index.occupied(),
+        }
+    }
 }
 
 pub struct BentleySaxeIndex {
