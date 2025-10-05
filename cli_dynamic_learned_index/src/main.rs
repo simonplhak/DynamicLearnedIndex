@@ -175,7 +175,7 @@ fn test() -> Result<()> {
     if !experiment_dir.exists() {
         fs::create_dir_all(&experiment_dir)?;
     }
-    structured_logger::Builder::with_level("info")
+    structured_logger::Builder::with_level("debug")
         .with_target_writer("*", new_writer(std::io::stdout()))
         // .with_target_writer(
         //     "*",
@@ -193,11 +193,12 @@ fn test() -> Result<()> {
     insert_all_data(
         &mut index,
         queries,
-        Some(200),
+        Some(240),
         Some(validation_options),
         true,
         Default::default(),
     );
+    info!(buckets = index.n_buckets(), occupied = index.occupied(); "index:filled");
     Ok(())
 }
 
