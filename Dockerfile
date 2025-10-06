@@ -46,15 +46,25 @@ COPY ./measure_time_macro/src ./measure_time_macro/src
 
 RUN cargo build --release --workspace --exclude py_dynamic_learned_index
 
-FROM debian:bookworm-slim
+FROM rust:latest
 
-RUN apt-get update && apt-get install -y --no-install-recommends libhdf5-dev
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    libssl3 \
+    libcurl4 \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
 COPY --from=builder /opt/libtorch /opt/libtorch
 ENV LIBTORCH=/opt/libtorch/libtorch
-ENV LD_LIBRARY_PATH=/opt/libtorch/libtorch/lib
+
+# Copy HDF5 libraries from builder to ensure version compatibility
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libhdf5*.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libsz.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libaec.so* /usr/lib/x86_64-linux-gnu/
+
+ENV LD_LIBRARY_PATH=/opt/libtorch/libtorch/lib:/usr/lib/x86_64-linux-gnu
 
 COPY --from=builder /app/target/release/cli_dynamic_learned_index /app
 
