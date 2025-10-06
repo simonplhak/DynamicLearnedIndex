@@ -47,5 +47,15 @@
             },
 			"label": "docker: test build"
 		},
+		{
+			"type": "shell",
+			"command": "sudo docker save dli-cli:latest | ssh xplhak1@cybela13 'docker load'",
+			"problemMatcher": [
+			],
+			"group": {
+                "kind": "build",
+            },
+			"label": "docker: push build"
+		},
 	]
 }
