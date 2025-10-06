@@ -24,6 +24,7 @@ pub enum Levelling {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
     pub levelling: Levelling,
+    pub compound_strategy: CompoundStrategy,
     pub levels: HashMap<usize, LevelIndexConfig>,
     pub buffer_size: usize,
     pub input_shape: usize,
@@ -38,6 +39,7 @@ impl Default for IndexConfig {
         levels.insert(0, Default::default());
         Self {
             levelling: Default::default(),
+            compound_strategy: Default::default(),
             levels,
             buffer_size: 5000,
             input_shape: 768,
@@ -154,6 +156,23 @@ impl Index {
     pub fn occupied(&self) -> usize {
         match self {
             Index::BentleySaxe(index) => index.occupied(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub enum CompoundStrategy {
+    #[default]
+    #[serde(rename = "bentley_saxe")]
+    BentleySaxe,
+}
+
+impl CompoundStrategy {
+    pub fn compound(&self, index: &mut Index) {
+        match self {
+            CompoundStrategy::BentleySaxe => {
+                todo!()
+            }
         }
     }
 }
@@ -546,6 +565,7 @@ mod tests {
             arity: 2,
             device: ModelDevice::Cpu,
             distance_fn: DistanceFn::Dot,
+            compound_strategy: CompoundStrategy::BentleySaxe,
         }
     }
 
