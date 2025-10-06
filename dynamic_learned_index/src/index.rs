@@ -64,26 +64,27 @@ impl IndexConfig {
             return Err(BuildError::MissingAttribute);
         }
         let buffer = Buffer::new(self.buffer_size, self.input_shape);
-        let index = match self.levelling {
-            Levelling::BentleySaxe => {
-                let index = BentleySaxeIndex {
-                    levels_config: self.levels,
-                    input_shape: self.input_shape,
-                    arity: self.arity,
-                    device: self.device,
-                    levels: Vec::new(),
-                    buffer,
-                    distance_fn: self.distance_fn,
-                };
-                Index::BentleySaxe(index)
-            }
+        let index = Index {
+            levels_config: self.levels,
+            input_shape: self.input_shape,
+            arity: self.arity,
+            device: self.device,
+            levels: Vec::new(),
+            buffer,
+            distance_fn: self.distance_fn,
         };
         Ok(index)
     }
 }
 
-pub enum Index {
-    BentleySaxe(BentleySaxeIndex),
+pub struct Index {
+    levels_config: HashMap<usize, LevelIndexConfig>,
+    input_shape: usize,
+    arity: usize,
+    device: ModelDevice,
+    levels: Vec<LevelIndex>,
+    buffer: Buffer,
+    distance_fn: DistanceFn,
 }
 
 pub struct SearchParams {
@@ -128,128 +129,17 @@ impl Index {
         S: SearchParamsT,
     {
         let params = params.into_search_params();
-        match self {
-            Index::BentleySaxe(index) => index.search(query, params),
-        }
-    }
-
-    pub fn insert(&mut self, value: Array, id: Id) {
-        match self {
-            Index::BentleySaxe(index) => {
-                index.insert(value, id);
-            }
-        }
-    }
-
-    pub fn size(&self) -> usize {
-        match self {
-            Index::BentleySaxe(index) => index.size(),
-        }
-    }
-
-    pub fn n_buckets(&self) -> usize {
-        match self {
-            Index::BentleySaxe(index) => index.levels.iter().map(|level| level.n_buckets()).sum(),
-        }
-    }
-
-    pub fn occupied(&self) -> usize {
-        match self {
-            Index::BentleySaxe(index) => index.occupied(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub enum CompoundStrategy {
-    #[default]
-    #[serde(rename = "bentley_saxe")]
-    BentleySaxe,
-}
-
-impl CompoundStrategy {
-    pub fn compound(&self, index: &mut Index) {
-        match self {
-            CompoundStrategy::BentleySaxe => {
-                todo!()
-            }
-        }
-    }
-}
-
-pub struct BentleySaxeIndex {
-    levels_config: HashMap<usize, LevelIndexConfig>,
-    input_shape: usize,
-    arity: usize,
-    device: ModelDevice,
-    levels: Vec<LevelIndex>,
-    buffer: Buffer,
-    distance_fn: DistanceFn,
-}
-
-impl BentleySaxeIndex {
-    fn available_level(&self) -> Option<usize> {
-        let mut count = self.buffer.occupied();
-        self.levels
-            .iter()
-            .enumerate()
-            .find(|(_, level)| {
-                let occupied = level.occupied();
-                let fits = level.size() - occupied >= count;
-                if !fits {
-                    count += occupied;
-                }
-                fits
-            })
-            .map(|(i, _)| i)
-    }
-
-    fn get_level_index_config(&self) -> LevelIndexConfig {
-        let curr_level = self.levels.len();
-        self.levels_config
-            .iter()
-            .take_while(|(level, _)| **level <= curr_level)
-            .last()
-            .map(|(_, config)| config.to_owned())
-            .unwrap()
-    }
-
-    fn add_level(&mut self) -> usize {
-        let level_index_config = self.get_level_index_config();
-        let n_buckets = self.arity.pow(self.levels.len() as u32 + 1);
-        let level_index = LevelIndexBuilder::default()
-            .id(format!("{}", self.levels.len()))
-            .n_buckets(n_buckets)
-            .input_shape(self.input_shape)
-            .model(level_index_config.model.clone())
-            .model_device(self.device.clone())
-            .bucket_size(level_index_config.bucket_size)
-            .distance_fn(self.distance_fn.clone())
-            .build()
-            .unwrap();
-        self.levels.push(level_index);
-        self.levels.len() - 1
-    }
-
-    fn lower_level_data(&mut self, level_idx: usize) -> (Array, Vec<Id>) {
-        let (data, ids): (Vec<Array>, Vec<Vec<Id>>) = self
-            .levels
-            .iter_mut()
-            .take(level_idx)
-            .map(|level| level.get_data())
-            .unzip();
-        let (buffer_data, buffer_ids) = self.buffer.get_data();
-        let data = data
-            .into_iter()
-            .flatten()
-            .chain(buffer_data)
-            .collect::<Vec<_>>();
-        let ids = ids
-            .into_iter()
-            .flatten()
-            .chain(buffer_ids)
-            .collect::<Vec<_>>();
-        (data, ids)
+        let (records2visit, ids2visit) = self.records2visit(query, params.search_strategy);
+        let rs = flat_knn::knn(
+            records2visit,
+            query,
+            params.k,
+            match self.distance_fn {
+                DistanceFn::L2 => flat_knn::Metric::L2,
+                DistanceFn::Dot => flat_knn::Metric::Dot,
+            },
+        );
+        rs.into_iter().map(|(_, idx)| ids2visit[idx]).collect()
     }
 
     fn records2visit(
@@ -303,21 +193,71 @@ impl BentleySaxeIndex {
         (records, ids)
     }
 
-    fn search(&self, query: &ArraySlice, params: SearchParams) -> Vec<Id> {
-        let (records2visit, ids2visit) = self.records2visit(query, params.search_strategy);
-        let rs = flat_knn::knn(
-            records2visit,
-            query,
-            params.k,
-            match self.distance_fn {
-                DistanceFn::L2 => flat_knn::Metric::L2,
-                DistanceFn::Dot => flat_knn::Metric::Dot,
-            },
-        );
-        rs.into_iter().map(|(_, idx)| ids2visit[idx]).collect()
+    fn available_level(&self) -> Option<usize> {
+        let mut count = self.buffer.occupied();
+        self.levels
+            .iter()
+            .enumerate()
+            .find(|(_, level)| {
+                let occupied = level.occupied();
+                let fits = level.size() - occupied >= count;
+                if !fits {
+                    count += occupied;
+                }
+                fits
+            })
+            .map(|(i, _)| i)
     }
 
-    fn insert(&mut self, value: Array, id: Id) {
+    fn add_level(&mut self) -> usize {
+        let level_index_config = self.get_level_index_config();
+        let n_buckets = self.arity.pow(self.levels.len() as u32 + 1);
+        let level_index = LevelIndexBuilder::default()
+            .id(format!("{}", self.levels.len()))
+            .n_buckets(n_buckets)
+            .input_shape(self.input_shape)
+            .model(level_index_config.model.clone())
+            .model_device(self.device.clone())
+            .bucket_size(level_index_config.bucket_size)
+            .distance_fn(self.distance_fn.clone())
+            .build()
+            .unwrap();
+        self.levels.push(level_index);
+        self.levels.len() - 1
+    }
+
+    fn get_level_index_config(&self) -> LevelIndexConfig {
+        let curr_level = self.levels.len();
+        self.levels_config
+            .iter()
+            .take_while(|(level, _)| **level <= curr_level)
+            .last()
+            .map(|(_, config)| config.to_owned())
+            .unwrap()
+    }
+
+    fn lower_level_data(&mut self, level_idx: usize) -> (Array, Vec<Id>) {
+        let (data, ids): (Vec<Array>, Vec<Vec<Id>>) = self
+            .levels
+            .iter_mut()
+            .take(level_idx)
+            .map(|level| level.get_data())
+            .unzip();
+        let (buffer_data, buffer_ids) = self.buffer.get_data();
+        let data = data
+            .into_iter()
+            .flatten()
+            .chain(buffer_data)
+            .collect::<Vec<_>>();
+        let ids = ids
+            .into_iter()
+            .flatten()
+            .chain(buffer_ids)
+            .collect::<Vec<_>>();
+        (data, ids)
+    }
+
+    pub fn insert(&mut self, value: Array, id: Id) {
         if self.buffer.has_space(1) {
             self.buffer.insert(value, id);
             return; // value fits into buffer
@@ -342,24 +282,37 @@ impl BentleySaxeIndex {
         };
     }
 
-    fn size(&self) -> usize {
+    pub fn size(&self) -> usize {
         self.levels.iter().map(|level| level.size()).sum::<usize>() + self.buffer.size
     }
 
-    fn occupied(&self) -> usize {
-        println!(
-            "Buffer occupied: {}, Levels occupied: {}",
-            self.buffer.occupied(),
-            self.levels
-                .iter()
-                .map(|level| level.occupied())
-                .sum::<usize>()
-        );
+    pub fn n_buckets(&self) -> usize {
+        self.levels.iter().map(|level| level.n_buckets()).sum()
+    }
+
+    pub fn occupied(&self) -> usize {
         self.levels
             .iter()
             .map(|level| level.occupied())
             .sum::<usize>()
             + self.buffer.occupied()
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+pub enum CompoundStrategy {
+    #[default]
+    #[serde(rename = "bentley_saxe")]
+    BentleySaxe,
+}
+
+impl CompoundStrategy {
+    pub fn compound(&self, index: &mut Index) {
+        match self {
+            CompoundStrategy::BentleySaxe => {
+                todo!()
+            }
+        }
     }
 }
 
@@ -639,13 +592,6 @@ mod tests {
     }
 
     #[test]
-    fn test_index_config_build_success() {
-        let config = create_test_config();
-        let index = config.build().unwrap();
-        assert!(matches!(index, Index::BentleySaxe(_)));
-    }
-
-    #[test]
     fn test_index_config_build_empty_levels() {
         let mut config = create_test_config();
         config.levels.clear();
@@ -730,10 +676,8 @@ mod tests {
     fn test_bentley_saxe_index_available_level() {
         let config = create_test_config();
         let index = config.build().unwrap();
-
-        let Index::BentleySaxe(bs_index) = index;
         // Initially no levels, so should return None
-        assert_eq!(bs_index.available_level(), None);
+        assert_eq!(index.available_level(), None);
     }
 
     #[test]
@@ -741,8 +685,7 @@ mod tests {
         let config = create_test_config();
         let index = config.build().unwrap();
 
-        let Index::BentleySaxe(bs_index) = index;
-        let level_config = bs_index.get_level_index_config();
+        let level_config = index.get_level_index_config();
         assert_eq!(level_config.bucket_size, 5000); // default value
     }
 
@@ -769,11 +712,10 @@ mod tests {
         let config = create_test_config();
         let index = config.build().unwrap();
 
-        let Index::BentleySaxe(bs_index) = index;
         // Should have no levels initially
-        assert_eq!(bs_index.levels.len(), 0);
+        assert_eq!(index.levels.len(), 0);
         // Should have a buffer
-        assert_eq!(bs_index.buffer.size, 10);
+        assert_eq!(index.buffer.size, 10);
     }
 
     #[test]
@@ -781,8 +723,7 @@ mod tests {
         let config = create_test_config();
         let mut index = config.build().unwrap();
 
-        let Index::BentleySaxe(ref mut bs_index) = index;
-        let (data, ids) = bs_index.lower_level_data(0);
+        let (data, ids) = index.lower_level_data(0);
         // Should only have buffer data initially
         assert!(data.is_empty());
         assert!(ids.is_empty());
