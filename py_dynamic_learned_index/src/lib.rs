@@ -36,15 +36,16 @@ impl DynamicLearnedIndexBuilder {
         Ok(builder)
     }
 
-    fn levelling(&self, levelling: &str) -> PyResult<Self> {
+    fn compaction_strategy(&self, compaction: &str) -> PyResult<Self> {
         let mut builder = self.clone();
-        match levelling {
+        match compaction {
             "bentley_saxe" => {
-                builder.builder.levelling = dynamic_learned_index::Levelling::BentleySaxe;
+                builder.builder.compaction_strategy =
+                    dynamic_learned_index::CompactionStrategy::BentleySaxe;
             }
             _ => {
                 return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "Invalid levelling type",
+                    "Invalid compaction strategy",
                 ))
             }
         }

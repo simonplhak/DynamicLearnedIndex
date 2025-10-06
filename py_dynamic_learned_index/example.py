@@ -10,7 +10,7 @@ builder = (
         .input_shape(input_shape)  # the shape of the input vector
         .distance_fn('dot')  # options: dot|l2
         .arity(3)  # arity of the tree structure created by the index
-        .levelling('bentley_saxe')  # type of levelling used to construct new levels of tree; options: bentley_saxe
+        .compaction_strategy('bentley_saxe')  # type of levelling used to construct new levels of tree; options: bentley_saxe
 )
 
 # optional: make model device use gpu

@@ -1,4 +1,4 @@
-levelling: bentley_saxe
+compaction_strategy: bentley_saxe
 levels:
   0:
     model:

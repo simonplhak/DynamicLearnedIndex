@@ -14,17 +14,9 @@ use measure_time_macro::log_time;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub enum Levelling {
-    #[default]
-    #[serde(rename = "bentley_saxe")]
-    BentleySaxe,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
-    pub levelling: Levelling,
-    pub compound_strategy: CompoundStrategy,
+    pub compaction_strategy: CompactionStrategy,
     pub levels: HashMap<usize, LevelIndexConfig>,
     pub buffer_size: usize,
     pub input_shape: usize,
@@ -38,8 +30,7 @@ impl Default for IndexConfig {
         let mut levels = HashMap::new();
         levels.insert(0, Default::default());
         Self {
-            levelling: Default::default(),
-            compound_strategy: Default::default(),
+            compaction_strategy: Default::default(),
             levels,
             buffer_size: 5000,
             input_shape: 768,
@@ -72,12 +63,14 @@ impl IndexConfig {
             levels: Vec::new(),
             buffer,
             distance_fn: self.distance_fn,
+            compaction_strategy: self.compaction_strategy,
         };
         Ok(index)
     }
 }
 
 pub struct Index {
+    compaction_strategy: CompactionStrategy,
     levels_config: HashMap<usize, LevelIndexConfig>,
     input_shape: usize,
     arity: usize,
@@ -193,23 +186,7 @@ impl Index {
         (records, ids)
     }
 
-    fn available_level(&self) -> Option<usize> {
-        let mut count = self.buffer.occupied();
-        self.levels
-            .iter()
-            .enumerate()
-            .find(|(_, level)| {
-                let occupied = level.occupied();
-                let fits = level.size() - occupied >= count;
-                if !fits {
-                    count += occupied;
-                }
-                fits
-            })
-            .map(|(i, _)| i)
-    }
-
-    fn add_level(&mut self) -> usize {
+    pub fn add_level(&mut self) -> usize {
         let level_index_config = self.get_level_index_config();
         let n_buckets = self.arity.pow(self.levels.len() as u32 + 1);
         let level_index = LevelIndexBuilder::default()
@@ -236,50 +213,14 @@ impl Index {
             .unwrap()
     }
 
-    fn lower_level_data(&mut self, level_idx: usize) -> (Array, Vec<Id>) {
-        let (data, ids): (Vec<Array>, Vec<Vec<Id>>) = self
-            .levels
-            .iter_mut()
-            .take(level_idx)
-            .map(|level| level.get_data())
-            .unzip();
-        let (buffer_data, buffer_ids) = self.buffer.get_data();
-        let data = data
-            .into_iter()
-            .flatten()
-            .chain(buffer_data)
-            .collect::<Vec<_>>();
-        let ids = ids
-            .into_iter()
-            .flatten()
-            .chain(buffer_ids)
-            .collect::<Vec<_>>();
-        (data, ids)
-    }
-
     pub fn insert(&mut self, value: Array, id: Id) {
         if self.buffer.has_space(1) {
             self.buffer.insert(value, id);
             return; // value fits into buffer
         }
         debug!(levels = self.levels.len(), occupied = self.occupied(); "index:buffer_flush");
-        match self.available_level() {
-            Some(level_idx) => {
-                let (data, ids) = self.lower_level_data(level_idx);
-                let level = &mut self.levels[level_idx];
-                if level.size() == 0 {
-                    level.retrain(&data);
-                }
-                level.insert_many(data, ids);
-            }
-            None => {
-                let level_idx = self.add_level();
-                let (data, ids) = self.lower_level_data(level_idx);
-                let level = &mut self.levels[level_idx];
-                level.train(&data);
-                level.insert_many(data, ids);
-            }
-        };
+        // let strategy = self.compaction_strategy.clone();
+        self.compaction_strategy.clone().compact(self);
     }
 
     pub fn size(&self) -> usize {
@@ -300,17 +241,71 @@ impl Index {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub enum CompoundStrategy {
+pub enum CompactionStrategy {
     #[default]
     #[serde(rename = "bentley_saxe")]
     BentleySaxe,
 }
 
-impl CompoundStrategy {
-    pub fn compound(&self, index: &mut Index) {
+impl CompactionStrategy {
+    fn available_level(&self, index: &Index) -> Option<usize> {
+        let mut count = index.buffer.occupied();
+        index
+            .levels
+            .iter()
+            .enumerate()
+            .find(|(_, level)| {
+                let occupied = level.occupied();
+                let fits = level.size() - occupied >= count;
+                if !fits {
+                    count += occupied;
+                }
+                fits
+            })
+            .map(|(i, _)| i)
+    }
+
+    fn lower_level_data(&self, index: &mut Index, level_idx: usize) -> (Array, Vec<Id>) {
+        let (data, ids): (Vec<Array>, Vec<Vec<Id>>) = index
+            .levels
+            .iter_mut()
+            .take(level_idx)
+            .map(|level| level.get_data())
+            .unzip();
+        let (buffer_data, buffer_ids) = index.buffer.get_data();
+        let data = data
+            .into_iter()
+            .flatten()
+            .chain(buffer_data)
+            .collect::<Vec<_>>();
+        let ids = ids
+            .into_iter()
+            .flatten()
+            .chain(buffer_ids)
+            .collect::<Vec<_>>();
+        (data, ids)
+    }
+
+    pub fn compact(&self, index: &mut Index) {
         match self {
-            CompoundStrategy::BentleySaxe => {
-                todo!()
+            CompactionStrategy::BentleySaxe => {
+                match self.available_level(index) {
+                    Some(level_idx) => {
+                        let (data, ids) = self.lower_level_data(index, level_idx);
+                        let level = &mut index.levels[level_idx];
+                        if level.size() == 0 {
+                            level.retrain(&data);
+                        }
+                        level.insert_many(data, ids);
+                    }
+                    None => {
+                        let level_idx = index.add_level();
+                        let (data, ids) = self.lower_level_data(index, level_idx);
+                        let level = &mut index.levels[level_idx];
+                        level.train(&data);
+                        level.insert_many(data, ids);
+                    }
+                };
             }
         }
     }
@@ -511,14 +506,13 @@ mod tests {
         levels.insert(0, LevelIndexConfig::default());
 
         IndexConfig {
-            levelling: Levelling::BentleySaxe,
             levels,
             buffer_size: 10,
             input_shape: 3,
             arity: 2,
             device: ModelDevice::Cpu,
             distance_fn: DistanceFn::Dot,
-            compound_strategy: CompoundStrategy::BentleySaxe,
+            compaction_strategy: CompactionStrategy::BentleySaxe,
         }
     }
 
@@ -539,7 +533,6 @@ mod tests {
         assert_eq!(config.arity, 3);
         assert!(matches!(config.device, ModelDevice::Cpu));
         assert!(matches!(config.distance_fn, DistanceFn::Dot));
-        assert!(matches!(config.levelling, Levelling::BentleySaxe));
         assert!(config.levels.contains_key(&0));
     }
 
@@ -677,7 +670,7 @@ mod tests {
         let config = create_test_config();
         let index = config.build().unwrap();
         // Initially no levels, so should return None
-        assert_eq!(index.available_level(), None);
+        assert_eq!(index.compaction_strategy.available_level(&index), None);
     }
 
     #[test]
@@ -723,7 +716,10 @@ mod tests {
         let config = create_test_config();
         let mut index = config.build().unwrap();
 
-        let (data, ids) = index.lower_level_data(0);
+        let (data, ids) = index
+            .compaction_strategy
+            .clone()
+            .lower_level_data(&mut index, 0);
         // Should only have buffer data initially
         assert!(data.is_empty());
         assert!(ids.is_empty());

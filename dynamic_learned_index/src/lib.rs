@@ -11,7 +11,7 @@ mod sampling;
 mod search_strategy;
 pub mod types;
 pub use distance_fn::DistanceFn;
-pub use index::{Index, IndexConfig, Levelling};
+pub use index::{CompactionStrategy, Index, IndexConfig};
 pub use model::ModelDevice;
 pub use search_strategy::*;
 pub use types::Id;

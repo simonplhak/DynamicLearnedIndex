@@ -107,7 +107,7 @@ Default values can be found via `cli_dynamic_learned_index defaults dataset` com
 Example config:
 
 ```yaml
-levelling: bentley_saxe
+compaction_strategy: bentley_saxe
 levels:
   0:
     model:
@@ -135,7 +135,7 @@ arity: 3
 device: cpu
 ```
 
-`levelling`: levelling strategy, can be `bentley_saxe`
+`compaction_strategy`: compaction strategy, can be `bentley_saxe`
 
 `levels`: levels of the index, specification for each level are taken from the previous level until the level index matches the level in the config. The first level is always 0.
 
