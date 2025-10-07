@@ -57,5 +57,15 @@
             },
 			"label": "docker: push build"
 		},
+		{
+			"type": "shell",
+			"command": "scp -r configs xplhak1@cybela13:configs",
+			"problemMatcher": [
+			],
+			"group": {
+                "kind": "build",
+            },
+			"label": "sync configs with remote"
+		},
 	]
 }
