@@ -13,7 +13,18 @@ Then run experiment with rust implementation:
 
 ```shell
 cargo build --release
-./target/release/cli_dynamic_learned_index experiment compare2python  data/k300/ --skip-validation --start-from-one --force -n 1 5000 10000 30000 40000 50000 100000 --search-strategy model -i configs/python_vers.yaml
+./target/release/cli_dynamic_learned_index experiment compare2python  data/k300/ --skip-validation --start-from-one --force -n 1000 2500 5000 7500 10000 --search-strategy model -i configs/python_vers.yaml
+```
+
+or via docker:
+
+```shell
+# build the docker image first time
+docker build -t dli-cli .
+# optionally push to remote server
+sudo docker save dli-cli:latest | ssh xplhak1@cybela13 'docker load'
+# run the experiment
+docker run -it --rm -v ~/experiments_data:/app/experiments_data -v ~/data:/app/data -v ~/configs:/app/configs dli-cli experiment compare2python  /app/data/k300/ --skip-validation --start-from-one --force -n 1000 2500 5000 7500 10000 --search-strategy model -i configs/python_vers.yaml
 ```
 
 Then you can plot the results with:
