@@ -180,7 +180,13 @@ impl Model {
     }
 
     pub fn train(&mut self, xs: &ArraySlice) {
-        let xs = sampling::sample(xs, self.train_params.threshold_samples, self.input_shape);
+        let sample_size = sampling::select_sample_size(
+            self.labels,
+            xs.len() / self.input_shape,
+            self.train_params.threshold_samples,
+        );
+        info!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
+        let xs = sampling::sample(xs, sample_size, self.input_shape);
         let ys = clustering::compute_labels(
             &xs,
             &self.label_method,
