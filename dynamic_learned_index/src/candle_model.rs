@@ -91,15 +91,33 @@ impl ModelBuilder {
         let label_method = self.label_method.ok_or(BuildError::MissingAttribute)?;
         let varmap = VarMap::new();
         let vs = VarBuilder::from_varmap(&varmap, DType::F32, &device);
-        let input_nodes = self.input_nodes.ok_or(BuildError::MissingAttribute)?;
+        let input_nodes = self.input_nodes.ok_or(BuildError::MissingAttribute)? as usize;
         let labels = self.labels.ok_or(BuildError::MissingAttribute)?;
         assert!(labels > 0, "labels must be greater than 0");
         let train_params = self.train_params.clone().unwrap_or_default();
         let retrain_params = self.retrain_params.clone().unwrap_or_default();
-        let model = CandleModel {
-            ln1: linear(input_nodes as usize, 256, vs.pp("ln1")).unwrap(),
-            ln2: linear(256, labels, vs.pp("ln2")).unwrap(),
-        };
+        let (mut layers, in_nodes) = self.layers.iter().enumerate().fold(
+            (Vec::new(), input_nodes),
+            |(mut layers, input_nodes), (i, layer)| {
+                let (layers, output_nodes) = match layer {
+                    ModelLayer::Linear(nodes) => {
+                        let lin = linear(input_nodes, *nodes as usize, vs.pp(format!("layer_{i}")))
+                            .unwrap();
+                        layers.push(CandleModelLayer::Linear(lin));
+                        (layers, *nodes as usize)
+                    }
+                    ModelLayer::ReLU => {
+                        layers.push(CandleModelLayer::ReLU);
+                        (layers, input_nodes)
+                    }
+                };
+                (layers, output_nodes)
+            },
+        );
+        let lin =
+            linear(in_nodes, labels, vs.pp("final")).map_err(|_| BuildError::ModelCreation)?;
+        layers.push(CandleModelLayer::Linear(lin));
+        let model = CandleModel { layers };
         let model = Model {
             model,
             varmap,
@@ -107,7 +125,7 @@ impl ModelBuilder {
             device,
             train_params,
             retrain_params,
-            input_shape: input_nodes as usize,
+            input_shape: input_nodes,
             label_method,
         };
         Ok(model)
@@ -243,25 +261,23 @@ impl Model {
     }
 }
 
+enum CandleModelLayer {
+    Linear(Linear),
+    ReLU,
+}
 struct CandleModel {
-    ln1: Linear,
-    ln2: Linear,
+    layers: Vec<CandleModelLayer>,
 }
 
 // Implement the forward pass for our model, which is required by the
 // `Module` trait. This is where we chain the layers and activations.
 impl Module for CandleModel {
     fn forward(&self, xs: &Tensor) -> CandleResult<Tensor> {
-        // 1. Pass input through the first linear layer.
-        let xs = self.ln1.forward(xs)?;
-
-        // 2. Apply the ReLU activation function.
-        let xs = xs.relu()?;
-
-        // 3. Pass the result through the second linear layer.
-        let xs = self.ln2.forward(&xs)?;
-
-        // Return the final tensor.
-        Ok(xs)
+        self.layers
+            .iter()
+            .try_fold(xs.clone(), |acc, layer| match layer {
+                CandleModelLayer::Linear(lin) => lin.forward(&acc),
+                CandleModelLayer::ReLU => acc.relu(),
+            })
     }
 }
