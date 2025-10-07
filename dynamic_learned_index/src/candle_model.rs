@@ -150,9 +150,13 @@ impl Model {
             .to_dtype(DType::F32)
             .unwrap();
 
-        let final_result = self.model.forward(&tensor_test_votes).unwrap();
-        let x = final_result.squeeze(0).unwrap().to_vec1::<f32>().unwrap();
-        x.into_iter().enumerate().collect::<Vec<_>>()
+        let logits = self.model.forward(&tensor_test_votes).unwrap();
+        let final_result = ops::softmax(&logits, D::Minus1).unwrap();
+        let predictions = final_result.squeeze(0).unwrap().to_vec1::<f32>().unwrap();
+        let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
+        predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        assert!(predictions.len() <= self.labels);
+        predictions
     }
 
     pub fn predict_many(&self, xs: &ArraySlice) -> Vec<usize> {
