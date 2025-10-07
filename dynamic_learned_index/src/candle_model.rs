@@ -3,6 +3,8 @@ use candle_core::{Device, Result as CandleResult};
 use candle_nn::{linear, Linear, Module, Optimizer, VarBuilder, VarMap};
 use candle_nn::{loss, ops};
 use log::info;
+use rand::rng;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::distance_fn::LabelMethod;
@@ -168,24 +170,72 @@ impl Model {
             self.input_shape,
             self.train_params.max_iters,
         );
-        let dim = xs.len() / self.input_shape;
-        let xs = Tensor::from_vec(xs.to_vec(), (dim, self.input_shape), &self.device)
+
+        let optim_config = candle_nn::ParamsAdamW {
+            lr: 1e-3,
+            weight_decay: 0.0, // Make it behave like regular Adam
+            ..Default::default()
+        };
+        let mut opt = candle_nn::AdamW::new(self.varmap.all_vars(), optim_config).unwrap();
+
+        for _ in 0..self.train_params.epochs {
+            // Create shuffled batches
+            let batches = self.create_shuffled_batches(&xs, &ys);
+
+            for (batch_xs, batch_ys) in batches {
+                let logits = self.model.forward(&batch_xs).unwrap();
+                let log_sm = ops::log_softmax(&logits, D::Minus1).unwrap();
+                let loss = loss::nll(&log_sm, &batch_ys).unwrap();
+                opt.backward_step(&loss).unwrap();
+            }
+        }
+    }
+
+    fn create_shuffled_batches(&self, xs: &[f32], ys: &[i32]) -> Vec<(Tensor, Tensor)> {
+        let total_samples = ys.len();
+        let batch_size = self.train_params.batch_size as usize;
+
+        // Create indices for shuffling
+        let mut indices: Vec<usize> = (0..total_samples).collect();
+
+        // Proper shuffle using rng
+        indices.shuffle(&mut rng());
+
+        let mut batches = Vec::new();
+
+        for chunk_indices in indices.chunks(batch_size) {
+            if chunk_indices.is_empty() {
+                continue;
+            }
+
+            // Collect batch data
+            let mut batch_xs_vec = Vec::with_capacity(chunk_indices.len() * self.input_shape);
+            let mut batch_ys_vec = Vec::with_capacity(chunk_indices.len());
+
+            for &idx in chunk_indices {
+                let start_idx = idx * self.input_shape;
+                let end_idx = start_idx + self.input_shape;
+                batch_xs_vec.extend_from_slice(&xs[start_idx..end_idx]);
+                batch_ys_vec.push(ys[idx] as i64);
+            }
+
+            // Create tensors for this batch
+            let batch_xs = Tensor::from_vec(
+                batch_xs_vec,
+                (chunk_indices.len(), self.input_shape),
+                &self.device,
+            )
             .unwrap()
             .to_dtype(DType::F32)
             .unwrap();
-        let ys = Tensor::from_vec(
-            ys.into_iter().map(|y| y as i64).collect::<Vec<i64>>(),
-            (dim,),
-            &self.device,
-        )
-        .unwrap();
-        let mut sgd = candle_nn::SGD::new(self.varmap.all_vars(), 0.001).unwrap();
-        for _ in 0..self.train_params.epochs {
-            let logits = self.model.forward(&xs).unwrap();
-            let log_sm = ops::log_softmax(&logits, D::Minus1).unwrap();
-            let loss = loss::nll(&log_sm, &ys).unwrap();
-            sgd.backward_step(&loss).unwrap();
+
+            let batch_ys =
+                Tensor::from_vec(batch_ys_vec, (chunk_indices.len(),), &self.device).unwrap();
+
+            batches.push((batch_xs, batch_ys));
         }
+
+        batches
     }
 
     pub fn retrain(&mut self, _xs: &ArraySlice) {
