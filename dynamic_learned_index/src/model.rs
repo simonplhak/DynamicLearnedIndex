@@ -77,7 +77,7 @@ impl Default for ModelConfig {
 #[serde(tag = "type", content = "value")]
 pub enum ModelLayer {
     #[serde(rename = "linear")]
-    Linear(i64),
+    Linear(usize),
     #[serde(rename = "relu")]
     ReLU,
 }
@@ -141,15 +141,18 @@ impl ModelBuilder {
             (nn::seq(), input_nodes),
             |(model, input_nodes), (i, layer)| {
                 let (model, output_nodes) = match layer {
-                    ModelLayer::Linear(nodes) => (
-                        model.add(nn::linear(
-                            &vs_root / format!("layer_{i}"),
-                            input_nodes,
-                            *nodes,
-                            Default::default(),
-                        )),
-                        *nodes,
-                    ),
+                    ModelLayer::Linear(nodes) => {
+                        let nodes = *nodes as i64;
+                        (
+                            model.add(nn::linear(
+                                &vs_root / format!("layer_{i}"),
+                                input_nodes,
+                                nodes,
+                                Default::default(),
+                            )),
+                            nodes,
+                        )
+                    }
                     ModelLayer::ReLU => (model.add_fn(|xs| xs.relu()), input_nodes),
                 };
                 (model, output_nodes)

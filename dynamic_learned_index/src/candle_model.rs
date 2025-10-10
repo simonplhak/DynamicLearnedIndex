@@ -101,10 +101,9 @@ impl ModelBuilder {
             |(mut layers, input_nodes), (i, layer)| {
                 let (layers, output_nodes) = match layer {
                     ModelLayer::Linear(nodes) => {
-                        let lin = linear(input_nodes, *nodes as usize, vs.pp(format!("layer_{i}")))
-                            .unwrap();
+                        let lin = linear(input_nodes, *nodes, vs.pp(format!("layer_{i}"))).unwrap();
                         layers.push(CandleModelLayer::Linear(lin));
-                        (layers, *nodes as usize)
+                        (layers, *nodes)
                     }
                     ModelLayer::ReLU => {
                         layers.push(CandleModelLayer::ReLU);
