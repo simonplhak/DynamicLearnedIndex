@@ -78,7 +78,7 @@ struct ExperimentConfig {
     #[arg(long, default_value = "model")]
     search_strategy: CLISearchStrategy,
     /// Number of buckets to visit in each level
-    #[arg(short, long, default_value = "10_000", num_args = 0..)]
+    #[arg(short, long, default_value = "10000", num_args = 0..)]
     ncandidates: Vec<usize>,
     /// Limits original dataset size
     #[arg(short, long)]
