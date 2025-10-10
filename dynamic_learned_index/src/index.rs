@@ -405,7 +405,7 @@ impl LevelIndexBuilder {
         let buckets = (0..n_buckets)
             .map(|_| bucket_builder.build())
             .collect::<Result<Vec<_>, _>>()?;
-        let level_index = LevelIndex { model, buckets };
+        let level_index = LevelIndex::new(model, buckets);
         Ok(level_index)
     }
 }
@@ -416,6 +416,10 @@ pub struct LevelIndex {
 }
 
 impl LevelIndex {
+    fn new(model: Model, buckets: Vec<Bucket>) -> Self {
+        Self { model, buckets }
+    }
+
     fn size(&self) -> usize {
         self.buckets.iter().map(|bucket| bucket.size()).sum()
     }
