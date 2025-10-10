@@ -413,11 +413,16 @@ impl LevelIndexBuilder {
 pub struct LevelIndex {
     model: Model,
     buckets: Vec<Bucket>,
+    ids_map: HashMap<Id, (usize, usize)>, // Id -> (bucket_idx, record_idx)
 }
 
 impl LevelIndex {
     fn new(model: Model, buckets: Vec<Bucket>) -> Self {
-        Self { model, buckets }
+        Self {
+            model,
+            buckets,
+            ids_map: HashMap::new(),
+        }
     }
 
     fn size(&self) -> usize {
@@ -472,6 +477,8 @@ impl LevelIndex {
                 let id = ids.pop().unwrap();
                 let bucket_idx = assignments.pop().unwrap();
                 self.buckets[bucket_idx].insert(query, id);
+                self.ids_map
+                    .insert(id, (bucket_idx, self.buckets[bucket_idx].occupied() - 1));
             }
             assert!(assignments.is_empty());
             assert!(ids.is_empty());
