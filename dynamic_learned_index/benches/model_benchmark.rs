@@ -12,7 +12,7 @@ use test::Bencher;
 const VECTOR_DIM: usize = 768;
 const SAMPLE_SIZE: usize = 10000;
 const NUM_CLUSTERS: usize = 9;
-const BATCH_SIZE: i64 = 256;
+const BATCH_SIZE: usize = 256;
 const HIDDEN_NEURONS: usize = 256;
 const EPOCHS: usize = 1;
 

@@ -35,7 +35,7 @@ impl ModelDevice {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct TrainParams {
     pub threshold_samples: usize,
-    pub batch_size: i64,
+    pub batch_size: usize,
     pub epochs: usize,
     pub max_iters: usize, // Added for clustering iterations
 }
@@ -238,7 +238,10 @@ impl Model {
         let dataset = self.dataset(&xs, &ys);
         let mut opt = nn::Adam::default().build(&self.vs, 1e-3).unwrap();
         for _ in 0..self.train_params.epochs {
-            for (xs, ys) in dataset.train_iter(self.train_params.batch_size).shuffle() {
+            for (xs, ys) in dataset
+                .train_iter(self.train_params.batch_size as i64)
+                .shuffle()
+            {
                 let loss = self.model.forward(&xs).cross_entropy_for_logits(&ys);
                 opt.backward_step(&loss);
             }

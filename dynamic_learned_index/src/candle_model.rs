@@ -220,7 +220,7 @@ impl Model {
 
     fn create_shuffled_batches(&self, xs: &[f32], ys: &[i32]) -> Vec<(Tensor, Tensor)> {
         let total_samples = ys.len();
-        let batch_size = self.train_params.batch_size as usize;
+        let batch_size = self.train_params.batch_size;
 
         // Create indices for shuffling
         let mut indices: Vec<usize> = (0..total_samples).collect();
