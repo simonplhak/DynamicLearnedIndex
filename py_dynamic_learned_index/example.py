@@ -6,7 +6,8 @@ builder = DynamicLearnedIndexBuilder()
 input_shape = 768
 builder = (
     builder
-        .buffer_size(10)  # size of the buffer
+        .buffer_size(100)  # size of the buffer
+        .bucket_size(100)  # size of the bucket
         .input_shape(input_shape)  # the shape of the input vector
         .distance_fn('dot')  # options: dot|l2
         .arity(3)  # arity of the tree structure created by the index
@@ -33,9 +34,11 @@ for i, query in enumerate(queries):
     index.insert(query, i)
 
 k = 3
-nprobe = 1
+n_candidates = 100
 search_strategy = 'model'  # options: knn, model
 for i in range(0, len(queries) - 1, 50):
-    res = index.search(queries[i], k, nprobe=nprobe, search_strategy=search_strategy)
+    res = index.search(queries[i], k, n_candidates=n_candidates, search_strategy=search_strategy)
     print(f'For query "{i}" index found: {res}')
+
+print(f'n_buckets={index.n_buckets()}; n_levels={index.n_levels()}')
 
