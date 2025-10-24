@@ -231,6 +231,10 @@ impl Index {
         self.levels.iter().map(|level| level.n_buckets()).sum()
     }
 
+    pub fn n_levels(&self) -> usize {
+        self.levels.len()
+    }
+
     pub fn occupied(&self) -> usize {
         self.levels
             .iter()

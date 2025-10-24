@@ -271,6 +271,14 @@ impl DynamicLearnedIndex {
         let record = array2vec(record);
         self.index.insert(record, id);
     }
+
+    fn n_buckets(&self) -> usize {
+        self.index.n_buckets()
+    }
+
+    fn n_levels(&self) -> usize {
+        self.index.n_levels()
+    }
 }
 
 fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {
