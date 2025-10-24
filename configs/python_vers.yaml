@@ -22,3 +22,4 @@ input_shape: 768
 arity: 3
 device: cpu
 distance_fn: dot
+delete_method: oid_to_bucket
