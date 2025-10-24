@@ -91,6 +91,7 @@ fn swap_and_pop(
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum DeleteMethod {
     #[default]
+    #[serde(rename = "oid_to_bucket")]
     OidToBucket,
 }
 
