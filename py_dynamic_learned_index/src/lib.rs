@@ -1,7 +1,6 @@
 use dynamic_learned_index::{
-    index::LevelIndexConfig,
-    model::ModelConfig,
-    model::{ModelLayer, TrainParams},
+    index::{LevelIndexConfig, SearchParams, SearchStatistics},
+    model::{ModelConfig, ModelLayer, TrainParams},
     IndexConfig, ModelDevice,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
@@ -249,6 +248,23 @@ fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyRes
     }
 }
 
+#[pyclass]
+struct PySearchStatistics {
+    #[pyo3(get)]
+    total_visited_buckets: usize,
+    #[pyo3(get)]
+    total_visited_records: usize,
+}
+
+impl From<SearchStatistics> for PySearchStatistics {
+    fn from(stats: SearchStatistics) -> Self {
+        PySearchStatistics {
+            total_visited_buckets: stats.total_visited_buckets,
+            total_visited_records: stats.total_visited_records,
+        }
+    }
+}
+
 #[pymethods]
 impl DynamicLearnedIndex {
     #[new]
@@ -257,6 +273,21 @@ impl DynamicLearnedIndex {
             .build()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
         Ok(DynamicLearnedIndex { index })
+    }
+
+    #[pyo3(signature = (query, k, **py_kwargs))]
+    fn verbose_search<'py>(
+        &self,
+        py: Python<'py>,
+        query: PyReadonlyArray1<'py, f32>,
+        k: usize,
+        py_kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<(Bound<'py, PyArray1<u32>>, PySearchStatistics)> {
+        let query = array2vec(query);
+        let search_params = parse_search_kwargs(py_kwargs, k)?;
+        let (r, stats) = self.index.verbose_search(&query, search_params);
+        let x = r.into_pyarray_bound(py);
+        Ok((x, stats.into()))
     }
 
     #[pyo3(signature = (query, k, **py_kwargs))]
