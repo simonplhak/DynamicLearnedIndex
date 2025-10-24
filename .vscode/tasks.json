@@ -67,5 +67,15 @@
             },
 			"label": "sync configs with remote"
 		},
+		{
+			"type": "shell",
+			"command": "source env/bin/activate && cargo build --release && cd py_dynamic_learned_index && maturin develop && python -c 'import py_dynamic_learned_index; print(py_dynamic_learned_index.__version__)'",
+			"problemMatcher": [
+			],
+			"group": {
+                "kind": "build",
+            },
+			"label": "build python package"
+		},
 	]
 }
