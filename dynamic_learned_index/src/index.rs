@@ -85,8 +85,8 @@ pub struct Index {
 }
 
 pub struct SearchParams {
-    k: usize,
-    search_strategy: SearchStrategy,
+    pub k: usize,
+    pub search_strategy: SearchStrategy,
 }
 
 pub trait SearchParamsT {
