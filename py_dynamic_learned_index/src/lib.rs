@@ -228,13 +228,13 @@ impl DynamicLearnedIndex {
         let query = array2vec(query);
         let r = match py_kwargs {
             Some(kwargs) => {
-                let nprobe = kwargs
+                let n_candidates = kwargs
                     .iter()
-                    .find(|(key, _)| key.extract::<String>().unwrap_or_default() == "nprobe") // todo remove unwrap
+                    .find(|(key, _)| key.extract::<String>().unwrap_or_default() == "n_candidates") // todo remove unwrap
                     .map(|(_, value)| {
                         value.extract::<usize>().map_err(|_| {
                             PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                                "nprobe must be an integer",
+                                "n_candidates must be an integer",
                             )
                         })
                     })
@@ -246,9 +246,9 @@ impl DynamicLearnedIndex {
                     })
                     .map(|(_, value)| match value.extract::<String>() {
                         Ok(strategy) => match strategy.as_str() {
-                            "knn" => Ok(dynamic_learned_index::SearchStrategy::Base(nprobe)),
+                            "knn" => Ok(dynamic_learned_index::SearchStrategy::Base(n_candidates)),
                             "model" => {
-                                Ok(dynamic_learned_index::SearchStrategy::ModelDriven(nprobe))
+                                Ok(dynamic_learned_index::SearchStrategy::ModelDriven(n_candidates))
                             }
                             _ => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
                                 "Invalid search strategy",
