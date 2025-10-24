@@ -1,6 +1,5 @@
 #![feature(portable_simd)]
 mod bucket;
-pub mod candle_model;
 mod clustering;
 mod constants;
 pub mod distance_fn;

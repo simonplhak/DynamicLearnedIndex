@@ -1,13 +1,9 @@
 use crate::{
     bucket::{self, Bucket, Buffer, DeleteMethod},
-    // candle_model::{Model, ModelBuilder},
     errors::BuildError,
-    model::{Model, ModelBuilder},
-    model::{ModelConfig, ModelDevice},
+    model::{Model, ModelBuilder, ModelConfig, ModelDevice},
     types::{Array, ArraySlice},
-    DistanceFn,
-    Id,
-    SearchStrategy,
+    DistanceFn, Id, SearchStrategy,
 };
 use log::{debug, info};
 use measure_time_macro::log_time;
@@ -602,15 +598,6 @@ mod tests {
             compaction_strategy: CompactionStrategy::BentleySaxe,
             delete_method: DeleteMethod::OidToBucket,
         }
-    }
-
-    #[test]
-    fn test_model_device_to_tch_device() {
-        let cpu_device = ModelDevice::Cpu;
-        assert!(matches!(cpu_device.to_tch_device(), tch::Device::Cpu));
-
-        let gpu_device = ModelDevice::Gpu(0);
-        assert!(matches!(gpu_device.to_tch_device(), tch::Device::Cuda(0)));
     }
 
     #[test]

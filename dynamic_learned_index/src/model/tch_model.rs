@@ -1,5 +1,4 @@
 use log::info;
-use serde::{Deserialize, Serialize};
 use tch::{
     nn::{self, OptimizerConfig},
     vision::dataset::Dataset,
@@ -10,76 +9,16 @@ use crate::{
     clustering::{self},
     distance_fn::LabelMethod,
     errors::BuildError,
+    model::{ModelDevice, ModelLayer, TrainParams},
     sampling,
     types::ArraySlice,
 };
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub enum ModelDevice {
-    #[default]
-    #[serde(rename = "cpu")]
-    Cpu,
-    #[serde(rename = "gpu")]
-    Gpu(usize),
-}
-
-impl ModelDevice {
-    pub fn to_tch_device(&self) -> Device {
-        match self {
-            ModelDevice::Cpu => Device::Cpu,
-            ModelDevice::Gpu(gpu_no) => Device::Cuda(*gpu_no),
-        }
+fn to_tch_device(device: ModelDevice) -> Device {
+    match device {
+        ModelDevice::Cpu => Device::Cpu,
+        ModelDevice::Gpu(gpu_no) => Device::Cuda(gpu_no),
     }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct TrainParams {
-    pub threshold_samples: usize,
-    pub batch_size: usize,
-    pub epochs: usize,
-    pub max_iters: usize, // Added for clustering iterations
-}
-
-impl Default for TrainParams {
-    fn default() -> Self {
-        Self {
-            threshold_samples: 1000,
-            batch_size: 8,
-            epochs: 3,
-            max_iters: 10, // Default max iterations for clustering
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ModelConfig {
-    pub layers: Vec<ModelLayer>,
-    pub train_params: TrainParams,
-    pub retrain_params: TrainParams,
-}
-
-impl Default for ModelConfig {
-    fn default() -> Self {
-        Self {
-            layers: vec![
-                ModelLayer::Linear(256),
-                ModelLayer::ReLU,
-                ModelLayer::Linear(256),
-                ModelLayer::ReLU,
-            ],
-            train_params: Default::default(),
-            retrain_params: Default::default(),
-        }
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-#[serde(tag = "type", content = "value")]
-pub enum ModelLayer {
-    #[serde(rename = "linear")]
-    Linear(usize),
-    #[serde(rename = "relu")]
-    ReLU,
 }
 
 #[derive(Debug, Default)]
@@ -95,7 +34,7 @@ pub struct ModelBuilder {
 
 impl ModelBuilder {
     pub fn device(&mut self, device: ModelDevice) -> &mut Self {
-        self.device = Some(device.to_tch_device());
+        self.device = Some(to_tch_device(device));
         self
     }
 
@@ -301,4 +240,18 @@ fn tensor2vec_usize(tensor: &tch::Tensor) -> Vec<usize> {
 
 fn vec2tensor(vec: &ArraySlice) -> tch::Tensor {
     tch::Tensor::from_slice(vec)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_model_device_to_tch_device() {
+        let cpu_device = ModelDevice::Cpu;
+        assert!(matches!(to_tch_device(cpu_device), tch::Device::Cpu));
+
+        let gpu_device = ModelDevice::Gpu(0);
+        assert!(matches!(to_tch_device(gpu_device), tch::Device::Cuda(0)));
+    }
 }
