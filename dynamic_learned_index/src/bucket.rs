@@ -5,7 +5,7 @@ use crate::{
     types::{Array, ArrayNumType, ArraySlice},
     Id,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Buffer {
@@ -49,6 +49,15 @@ impl Buffer {
         (records, ids)
     }
 
+    pub fn delete(&mut self, id: &Id) -> Option<(Array, Id)> {
+        let idx = self.ids.iter().position(|inner_id| inner_id == id);
+        match idx {
+            Some(idx) => swap_and_pop(&mut self.records, &mut self.ids, idx, self.input_shape)
+                .map(|(deleted, _)| deleted),
+            None => None,
+        }
+    }
+
     pub fn has_space(&self, count: usize) -> bool {
         self.occupied() + count <= self.size
     }
@@ -56,6 +65,33 @@ impl Buffer {
     pub fn occupied(&self) -> usize {
         self.ids.len()
     }
+}
+
+fn swap_and_pop(
+    records: &mut Array,
+    ids: &mut Vec<Id>,
+    idx: usize,
+    input_shape: usize,
+) -> Option<((Array, Id), (usize, Id))> // (Deleted Array, Deleted Id), (New Index of Swapped Record, Swapped Id)
+{
+    let occupied = ids.len();
+    ids.swap(idx, occupied - 1);
+    let inner_id = ids.pop().unwrap(); // we are sure that there is something
+                                       // swap last record with the one to be removed
+    let record_start = idx * input_shape;
+    let last_record_start = (occupied - 1) * input_shape;
+    for i in 0..input_shape {
+        records.swap(record_start + i, last_record_start + i);
+    }
+    // Remove the record from the end
+    let removed_vector: Vec<f32> = records.drain(last_record_start..).collect();
+    Some(((removed_vector, inner_id), (idx, ids[idx])))
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub enum DeleteMethod {
+    #[default]
+    OidToBucket,
 }
 
 #[derive(Debug, Serialize)]
@@ -100,6 +136,22 @@ impl Bucket {
         let records = std::mem::take(&mut self.records);
         let ids = std::mem::take(&mut self.ids);
         (records, ids)
+    }
+
+    pub fn delete(
+        &mut self,
+        record_idx: usize,
+        delete_method: &DeleteMethod,
+    ) -> Option<((Array, Id), (usize, Id))> // (Deleted Array, Deleted Id), (New Index of Swapped Record, Swapped Id)
+    {
+        match delete_method {
+            DeleteMethod::OidToBucket => swap_and_pop(
+                &mut self.records,
+                &mut self.ids,
+                record_idx,
+                self.input_shape,
+            ),
+        }
     }
 
     pub fn has_space(&self, count: usize) -> bool {

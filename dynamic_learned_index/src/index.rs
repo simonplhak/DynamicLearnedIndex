@@ -23,6 +23,7 @@ pub struct IndexConfig {
     pub arity: usize,
     pub device: ModelDevice,
     pub distance_fn: DistanceFn,
+    pub delete_method: DeleteMethod,
 }
 
 impl Default for IndexConfig {
@@ -37,6 +38,7 @@ impl Default for IndexConfig {
             arity: 3,
             device: Default::default(),
             distance_fn: Default::default(),
+            delete_method: Default::default(),
         }
     }
 }
@@ -64,6 +66,7 @@ impl IndexConfig {
             buffer,
             distance_fn: self.distance_fn,
             compaction_strategy: self.compaction_strategy,
+            delete_method: self.delete_method,
         };
         Ok(index)
     }
@@ -78,6 +81,7 @@ pub struct Index {
     levels: Vec<LevelIndex>,
     buffer: Buffer,
     distance_fn: DistanceFn,
+    delete_method: DeleteMethod,
 }
 
 pub struct SearchParams {
@@ -221,6 +225,19 @@ impl Index {
         debug!(levels = self.levels.len(), occupied = self.occupied(); "index:buffer_flush");
         // let strategy = self.compaction_strategy.clone();
         self.compaction_strategy.clone().compact(self);
+    }
+
+    pub fn delete(&mut self, id: Id) -> Option<(Array, Id)> {
+        if let Some(deleted) = self.buffer.delete(&id) {
+            return Some(deleted);
+        }
+        for level in &mut self.levels {
+            if let Some(deleted) = level.delete(&id, &self.delete_method) {
+                // todo move delete method spec to index
+                return Some(deleted);
+            }
+        }
+        None
     }
 
     pub fn size(&self) -> usize {
@@ -503,6 +520,22 @@ impl LevelIndex {
         )
     }
 
+    fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> Option<(Array, Id)> {
+        let deleted = self.ids_map.get(id).cloned();
+        if let Some((bucket_idx, record_idx)) = deleted {
+            let bucket = &mut self.buckets[bucket_idx];
+            let (deleted, (swapped_new_idx, swapped_id)) =
+                bucket.delete(record_idx, delete_method)?;
+            let (old_bucket_idx, old_record_idx) = self.ids_map.remove(id).unwrap(); // we are sure it exists
+            assert_eq!(old_bucket_idx, bucket_idx);
+            assert_eq!(old_record_idx, bucket.occupied());
+            self.ids_map
+                .insert(swapped_id, (bucket_idx, swapped_new_idx));
+            return Some(deleted);
+        }
+        None
+    }
+
     fn n_buckets(&self) -> usize {
         self.buckets.len()
     }
@@ -528,6 +561,7 @@ mod tests {
             device: ModelDevice::Cpu,
             distance_fn: DistanceFn::Dot,
             compaction_strategy: CompactionStrategy::BentleySaxe,
+            delete_method: DeleteMethod::OidToBucket,
         }
     }
 
