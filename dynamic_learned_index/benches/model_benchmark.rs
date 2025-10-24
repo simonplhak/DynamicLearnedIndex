@@ -2,9 +2,12 @@
 
 extern crate test;
 
-use dynamic_learned_index::candle_model::{Model as ModelNew, ModelBuilder as ModelNewBuilder};
 use dynamic_learned_index::distance_fn::LabelMethod;
-use dynamic_learned_index::model::{Model, ModelBuilder, ModelLayer, TrainParams};
+use dynamic_learned_index::model::candle_model::{
+    Model as ModelNew, ModelBuilder as ModelNewBuilder,
+};
+use dynamic_learned_index::model::tch_model::{Model, ModelBuilder};
+use dynamic_learned_index::model::{ModelLayer, TrainParams};
 use dynamic_learned_index::ModelDevice;
 use rand::Rng;
 use test::Bencher;
