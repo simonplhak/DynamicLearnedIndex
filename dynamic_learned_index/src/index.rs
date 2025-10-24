@@ -126,13 +126,18 @@ impl SearchParamsT for usize {
     }
 }
 
+pub struct SearchStatistics {
+    pub total_visited_buckets: usize,
+    pub total_visited_records: usize,
+}
+
 impl Index {
     pub fn search<S>(&self, query: &ArraySlice, params: S) -> Vec<Id>
     where
         S: SearchParamsT,
     {
         let params = params.into_search_params();
-        let (records2visit, ids2visit) = self.records2visit(query, params.search_strategy);
+        let (records2visit, ids2visit, _) = self.records2visit(query, params.search_strategy);
         let rs = flat_knn::knn(
             records2visit,
             query,
@@ -149,7 +154,8 @@ impl Index {
         &self,
         query: &ArraySlice,
         search_strategy: SearchStrategy,
-    ) -> (Vec<&[f32]>, Vec<Id>) {
+    ) -> (Vec<&[f32]>, Vec<Id>, usize) {
+        // (records, ids, total_visited_buckets)
         let bucket_predictions = self
             .levels
             .iter()
@@ -157,6 +163,7 @@ impl Index {
             .collect::<Vec<_>>();
         let level_bucket_idxs =
             search_strategy.buckets2visit(bucket_predictions, self.buffer.occupied());
+        let buckets2visit_count: usize = level_bucket_idxs.iter().map(|v| v.len()).sum();
 
         // Pre-calculate total capacity to avoid repeated allocations
         let total_capacity = level_bucket_idxs
@@ -193,7 +200,7 @@ impl Index {
             ids.push(self.buffer.ids[i]);
         }
 
-        (records, ids)
+        (records, ids, buckets2visit_count)
     }
 
     pub fn add_level(&mut self) -> usize {
@@ -264,6 +271,32 @@ impl Index {
             .map(|level| level.occupied())
             .sum::<usize>()
             + self.buffer.occupied()
+    }
+
+    pub fn verbose_search<S>(&self, query: &ArraySlice, params: S) -> (Vec<Id>, SearchStatistics)
+    where
+        S: SearchParamsT,
+    {
+        let params = params.into_search_params();
+        let (records2visit, ids2visit, total_visited_buckets) =
+            self.records2visit(query, params.search_strategy);
+        let rs = flat_knn::knn(
+            records2visit,
+            query,
+            params.k,
+            match self.distance_fn {
+                DistanceFn::L2 => flat_knn::Metric::L2,
+                DistanceFn::Dot => flat_knn::Metric::Dot,
+            },
+        );
+        let res = rs.into_iter().map(|(_, idx)| ids2visit[idx]).collect();
+        (
+            res,
+            SearchStatistics {
+                total_visited_buckets,
+                total_visited_records: ids2visit.len(),
+            },
+        )
     }
 }
 
