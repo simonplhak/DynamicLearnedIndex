@@ -5,35 +5,12 @@ use candle_nn::{loss, ops};
 use log::info;
 use rand::rng;
 use rand::seq::SliceRandom;
-use serde::{Deserialize, Serialize};
 
 use crate::distance_fn::LabelMethod;
 use crate::errors::BuildError;
 use crate::model::{ModelDevice, ModelLayer, TrainParams};
 use crate::types::ArraySlice;
 use crate::{clustering, sampling};
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ModelConfig {
-    pub layers: Vec<ModelLayer>,
-    pub train_params: TrainParams,
-    pub retrain_params: TrainParams,
-}
-
-impl Default for ModelConfig {
-    fn default() -> Self {
-        Self {
-            layers: vec![
-                ModelLayer::Linear(256),
-                ModelLayer::ReLU,
-                ModelLayer::Linear(256),
-                ModelLayer::ReLU,
-            ],
-            train_params: Default::default(),
-            retrain_params: Default::default(),
-        }
-    }
-}
 
 #[derive(Debug, Default)]
 pub struct ModelBuilder {
