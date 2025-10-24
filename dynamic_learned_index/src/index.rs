@@ -93,6 +93,12 @@ pub trait SearchParamsT {
     fn into_search_params(self) -> SearchParams;
 }
 
+impl SearchParamsT for SearchParams {
+    fn into_search_params(self) -> SearchParams {
+        self
+    }
+}
+
 impl SearchParamsT for () {
     fn into_search_params(self) -> SearchParams {
         SearchParams {
