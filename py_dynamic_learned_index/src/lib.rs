@@ -207,6 +207,48 @@ struct DynamicLearnedIndex {
     index: dynamic_learned_index::Index,
 }
 
+fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyResult<SearchParams> {
+    match py_kwargs {
+        Some(kwargs) => {
+            let n_candidates = kwargs
+                .iter()
+                .find(|(key, _)| key.extract::<String>().unwrap_or_default() == "n_candidates") // todo remove unwrap
+                .map(|(_, value)| {
+                    value.extract::<usize>().map_err(|_| {
+                        PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                            "n_candidates must be an integer",
+                        )
+                    })
+                })
+                .unwrap_or(Ok(1))?;
+            let search_strategy = kwargs
+                .iter()
+                .find(|(key, _)| key.extract::<String>().unwrap_or_default() == "search_strategy")
+                .map(|(_, value)| match value.extract::<String>() {
+                    Ok(strategy) => match strategy.as_str() {
+                        "knn" => Ok(dynamic_learned_index::SearchStrategy::Base(n_candidates)),
+                        "model" => Ok(dynamic_learned_index::SearchStrategy::ModelDriven(
+                            n_candidates,
+                        )),
+                        _ => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                            "Invalid search strategy",
+                        )),
+                    },
+                    Err(_) => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
+                        "search_strategy must be a string",
+                    )),
+                })
+                .unwrap_or(Ok(Default::default()))?;
+            Ok(SearchParams { search_strategy, k })
+        }
+
+        None => Ok(SearchParams {
+            search_strategy: Default::default(),
+            k,
+        }),
+    }
+}
+
 #[pymethods]
 impl DynamicLearnedIndex {
     #[new]
@@ -226,43 +268,8 @@ impl DynamicLearnedIndex {
         py_kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyArray1<u32>>> {
         let query = array2vec(query);
-        let r = match py_kwargs {
-            Some(kwargs) => {
-                let n_candidates = kwargs
-                    .iter()
-                    .find(|(key, _)| key.extract::<String>().unwrap_or_default() == "n_candidates") // todo remove unwrap
-                    .map(|(_, value)| {
-                        value.extract::<usize>().map_err(|_| {
-                            PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                                "n_candidates must be an integer",
-                            )
-                        })
-                    })
-                    .unwrap_or(Ok(1))?;
-                let search_strategy = kwargs
-                    .iter()
-                    .find(|(key, _)| {
-                        key.extract::<String>().unwrap_or_default() == "search_strategy"
-                    })
-                    .map(|(_, value)| match value.extract::<String>() {
-                        Ok(strategy) => match strategy.as_str() {
-                            "knn" => Ok(dynamic_learned_index::SearchStrategy::Base(n_candidates)),
-                            "model" => {
-                                Ok(dynamic_learned_index::SearchStrategy::ModelDriven(n_candidates))
-                            }
-                            _ => Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                                "Invalid search strategy",
-                            )),
-                        },
-                        Err(_) => Err(PyErr::new::<pyo3::exceptions::PyTypeError, _>(
-                            "search_strategy must be a string",
-                        )),
-                    })
-                    .unwrap_or(Ok(Default::default()))?;
-                self.index.search(&query, (k, search_strategy))
-            }
-            None => self.index.search(&query, k),
-        };
+        let search_params = parse_search_kwargs(py_kwargs, k)?;
+        let r = self.index.search(&query, search_params);
         let x = r.into_pyarray_bound(py);
         Ok(x)
     }
