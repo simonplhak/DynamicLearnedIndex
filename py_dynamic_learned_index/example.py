@@ -34,7 +34,7 @@ for i, query in enumerate(queries):
     index.insert(query, i)
 
 k = 3
-n_candidates = 100
+n_candidates = 300
 search_strategy = 'model'  # options: knn, model
 for i in range(0, len(queries) - 1, 50):
     res = index.search(queries[i], k, n_candidates=n_candidates, search_strategy=search_strategy)
@@ -42,3 +42,6 @@ for i in range(0, len(queries) - 1, 50):
 
 print(f'n_buckets={index.n_buckets()}; n_levels={index.n_levels()}')
 
+# verbose search that returns additional statistics
+res, statistics = index.verbose_search(queries[0], k, n_candidates=n_candidates, search_strategy=search_strategy)
+print(f'Verbose search: {res=}, {statistics=}, {statistics.total_visited_buckets=}, {statistics.total_visited_records=}')
