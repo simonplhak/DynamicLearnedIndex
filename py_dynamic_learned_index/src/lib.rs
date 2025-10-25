@@ -317,6 +317,10 @@ impl DynamicLearnedIndex {
     fn n_levels(&self) -> usize {
         self.index.n_levels()
     }
+
+    fn occupied(&self) -> usize {
+        self.index.occupied()
+    }
 }
 
 fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {
