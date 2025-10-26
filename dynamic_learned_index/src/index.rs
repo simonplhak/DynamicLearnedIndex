@@ -234,6 +234,8 @@ impl Index {
         debug!(levels = self.levels.len(), occupied = self.occupied(); "index:buffer_flush");
         // let strategy = self.compaction_strategy.clone();
         self.compaction_strategy.clone().compact(self);
+        assert!(self.buffer.has_space(1));
+        self.buffer.insert(value, id);
     }
 
     pub fn delete(&mut self, id: Id) -> Option<(Array, Id)> {
