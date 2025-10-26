@@ -126,4 +126,10 @@ pub fn insert_all_data(
         bar.inc(1);
     });
     bar.finish();
+    assert!(
+        index.occupied() == limit,
+        "Expected {} occupied entries, got {}",
+        limit,
+        index.occupied()
+    );
 }
