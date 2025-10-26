@@ -345,6 +345,7 @@ impl CompactionStrategy {
     }
 
     pub fn compact(&self, index: &mut Index) {
+        let original_occupied = index.occupied();
         match self {
             CompactionStrategy::BentleySaxe => {
                 match self.available_level(index) {
@@ -366,6 +367,7 @@ impl CompactionStrategy {
                 };
             }
         }
+        assert_eq!(original_occupied, index.occupied());
     }
 }
 
