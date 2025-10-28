@@ -849,4 +849,81 @@ mod tests {
         assert!(data.is_empty());
         assert!(ids.is_empty());
     }
+
+    // Helper to build a LevelIndex with one bucket and populate it with records and ids
+    fn make_level_with_records(records: Vec<Vec<f32>>, ids: Vec<Id>) -> LevelIndex {
+        let input_shape = if records.is_empty() {
+            1
+        } else {
+            records[0].len()
+        };
+        let mut builder = LevelIndexBuilder::default();
+        let mut level = builder
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .build()
+            .unwrap();
+
+        for (rec, id) in records.into_iter().zip(ids.into_iter()) {
+            level.buckets[0].insert(rec, id);
+            level
+                .ids_map
+                .insert(id, (0, level.buckets[0].occupied() - 1));
+        }
+        level
+    }
+
+    #[test]
+    fn test_level_index_delete_last_element() {
+        let rec = vec![1.0f32, 2.0, 3.0];
+        let id = 42u32;
+        let mut level = make_level_with_records(vec![rec.clone()], vec![id]);
+
+        let res = level.delete(&id, &DeleteMethod::OidToBucket);
+        assert!(res.is_some());
+        let (deleted_vec, deleted_id) = res.unwrap();
+        assert_eq!(deleted_id, id);
+        assert_eq!(deleted_vec, rec);
+
+        // id should be removed from ids_map
+        assert!(!level.ids_map.contains_key(&id));
+        // bucket should be empty
+        assert_eq!(level.buckets[0].occupied(), 0);
+    }
+
+    #[test]
+    fn test_level_index_delete_middle_swaps_last_in() {
+        let rec0 = vec![0.0f32, 0.1, 0.2];
+        let rec1 = vec![1.0f32, 1.1, 1.2];
+        let rec2 = vec![2.0f32, 2.1, 2.2];
+        let ids = vec![1u32, 2u32, 3u32];
+        let mut level =
+            make_level_with_records(vec![rec0.clone(), rec1.clone(), rec2.clone()], ids.clone());
+
+        // delete middle id (2)
+        let res = level.delete(&2u32, &DeleteMethod::OidToBucket);
+        assert!(res.is_some());
+        let (deleted_vec, deleted_id) = res.unwrap();
+        assert_eq!(deleted_id, 2u32);
+        assert_eq!(deleted_vec, rec1);
+
+        // ids_map should not contain deleted id
+        assert!(!level.ids_map.contains_key(&2u32));
+        // moved id (3) should now be at index 1
+        assert_eq!(level.ids_map.get(&3u32).cloned(), Some((0usize, 1usize)));
+        // bucket should have two records and record(1) equals rec2
+        assert_eq!(level.buckets[0].occupied(), 2);
+        assert_eq!(level.buckets[0].record(1), rec2.as_slice());
+    }
+
+    #[test]
+    fn test_level_index_delete_missing_id_returns_none() {
+        let mut level = make_level_with_records(vec![], vec![]);
+        let res = level.delete(&999u32, &DeleteMethod::OidToBucket);
+        assert!(res.is_none());
+    }
 }
