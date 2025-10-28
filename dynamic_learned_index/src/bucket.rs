@@ -75,17 +75,29 @@ fn swap_and_pop(
 ) -> Option<((Array, Id), (usize, Id))> // (Deleted Array, Deleted Id), (New Index of Swapped Record, Swapped Id)
 {
     let occupied = ids.len();
-    ids.swap(idx, occupied - 1);
-    let inner_id = ids.pop().unwrap(); // we are sure that there is something
-                                       // swap last record with the one to be removed
-    let record_start = idx * input_shape;
-    let last_record_start = (occupied - 1) * input_shape;
-    for i in 0..input_shape {
-        records.swap(record_start + i, last_record_start + i);
+    match occupied - 1 == idx {
+        true => {
+            // idx is the last one, just pop
+            let inner_id = ids.pop().unwrap(); // we are sure that there is something
+            let record_start = idx * input_shape;
+            let removed_vector: Vec<f32> = records.drain(record_start..).collect();
+            Some(((removed_vector, inner_id), (idx, inner_id)))
+        }
+        false => {
+            // idx is not the last one, swap with the last and pop
+            ids.swap(idx, occupied - 1);
+            let inner_id = ids.pop().unwrap(); // we are sure that there is something
+                                               // swap last record with the one to be removed
+            let record_start = idx * input_shape;
+            let last_record_start = (occupied - 1) * input_shape;
+            for i in 0..input_shape {
+                records.swap(record_start + i, last_record_start + i);
+            }
+            // Remove the record from the end
+            let removed_vector: Vec<f32> = records.drain(last_record_start..).collect();
+            Some(((removed_vector, inner_id), (idx, ids[idx])))
+        }
     }
-    // Remove the record from the end
-    let removed_vector: Vec<f32> = records.drain(last_record_start..).collect();
-    Some(((removed_vector, inner_id), (idx, ids[idx])))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
