@@ -339,4 +339,71 @@ mod tests {
         assert_eq!(bucket.record(0), record1.as_slice());
         assert_eq!(bucket.record(1), record2.as_slice());
     }
+
+    // Helper to flatten per-record vectors into the `records` layout used by the bucket
+    fn flatten(records: &[Vec<f32>]) -> Vec<f32> {
+        records.iter().flat_map(|r| r.iter().copied()).collect()
+    }
+
+    #[test]
+    fn test_swap_and_pop_delete_last() {
+        let mut ids: Vec<Id> = vec![100u32];
+        let mut records = vec![1.0f32, 2.0f32, 3.0f32];
+        let input_shape = 3;
+        let idx = 0;
+
+        let ((deleted_vec, deleted_id), (new_idx, swapped_id)) =
+            swap_and_pop(&mut records, &mut ids, idx, input_shape).unwrap();
+
+        assert_eq!(deleted_vec, vec![1.0, 2.0, 3.0]);
+        assert_eq!(deleted_id, 100u32);
+        assert_eq!(new_idx, 0);
+        assert_eq!(swapped_id, 100u32);
+        assert!(ids.is_empty());
+        assert!(records.is_empty());
+    }
+
+    #[test]
+    fn test_swap_and_pop_delete_middle_swaps_last_in() {
+        let mut ids: Vec<Id> = vec![1u32, 2u32, 3u32];
+        let rec0 = vec![0.0f32, 0.1, 0.2];
+        let rec1 = vec![1.0f32, 1.1, 1.2];
+        let rec2 = vec![2.0f32, 2.1, 2.2];
+        let mut records = flatten(&[rec0.clone(), rec1.clone(), rec2.clone()]);
+        let input_shape = 3;
+        let idx = 1; // delete rec1
+
+        let ((deleted_vec, deleted_id), (new_idx, swapped_id)) =
+            swap_and_pop(&mut records, &mut ids, idx, input_shape).unwrap();
+
+        // The function removes the element that was at `idx` (rec1)
+        assert_eq!(deleted_vec, rec1);
+        assert_eq!(deleted_id, 2u32);
+
+        // The last record (rec2) should have been moved into position `idx`
+        assert_eq!(new_idx, idx);
+        assert_eq!(swapped_id, 3u32);
+
+        // ids and records must reflect the removal and the swap
+        assert_eq!(ids, vec![1u32, 3u32]);
+        assert_eq!(records, flatten(&[rec0, rec2]));
+    }
+
+    #[test]
+    fn test_swap_and_pop_input_shape_one() {
+        let mut ids: Vec<Id> = vec![10u32, 11u32, 12u32];
+        let mut records = vec![10.0f32, 11.0f32, 12.0f32];
+        let input_shape = 1;
+        let idx = 1; // remove middle element (11)
+
+        let ((deleted_vec, deleted_id), (new_idx, swapped_id)) =
+            swap_and_pop(&mut records, &mut ids, idx, input_shape).unwrap();
+
+        assert_eq!(deleted_vec, vec![11.0f32]);
+        assert_eq!(deleted_id, 11u32);
+        assert_eq!(new_idx, 1);
+        assert_eq!(swapped_id, 12u32);
+        assert_eq!(ids, vec![10u32, 12u32]);
+        assert_eq!(records, vec![10.0f32, 12.0f32]);
+    }
 }
