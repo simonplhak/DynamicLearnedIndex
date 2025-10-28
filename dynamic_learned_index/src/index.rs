@@ -566,6 +566,8 @@ impl LevelIndex {
     fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> Option<(Array, Id)> {
         let deleted = self.ids_map.get(id).cloned();
         if let Some((bucket_idx, record_idx)) = deleted {
+            assert!(bucket_idx < self.buckets.len());
+            assert!(record_idx < self.buckets[bucket_idx].occupied());
             let bucket = &mut self.buckets[bucket_idx];
             let (deleted, (swapped_new_idx, swapped_id)) =
                 bucket.delete(record_idx, delete_method)?;
