@@ -1,5 +1,9 @@
 use crate::{
     bucket::{self, Bucket, Buffer, DeleteMethod},
+    constants::{
+        DEFAULT_ARITY, DEFAULT_BUCKET_SIZE, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE,
+        DEFAULT_SEARCH_K,
+    },
     errors::BuildError,
     model::{Model, ModelBuilder, ModelConfig, ModelDevice},
     types::{Array, ArraySlice},
@@ -29,9 +33,9 @@ impl Default for IndexConfig {
         Self {
             compaction_strategy: Default::default(),
             levels,
-            buffer_size: 5000,
-            input_shape: 768,
-            arity: 3,
+            buffer_size: DEFAULT_BUFFER_SIZE,
+            input_shape: DEFAULT_INPUT_SHAPE,
+            arity: DEFAULT_ARITY,
             device: Default::default(),
             distance_fn: Default::default(),
             delete_method: Default::default(),
@@ -98,7 +102,7 @@ impl SearchParamsT for SearchParams {
 impl SearchParamsT for () {
     fn into_search_params(self) -> SearchParams {
         SearchParams {
-            k: 10,
+            k: DEFAULT_SEARCH_K,
             search_strategy: SearchStrategy::default(),
         }
     }
@@ -381,7 +385,7 @@ impl Default for LevelIndexConfig {
     fn default() -> Self {
         Self {
             model: ModelConfig::default(),
-            bucket_size: 5000,
+            bucket_size: DEFAULT_BUCKET_SIZE,
         }
     }
 }
@@ -583,6 +587,7 @@ impl LevelIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::constants::DEFAULT_SEARCH_N_CANDIDATES;
     use crate::model::TrainParams;
     use crate::{distance_fn::DistanceFn, search_strategy::SearchStrategy};
     use std::collections::HashMap;
@@ -608,9 +613,9 @@ mod tests {
     #[test]
     fn test_index_config_default() {
         let config = IndexConfig::default();
-        assert_eq!(config.buffer_size, 5000);
-        assert_eq!(config.input_shape, 768);
-        assert_eq!(config.arity, 3);
+        assert_eq!(config.buffer_size, DEFAULT_BUFFER_SIZE);
+        assert_eq!(config.input_shape, DEFAULT_INPUT_SHAPE);
+        assert_eq!(config.arity, DEFAULT_ARITY);
         assert!(matches!(config.device, ModelDevice::Cpu));
         assert!(matches!(config.distance_fn, DistanceFn::Dot));
         assert!(config.levels.contains_key(&0));
@@ -619,7 +624,7 @@ mod tests {
     #[test]
     fn test_level_index_config_default() {
         let config = LevelIndexConfig::default();
-        assert_eq!(config.bucket_size, 5000);
+        assert_eq!(config.bucket_size, DEFAULT_BUCKET_SIZE);
     }
 
     #[test]
@@ -721,7 +726,7 @@ mod tests {
         assert_eq!(params.k, 10);
         assert!(matches!(
             params.search_strategy,
-            SearchStrategy::ModelDriven(30000) // todo replace with constant
+            SearchStrategy::ModelDriven(DEFAULT_SEARCH_N_CANDIDATES)
         ));
     }
 
@@ -731,7 +736,7 @@ mod tests {
         assert_eq!(params.k, 5);
         assert!(matches!(
             params.search_strategy,
-            SearchStrategy::ModelDriven(30000) // todo replace with constant
+            SearchStrategy::ModelDriven(DEFAULT_SEARCH_N_CANDIDATES)
         ));
     }
 
@@ -793,7 +798,7 @@ mod tests {
         let index = config.build().unwrap();
 
         let level_config = index.get_level_index_config();
-        assert_eq!(level_config.bucket_size, 5000); // default value
+        assert_eq!(level_config.bucket_size, DEFAULT_BUCKET_SIZE); // default value
     }
 
     #[test]

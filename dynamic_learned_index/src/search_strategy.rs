@@ -1,3 +1,5 @@
+use crate::constants::DEFAULT_SEARCH_N_CANDIDATES;
+
 #[derive(Debug, Copy, Clone)]
 pub enum SearchStrategy {
     Base(usize), // todo rename to KnnDriven
@@ -6,7 +8,7 @@ pub enum SearchStrategy {
 
 impl Default for SearchStrategy {
     fn default() -> Self {
-        SearchStrategy::ModelDriven(30000)
+        SearchStrategy::ModelDriven(DEFAULT_SEARCH_N_CANDIDATES)
     }
 }
 
