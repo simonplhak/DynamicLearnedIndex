@@ -583,6 +583,7 @@ impl LevelIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::TrainParams;
     use crate::{distance_fn::DistanceFn, search_strategy::SearchStrategy};
     use std::collections::HashMap;
     use std::io::Write;
@@ -634,18 +635,22 @@ mod tests {
                 - type: relu
               train_params:
                 threshold_samples: 100
+                max_iters: 5
                 batch_size: 4
                 epochs: 2
-                label_method:
-                  type: knn
-                  value:
-                    max_iters: 5
+              retrain_params:
+                threshold_samples: 10
+                max_iters: 4
+                batch_size: 5
+                epochs: 3
             bucket_size: 100
         buffer_size: 50
         input_shape: 10
+        compaction_strategy: bentley_saxe
         arity: 2
         device: cpu
         distance_fn: dot
+        delete_method: oid_to_bucket
         "#;
 
         let mut temp_file = NamedTempFile::new().unwrap();
@@ -655,6 +660,36 @@ mod tests {
         assert_eq!(config.buffer_size, 50);
         assert_eq!(config.input_shape, 10);
         assert_eq!(config.arity, 2);
+        assert_eq!(config.levels.len(), 1);
+        let lvl = config.levels.get(&0).expect("level 0 missing");
+        assert_eq!(lvl.bucket_size, 100);
+        assert!(matches!(
+            lvl.model.layers[0],
+            crate::model::ModelLayer::Linear(4)
+        ));
+        assert!(matches!(
+            lvl.model.layers[1],
+            crate::model::ModelLayer::ReLU,
+        ));
+        assert!(matches!(
+            lvl.model.train_params,
+            TrainParams {
+                threshold_samples: 100,
+                batch_size: 4,
+                epochs: 2,
+                max_iters: 5
+            }
+        ));
+        assert!(matches!(
+            lvl.model.retrain_params,
+            TrainParams {
+                threshold_samples: 10,
+                batch_size: 5,
+                epochs: 3,
+                max_iters: 4
+            }
+        ));
+        assert!(matches!(config.delete_method, DeleteMethod::OidToBucket));
     }
 
     #[test]
@@ -686,7 +721,7 @@ mod tests {
         assert_eq!(params.k, 10);
         assert!(matches!(
             params.search_strategy,
-            SearchStrategy::ModelDriven(30)
+            SearchStrategy::ModelDriven(30000) // todo replace with constant
         ));
     }
 
@@ -696,7 +731,7 @@ mod tests {
         assert_eq!(params.k, 5);
         assert!(matches!(
             params.search_strategy,
-            SearchStrategy::ModelDriven(30)
+            SearchStrategy::ModelDriven(30000) // todo replace with constant
         ));
     }
 
