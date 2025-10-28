@@ -1,5 +1,5 @@
 use dynamic_learned_index::{
-    index::{LevelIndexConfig, SearchParams, SearchStatistics},
+    index::{DeleteStatistics, LevelIndexConfig, SearchParams, SearchStatistics},
     model::{ModelConfig, ModelLayer, TrainParams},
     IndexConfig, ModelDevice,
 };
@@ -265,6 +265,20 @@ impl From<SearchStatistics> for PySearchStatistics {
     }
 }
 
+#[pyclass]
+struct PyDeleteStatistics {
+    #[pyo3(get)]
+    affected_level: Option<usize>,
+}
+
+impl From<DeleteStatistics> for PyDeleteStatistics {
+    fn from(stats: DeleteStatistics) -> Self {
+        PyDeleteStatistics {
+            affected_level: stats.affected_level,
+        }
+    }
+}
+
 #[pymethods]
 impl DynamicLearnedIndex {
     #[new]
@@ -308,6 +322,12 @@ impl DynamicLearnedIndex {
     fn insert<'py>(&mut self, record: PyReadonlyArray1<'py, f32>, id: u32) {
         let record = array2vec(record);
         self.index.insert(record, id);
+    }
+
+    fn verbose_delete(&mut self, id: u32) -> Option<((Vec<f32>, u32), PyDeleteStatistics)> {
+        self.index
+            .verbose_delete(id)
+            .map(|(data, stats)| (data, stats.into()))
     }
 
     fn delete(&mut self, id: u32) -> Option<(Vec<f32>, u32)> {

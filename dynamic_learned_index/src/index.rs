@@ -131,6 +131,10 @@ pub struct SearchStatistics {
     pub total_visited_records: usize,
 }
 
+pub struct DeleteStatistics {
+    pub affected_level: Option<usize>,
+}
+
 impl Index {
     pub fn search<S>(&self, query: &ArraySlice, params: S) -> Vec<Id>
     where
@@ -299,6 +303,28 @@ impl Index {
                 total_visited_records: ids2visit.len(),
             },
         )
+    }
+
+    pub fn verbose_delete(&mut self, id: Id) -> Option<((Array, Id), DeleteStatistics)> {
+        if let Some(deleted) = self.buffer.delete(&id) {
+            return Some((
+                deleted,
+                DeleteStatistics {
+                    affected_level: None,
+                },
+            ));
+        }
+        for (level_idx, level) in &mut self.levels.iter_mut().enumerate() {
+            if let Some(deleted) = level.delete(&id, &self.delete_method) {
+                return Some((
+                    deleted,
+                    DeleteStatistics {
+                        affected_level: Some(level_idx),
+                    },
+                ));
+            }
+        }
+        None
     }
 }
 
