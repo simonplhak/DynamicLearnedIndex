@@ -131,12 +131,13 @@ impl Bucket {
         &self.records[start..end]
     }
 
-    pub fn insert(&mut self, record: Array, id: Id) {
+    pub fn insert(&mut self, record: Array, id: Id) -> usize {
         if !self.has_space(1) {
             self.resize(1)
         }
         self.records.extend(record);
         self.ids.push(id);
+        self.occupied() - 1
     }
 
     pub fn resize(&mut self, new_n_objects: usize) {
@@ -251,7 +252,8 @@ mod tests {
     fn test_insert_single_record() {
         let mut bucket = create_bucket();
         let record = vec![1.0, 2.0, 3.0, 4.0, 5.0];
-        bucket.insert(record.clone(), 100);
+        let idx = bucket.insert(record.clone(), 100);
+        assert_eq!(idx, 0);
 
         assert_eq!(bucket.occupied(), 1);
         assert_eq!(bucket.record(0), record.as_slice());
@@ -265,9 +267,12 @@ mod tests {
         let record2 = vec![5.0, 4.0, 3.0, 2.0, 1.0];
         let record3 = vec![2.5, 3.5, 4.5, 5.5, 6.5];
 
-        bucket.insert(record1.clone(), 1);
-        bucket.insert(record2.clone(), 2);
-        bucket.insert(record3.clone(), 3);
+        let idx = bucket.insert(record1.clone(), 1);
+        assert_eq!(idx, 0);
+        let idx = bucket.insert(record2.clone(), 2);
+        assert_eq!(idx, 1);
+        let idx = bucket.insert(record3.clone(), 3);
+        assert_eq!(idx, 2);
 
         assert_eq!(bucket.occupied(), 3);
         assert_eq!(bucket.record(0), record1.as_slice());
