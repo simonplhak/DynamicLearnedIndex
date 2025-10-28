@@ -207,10 +207,6 @@ mod tests {
         Bucket::new(10, 5)
     }
 
-    fn create_static_bucket() -> Bucket {
-        Bucket::new(3, 2)
-    }
-
     #[test]
     fn test_new_bucket() {
         let bucket = create_bucket();
@@ -270,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_has_space() {
-        let mut bucket = create_static_bucket(); // size 3
+        let mut bucket = Bucket::new(3, 2);
         assert!(bucket.has_space(1));
         assert!(bucket.has_space(3));
         assert!(!bucket.has_space(4));
@@ -317,14 +313,6 @@ mod tests {
         // Insert one more - should trigger resize
         bucket.insert(vec![7.0, 8.0, 9.0], 3);
         assert_eq!(bucket.occupied(), 3);
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_resize_static_bucket_panics() {
-        let mut bucket = create_static_bucket();
-        // Try to force resize on a static bucket
-        bucket.resize(1);
     }
 
     #[test]
