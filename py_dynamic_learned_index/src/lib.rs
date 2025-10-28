@@ -310,6 +310,10 @@ impl DynamicLearnedIndex {
         self.index.insert(record, id);
     }
 
+    fn delete(&mut self, id: u32) -> Option<(Vec<f32>, u32)> {
+        self.index.delete(id)
+    }
+
     fn n_buckets(&self) -> usize {
         self.index.n_buckets()
     }

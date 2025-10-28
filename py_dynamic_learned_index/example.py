@@ -40,7 +40,23 @@ for i in range(0, len(queries) - 1, 50):
     res = index.search(queries[i], k, n_candidates=n_candidates, search_strategy=search_strategy)
     print(f'For query "{i}" index found: {res}')
 
-print(f'n_buckets={index.n_buckets()}; n_levels={index.n_levels()}')
+
+# index statistics
+print(f'n_buckets={index.n_buckets()}; n_levels={index.n_levels()}; occupied={index.occupied()}')
+
+# delete
+id_to_delete = 0
+deleted_query, deleted_id = index.delete(id_to_delete)
+print(deleted_query)
+print(queries[id_to_delete])
+print(f'delete: deleted_query is same as inserted query: {(deleted_query == queries[id_to_delete]).all()}, {id_to_delete=}, {deleted_id=}')
+
+
+# delte non-existent id
+id_to_delete = len(queries)
+res = index.delete(id_to_delete)
+print(res)
+
 
 # verbose search that returns additional statistics
 res, statistics = index.verbose_search(queries[0], k, n_candidates=n_candidates, search_strategy=search_strategy)
