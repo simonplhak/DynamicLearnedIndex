@@ -926,4 +926,73 @@ mod tests {
         let res = level.delete(&999u32, &DeleteMethod::OidToBucket);
         assert!(res.is_none());
     }
+
+    #[test]
+    fn test_level_index_get_data_empty() {
+        let mut level = make_level_with_records(vec![], vec![]);
+        let (data, ids) = level.get_data();
+        assert!(data.is_empty());
+        assert!(ids.is_empty());
+        assert!(level.ids_map.is_empty());
+        // buckets remain empty
+        assert_eq!(level.buckets.iter().map(|b| b.occupied()).sum::<usize>(), 0);
+    }
+
+    #[test]
+    fn test_level_index_get_data_single_record() {
+        let rec = vec![1.0f32, 2.0, 3.0];
+        let id = 7u32;
+        let mut level = make_level_with_records(vec![rec.clone()], vec![id]);
+
+        assert_eq!(level.buckets[0].occupied(), 1);
+        let (data, ids) = level.get_data();
+        assert_eq!(ids, vec![id]);
+        assert_eq!(data, rec);
+        assert!(level.ids_map.is_empty());
+        assert_eq!(level.buckets[0].occupied(), 0);
+    }
+
+    #[test]
+    fn test_level_index_get_data_multiple_buckets() {
+        // build a level with 3 buckets and populate bucket 0 and 1
+        let rec0 = vec![0.0f32, 0.1, 0.2];
+        let rec1 = vec![1.0f32, 1.1, 1.2];
+        let rec1b = vec![1.5f32, 1.6, 1.7];
+
+        let mut builder = LevelIndexBuilder::default();
+        let mut level = builder
+            .n_buckets(3)
+            .input_shape(3)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .build()
+            .unwrap();
+
+        level.buckets[0].insert(rec0.clone(), 1u32);
+        level
+            .ids_map
+            .insert(1u32, (0, level.buckets[0].occupied() - 1));
+
+        level.buckets[1].insert(rec1.clone(), 2u32);
+        level
+            .ids_map
+            .insert(2u32, (1, level.buckets[1].occupied() - 1));
+
+        level.buckets[1].insert(rec1b.clone(), 3u32);
+        level
+            .ids_map
+            .insert(3u32, (1, level.buckets[1].occupied() - 1));
+
+        let (data, ids) = level.get_data();
+        // ids should be in bucket order then insertion order
+        assert_eq!(ids, vec![1u32, 2u32, 3u32]);
+        // data is flattened concatenation
+        let expected = [rec0, rec1, rec1b].concat();
+        assert_eq!(data, expected);
+        // after get_data, ids_map cleared and buckets empty
+        assert!(level.ids_map.is_empty());
+        assert_eq!(level.buckets.iter().map(|b| b.occupied()).sum::<usize>(), 0);
+    }
 }
