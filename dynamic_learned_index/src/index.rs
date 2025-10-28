@@ -550,6 +550,7 @@ impl LevelIndex {
     }
 
     fn get_data(&mut self) -> (Array, Vec<Id>) {
+        self.ids_map.clear(); // clear existing id mappings
         let (data, ids): (Vec<Array>, Vec<Vec<Id>>) = self
             .buckets
             .iter_mut()
