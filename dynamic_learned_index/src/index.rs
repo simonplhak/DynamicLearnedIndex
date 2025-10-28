@@ -569,11 +569,15 @@ impl LevelIndex {
             let bucket = &mut self.buckets[bucket_idx];
             let (deleted, (swapped_new_idx, swapped_id)) =
                 bucket.delete(record_idx, delete_method)?;
-            let (old_bucket_idx, old_record_idx) = self.ids_map.remove(id).unwrap(); // we are sure it exists
-            assert_eq!(old_bucket_idx, bucket_idx);
-            assert_eq!(old_record_idx, bucket.occupied());
-            self.ids_map
-                .insert(swapped_id, (bucket_idx, swapped_new_idx));
+            let (deleted_bucket_idx, deleted_record_idx) = self.ids_map.remove(id).unwrap(); // we are sure it exists
+            assert_eq!(deleted_bucket_idx, bucket_idx);
+            assert_eq!(deleted_record_idx, record_idx);
+            // Only insert the swapped id mapping if a different record was moved into the deleted slot.
+            // In the bucket's "delete last" case the swapped_id equals the deleted id, so avoid re-inserting it.
+            if swapped_id != deleted.1 {
+                self.ids_map
+                    .insert(swapped_id, (bucket_idx, swapped_new_idx));
+            }
             return Some(deleted);
         }
         None
