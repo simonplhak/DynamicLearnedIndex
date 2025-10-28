@@ -540,9 +540,8 @@ impl LevelIndex {
                 let query = records.split_off(records.len() - input_shape);
                 let id = ids.pop().unwrap();
                 let bucket_idx = assignments.pop().unwrap();
-                self.buckets[bucket_idx].insert(query, id);
-                self.ids_map
-                    .insert(id, (bucket_idx, self.buckets[bucket_idx].occupied() - 1));
+                let record_idx = self.buckets[bucket_idx].insert(query, id);
+                self.ids_map.insert(id, (bucket_idx, record_idx));
             }
             assert!(assignments.is_empty());
             assert!(ids.is_empty());
