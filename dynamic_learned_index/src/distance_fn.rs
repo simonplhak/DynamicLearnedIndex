@@ -2,9 +2,9 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub enum DistanceFn {
-    #[default]
     #[serde(rename = "l2")]
     L2,
+    #[default]
     #[serde(rename = "dot")]
     Dot,
 }
