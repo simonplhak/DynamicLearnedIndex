@@ -307,6 +307,9 @@ impl Index {
         }
         for (level_idx, level) in &mut self.levels.iter_mut().enumerate() {
             if let Some(deleted) = level.delete(&id, &self.delete_method) {
+                if self.is_level_underutilized(level_idx) {
+                    self.compaction_strategy.clone().rebuild(self, level_idx)
+                }
                 return Some((
                     deleted,
                     DeleteStatistics {
@@ -317,13 +320,31 @@ impl Index {
         }
         None
     }
+
+    fn is_level_underutilized(&self, level_idx: usize) -> bool {
+        let level = &self.levels[level_idx];
+        level.occupied() < self.input_shape * self.arity.pow(level_idx as u32)
+    }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
-pub enum CompactionStrategy {
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub enum RebuildStrategy {
     #[default]
+    #[serde(rename = "no_rebuild")]
+    NoRebuild,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", content = "rebuild_strategy")]
+pub enum CompactionStrategy {
     #[serde(rename = "bentley_saxe")]
-    BentleySaxe,
+    BentleySaxe(RebuildStrategy),
+}
+
+impl Default for CompactionStrategy {
+    fn default() -> Self {
+        CompactionStrategy::BentleySaxe(Default::default())
+    }
 }
 
 impl CompactionStrategy {
@@ -368,7 +389,7 @@ impl CompactionStrategy {
     pub fn compact(&self, index: &mut Index) {
         let original_occupied = index.occupied();
         match self {
-            CompactionStrategy::BentleySaxe => {
+            CompactionStrategy::BentleySaxe(_) => {
                 match self.available_level(index) {
                     Some(level_idx) => {
                         let (data, ids) = self.lower_level_data(index, level_idx);
@@ -389,6 +410,14 @@ impl CompactionStrategy {
             }
         }
         assert_eq!(original_occupied, index.occupied());
+    }
+
+    pub fn rebuild(&self, _index: &mut Index, _level_idx: usize) {
+        match self {
+            CompactionStrategy::BentleySaxe(rebuild_strategy) => match rebuild_strategy {
+                RebuildStrategy::NoRebuild => {}
+            },
+        }
     }
 }
 
@@ -628,7 +657,7 @@ mod tests {
             arity: 2,
             device: ModelDevice::Cpu,
             distance_fn: DistanceFn::Dot,
-            compaction_strategy: CompactionStrategy::BentleySaxe,
+            compaction_strategy: CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild),
             delete_method: DeleteMethod::OidToBucket,
         }
     }

@@ -1,4 +1,6 @@
-compaction_strategy: bentley_saxe
+compaction_strategy:
+  type: bentley_saxe
+  rebuild_strategy: no_rebuild
 levels:
   0:
     model:
