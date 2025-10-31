@@ -247,16 +247,7 @@ impl Index {
     }
 
     pub fn delete(&mut self, id: Id) -> Option<(Array, Id)> {
-        if let Some(deleted) = self.buffer.delete(&id) {
-            return Some(deleted);
-        }
-        for level in &mut self.levels {
-            if let Some(deleted) = level.delete(&id, &self.delete_method) {
-                // todo move delete method spec to index
-                return Some(deleted);
-            }
-        }
-        None
+        self.verbose_delete(id).map(|(deleted, _)| deleted)
     }
 
     pub fn size(&self) -> usize {
