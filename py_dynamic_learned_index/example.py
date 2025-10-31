@@ -11,8 +11,11 @@ builder = (
         .input_shape(input_shape)  # the shape of the input vector
         .distance_fn('dot')  # options: dot|l2
         .arity(3)  # arity of the tree structure created by the index
-        .compaction_strategy('bentley_saxe')  # type of levelling used to construct new levels of tree; options: bentley_saxe
+        .compaction_strategy('bentley_saxe:no_rebuild')  # type of levelling used to construct new levels of tree;
 )
+# options for compaction strategy: 
+#   compaction strategy types: bentley_saxe
+#   rebuild strategies: no_rebuild
 
 # optional: make model device use gpu
 # builder = builder.device(gpu:0)
