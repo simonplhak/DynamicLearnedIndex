@@ -105,7 +105,9 @@ Default values can be found via `cli_dynamic_learned_index defaults dataset` com
 Example config:
 
 ```yaml
-compaction_strategy: bentley_saxe
+compaction_strategy:
+  type: bentley_saxe  # curently only possible value
+  rebuild_strategy: no_rebuild # currently only possible value
 levels:
   0:
     model:
@@ -113,24 +115,27 @@ levels:
       - type: linear
         value: 256
       - type: relu
-      - type: linear
-        value: 256
-      - type: relu
+      ...  # add more layers if needed
+      # be aware that always index adds an output layer
       train_params:
         threshold_samples: 1000
         batch_size: 8
         epochs: 3
-        label_method:
-          type: knn
-          value:
-            max_iters: 10
+        max_iters: 10
+      retrain_params:
+        threshold_samples: 1000
+        batch_size: 8
+        epochs: 3
+        max_iters: 10
     bucket_size: 5000
   5:
     ...
 buffer_size: 5000
 input_shape: 768
 arity: 3
-device: cpu
+device: cpu  # only cpu supported currently
+distance_fn: dot  # can be dot or l2
+delete_method: oid_to_bucket  # only one method currently
 ```
 
 `compaction_strategy`: compaction strategy, can be `bentley_saxe`
