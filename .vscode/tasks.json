@@ -69,7 +69,7 @@
 		},
 		{
 			"type": "shell",
-			"command": "source env/bin/activate && cargo build --release && cd py_dynamic_learned_index && maturin develop --release && python -c 'import py_dynamic_learned_index; print(py_dynamic_learned_index.__version__)'",
+			"command": "cargo build --release && cd py_dynamic_learned_index && uv run maturin develop --release && python -c 'import py_dynamic_learned_index; print(py_dynamic_learned_index.__version__)'",
 			"problemMatcher": [
 			],
 			"group": {

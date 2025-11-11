@@ -55,11 +55,9 @@ To link the Rust library with Python, we use `maturin` to build a Python package
 Setup python environment
 
 ```shell
-python -m venv env
-source env/bin/activate
-pip install -r requirements.txt
 cd py_dynamic_learned_index
-maturin develop
+uv sync
+maturin develop --release
 python -c "import py_dynamic_learned_index; print(py_dynamic_learned_index.__version__)"  # test installation
 ```
 
@@ -67,7 +65,7 @@ Update dynamic_learned_index dependency
 
 ```shell
 cd py_dynamic_learned_index
-maturin develop
+maturin develop --release
 python -c "import py_dynamic_learned_index; print(py_dynamic_learned_index.__version__)"  # test installation
 ```
 
