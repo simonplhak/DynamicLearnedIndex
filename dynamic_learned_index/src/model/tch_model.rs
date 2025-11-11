@@ -7,10 +7,10 @@ use tch::{
 
 use crate::{
     clustering::{self},
-    distance_fn::LabelMethod,
     errors::BuildError,
     model::{ModelDevice, ModelLayer, TrainParams},
     sampling,
+    structs::LabelMethod,
     types::ArraySlice,
 };
 

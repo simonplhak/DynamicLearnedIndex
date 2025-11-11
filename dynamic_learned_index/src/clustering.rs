@@ -1,7 +1,7 @@
 use log::debug;
 use ndarray::Array2;
 
-use crate::{constants, distance_fn::LabelMethod};
+use crate::{constants, structs::LabelMethod};
 
 pub(crate) fn compute_labels(
     data: &Vec<f32>,

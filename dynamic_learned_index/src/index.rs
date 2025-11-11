@@ -641,7 +641,7 @@ mod tests {
     use super::*;
     use crate::constants::DEFAULT_SEARCH_N_CANDIDATES;
     use crate::model::TrainParams;
-    use crate::{distance_fn::DistanceFn, search_strategy::SearchStrategy};
+    use crate::{search_strategy::SearchStrategy, structs::DistanceFn};
     use std::collections::HashMap;
     use std::io::Write;
     use tempfile::NamedTempFile;

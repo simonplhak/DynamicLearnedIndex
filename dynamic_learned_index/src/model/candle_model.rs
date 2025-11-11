@@ -6,9 +6,9 @@ use log::info;
 use rand::rng;
 use rand::seq::SliceRandom;
 
-use crate::distance_fn::LabelMethod;
 use crate::errors::BuildError;
 use crate::model::{ModelDevice, ModelLayer, TrainParams};
+use crate::structs::LabelMethod;
 use crate::types::ArraySlice;
 use crate::{clustering, sampling};
 
