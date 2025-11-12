@@ -1,6 +1,6 @@
 use dynamic_learned_index::{
-    DeleteStatistics, IndexConfig, LevelIndexConfig, ModelConfig, ModelDevice, ModelLayer,
-    SearchParams, SearchStatistics, TrainParams,
+    DeleteMethod, DeleteStatistics, IndexConfig, LevelIndexConfig, ModelConfig, ModelDevice,
+    ModelLayer, SearchParams, SearchStatistics, TrainParams,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::{prelude::*, types::PyDict, PyErr};
@@ -161,6 +161,12 @@ impl DynamicLearnedIndexBuilder {
             ));
         };
         builder.builder.device = device;
+        Ok(builder)
+    }
+
+    fn delete_method(&self, delete_method: &str) -> PyResult<Self> {
+        let mut builder = self.clone();
+        builder.builder.delete_method = delete_method.into();
         Ok(builder)
     }
 
