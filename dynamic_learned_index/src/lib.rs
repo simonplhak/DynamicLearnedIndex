@@ -9,8 +9,11 @@ mod sampling;
 mod search_strategy;
 pub mod structs;
 pub mod types;
-pub use index::{CompactionStrategy, Index, IndexConfig, RebuildStrategy};
-pub use model::ModelDevice;
-pub use search_strategy::*;
-pub use structs::DistanceFn;
-pub use types::Id;
+pub use errors::BuildError;
+pub use index::{CompactionStrategy, Index, IndexConfig, LevelIndexConfig, RebuildStrategy};
+pub use model::{ModelConfig, ModelDevice, ModelLayer, TrainParams};
+pub use search_strategy::SearchStrategy;
+pub use structs::{
+    DeleteMethod, DeleteStatistics, DistanceFn, SearchParams, SearchParamsT, SearchStatistics,
+};
+pub use types::{Array, ArrayNumType, ArraySlice, Id};

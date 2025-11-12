@@ -1,13 +1,9 @@
 use crate::{
-    bucket::{self, Bucket, Buffer, DeleteMethod},
-    constants::{
-        DEFAULT_ARITY, DEFAULT_BUCKET_SIZE, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE,
-        DEFAULT_SEARCH_K,
-    },
-    errors::BuildError,
+    bucket::{self, Bucket, Buffer},
+    constants::{DEFAULT_ARITY, DEFAULT_BUCKET_SIZE, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE},
     model::{Model, ModelBuilder, ModelConfig, ModelDevice},
-    types::{Array, ArraySlice},
-    DistanceFn, Id, SearchStrategy,
+    Array, ArraySlice, BuildError, DeleteMethod, DeleteStatistics, DistanceFn, Id, SearchParamsT,
+    SearchStatistics, SearchStrategy,
 };
 use log::{debug, info};
 use measure_time_macro::log_time;
@@ -82,57 +78,6 @@ pub struct Index {
     buffer: Buffer,
     distance_fn: DistanceFn,
     delete_method: DeleteMethod,
-}
-
-pub struct SearchParams {
-    pub k: usize,
-    pub search_strategy: SearchStrategy,
-}
-
-pub trait SearchParamsT {
-    fn into_search_params(self) -> SearchParams;
-}
-
-impl SearchParamsT for SearchParams {
-    fn into_search_params(self) -> SearchParams {
-        self
-    }
-}
-
-impl SearchParamsT for () {
-    fn into_search_params(self) -> SearchParams {
-        SearchParams {
-            k: DEFAULT_SEARCH_K,
-            search_strategy: SearchStrategy::default(),
-        }
-    }
-}
-
-impl SearchParamsT for (usize, SearchStrategy) {
-    fn into_search_params(self) -> SearchParams {
-        SearchParams {
-            k: self.0,
-            search_strategy: self.1,
-        }
-    }
-}
-
-impl SearchParamsT for usize {
-    fn into_search_params(self) -> SearchParams {
-        SearchParams {
-            k: self,
-            search_strategy: SearchStrategy::default(),
-        }
-    }
-}
-
-pub struct SearchStatistics {
-    pub total_visited_buckets: usize,
-    pub total_visited_records: usize,
-}
-
-pub struct DeleteStatistics {
-    pub affected_level: Option<usize>,
 }
 
 impl Index {

@@ -1,11 +1,7 @@
 use std::fmt::Debug;
 
-use crate::{
-    errors::BuildError,
-    types::{Array, ArrayNumType, ArraySlice},
-    Id,
-};
-use serde::{Deserialize, Serialize};
+use crate::{Array, ArrayNumType, ArraySlice, BuildError, DeleteMethod, Id};
+use serde::Serialize;
 
 #[derive(Debug, Serialize)]
 pub(crate) struct Buffer {
@@ -98,13 +94,6 @@ fn swap_and_pop(
             Some(((removed_vector, inner_id), (idx, ids[idx])))
         }
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
-pub enum DeleteMethod {
-    #[default]
-    #[serde(rename = "oid_to_bucket")]
-    OidToBucket,
 }
 
 #[derive(Debug, Serialize)]
