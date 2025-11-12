@@ -1,6 +1,6 @@
 use dynamic_learned_index::{
-    DeleteMethod, DeleteStatistics, IndexConfig, LevelIndexConfig, ModelConfig, ModelDevice,
-    ModelLayer, SearchParams, SearchStatistics, TrainParams,
+    DeleteStatistics, IndexConfig, LevelIndexConfig, ModelConfig, ModelDevice, ModelLayer,
+    SearchParams, SearchStatistics, TrainParams,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::{prelude::*, types::PyDict, PyErr};
