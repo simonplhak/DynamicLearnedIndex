@@ -82,19 +82,7 @@ impl DynamicLearnedIndexBuilder {
 
     fn distance_fn(&self, distance_fn: &str) -> PyResult<Self> {
         let mut builder = self.clone();
-        match distance_fn {
-            "dot" => {
-                builder.builder.distance_fn = dynamic_learned_index::DistanceFn::Dot;
-            }
-            "l2" => {
-                builder.builder.distance_fn = dynamic_learned_index::DistanceFn::L2;
-            }
-            _ => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "Invalid distance function",
-                ))
-            }
-        }
+        builder.builder.distance_fn = distance_fn.into();
         Ok(builder)
     }
 

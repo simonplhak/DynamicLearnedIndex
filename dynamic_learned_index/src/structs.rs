@@ -20,6 +20,16 @@ impl From<DistanceFn> for LabelMethod {
     }
 }
 
+impl From<&str> for DistanceFn {
+    fn from(val: &str) -> Self {
+        match val {
+            "l2" => DistanceFn::L2,
+            "dot" => DistanceFn::Dot,
+            _ => panic!("Unknown distance function: {val}"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub enum LabelMethod {
     KMeans,
@@ -31,6 +41,15 @@ pub enum DeleteMethod {
     #[default]
     #[serde(rename = "oid_to_bucket")]
     OidToBucket,
+}
+
+impl From<&str> for DeleteMethod {
+    fn from(val: &str) -> Self {
+        match val {
+            "oid_to_bucket" => DeleteMethod::OidToBucket,
+            _ => panic!("Unknown delete method: {val}"),
+        }
+    }
 }
 
 pub struct SearchParams {
