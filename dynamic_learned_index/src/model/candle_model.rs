@@ -119,6 +119,34 @@ pub struct Model {
     label_method: LabelMethod,
 }
 
+// Iterator for streaming batches without allocating a Vec of batches.
+struct BatchIter {
+    dataset: Tensor,
+    labels: Tensor,
+    batch_size: usize,
+    total_samples: usize,
+    start_sample: usize,
+}
+
+impl Iterator for BatchIter {
+    type Item = (Tensor, Tensor);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.start_sample >= self.total_samples {
+            return None;
+        }
+        let end_sample = std::cmp::min(self.start_sample + self.batch_size, self.total_samples);
+        let len = end_sample - self.start_sample;
+
+        // Create zero-copy views for the batch
+        let batch_xs = self.dataset.narrow(0, self.start_sample, len).unwrap();
+        let batch_ys = self.labels.narrow(0, self.start_sample, len).unwrap();
+
+        self.start_sample = end_sample;
+        Some((batch_xs, batch_ys))
+    }
+}
+
 impl Model {
     pub fn predict(&self, xs: &ArraySlice) -> Vec<(usize, f32)> {
         let tensor_test_votes = Tensor::from_vec(xs.to_vec(), (1, self.input_shape), &self.device)
@@ -137,26 +165,50 @@ impl Model {
 
     pub fn predict_many(&self, xs: &ArraySlice) -> Vec<usize> {
         let dim = xs.len() / self.input_shape;
-        let tensor_test_votes =
-            Tensor::from_vec(xs.to_vec(), (dim, self.input_shape), &self.device)
-                .unwrap()
-                .to_dtype(DType::F32)
-                .unwrap();
+        if dim == 0 {
+            return Vec::new();
+        }
 
-        let final_result = self
-            .model
-            .forward(&tensor_test_votes)
+        // Create a single dataset tensor (zero-copy on CPU) and iterate in batches.
+        let dataset = Tensor::from_vec(xs.to_vec(), (dim, self.input_shape), &self.device)
             .unwrap()
-            .argmax(1)
+            .to_dtype(DType::F32)
             .unwrap();
-        final_result
-            .squeeze(0)
-            .unwrap()
-            .to_vec1::<u32>()
-            .unwrap()
-            .into_iter()
-            .map(|v| v as usize)
-            .collect()
+
+        let batch_size = if self.train_params.batch_size > 0 {
+            self.train_params.batch_size
+        } else {
+            dim
+        };
+
+        let mut out = Vec::with_capacity(dim);
+        let mut start = 0usize;
+        while start < dim {
+            let end = std::cmp::min(start + batch_size, dim);
+            let len = end - start;
+
+            let batch = dataset.narrow(0, start, len).unwrap();
+
+            let preds = match len {
+                0 => panic!("Batch size cannot be zero"),
+                1 => self.model.forward(&batch).unwrap().argmax(1).unwrap(),
+                _ => self
+                    .model
+                    .forward(&batch)
+                    .unwrap()
+                    .argmax(1)
+                    .unwrap()
+                    .squeeze(0)
+                    .unwrap(),
+            };
+
+            let preds_vec = preds.to_vec1::<u32>().unwrap();
+            out.extend(preds_vec.into_iter().map(|v| v as usize));
+
+            start = end;
+        }
+
+        out
     }
 
     pub fn train(&mut self, xs: &ArraySlice) {
@@ -195,51 +247,46 @@ impl Model {
         }
     }
 
-    fn create_shuffled_batches(&self, xs: &[f32], ys: &[i32]) -> Vec<(Tensor, Tensor)> {
+    fn create_shuffled_batches(&self, xs: &[f32], ys: &[i32]) -> BatchIter {
         let total_samples = ys.len();
-        let batch_size = self.train_params.batch_size;
+        let batch_size = if self.train_params.batch_size > 0 {
+            self.train_params.batch_size
+        } else {
+            total_samples
+        };
 
-        // Create indices for shuffling
+        // Create indices for shuffling and permute the whole dataset once per epoch
         let mut indices: Vec<usize> = (0..total_samples).collect();
-
-        // Proper shuffle using rng
         indices.shuffle(&mut rng());
 
-        let mut batches = Vec::new();
+        // Permute xs and ys into contiguous buffers (one full dataset copy per epoch)
+        let mut permuted_xs: Vec<f32> = Vec::with_capacity(xs.len());
+        let mut permuted_ys: Vec<i64> = Vec::with_capacity(total_samples);
 
-        for chunk_indices in indices.chunks(batch_size) {
-            if chunk_indices.is_empty() {
-                continue;
-            }
-
-            // Collect batch data
-            let mut batch_xs_vec = Vec::with_capacity(chunk_indices.len() * self.input_shape);
-            let mut batch_ys_vec = Vec::with_capacity(chunk_indices.len());
-
-            for &idx in chunk_indices {
-                let start_idx = idx * self.input_shape;
-                let end_idx = start_idx + self.input_shape;
-                batch_xs_vec.extend_from_slice(&xs[start_idx..end_idx]);
-                batch_ys_vec.push(ys[idx] as i64);
-            }
-
-            // Create tensors for this batch
-            let batch_xs = Tensor::from_vec(
-                batch_xs_vec,
-                (chunk_indices.len(), self.input_shape),
-                &self.device,
-            )
-            .unwrap()
-            .to_dtype(DType::F32)
-            .unwrap();
-
-            let batch_ys =
-                Tensor::from_vec(batch_ys_vec, (chunk_indices.len(),), &self.device).unwrap();
-
-            batches.push((batch_xs, batch_ys));
+        for &idx in &indices {
+            let start = idx * self.input_shape;
+            let end = start + self.input_shape;
+            permuted_xs.extend_from_slice(&xs[start..end]);
+            permuted_ys.push(ys[idx] as i64);
         }
 
-        batches
+        // Create a single dataset tensor (consumes the Vec) and a labels tensor.
+        // On CPU this should be zero-copy: the Vec's buffer becomes the Tensor storage.
+        let dataset =
+            Tensor::from_vec(permuted_xs, (total_samples, self.input_shape), &self.device)
+                .unwrap()
+                .to_dtype(DType::F32)
+                .unwrap();
+
+        let labels_tensor = Tensor::from_vec(permuted_ys, (total_samples,), &self.device).unwrap();
+
+        BatchIter {
+            dataset,
+            labels: labels_tensor,
+            batch_size,
+            total_samples,
+            start_sample: 0,
+        }
     }
 
     pub fn retrain(&mut self, _xs: &ArraySlice) {
