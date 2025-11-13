@@ -46,7 +46,7 @@ for i in range(0, len(queries) - 1, 50):
 
 
 # index statistics
-print(f'n_buckets={index.n_buckets()}; n_levels={index.n_levels()}; occupied={index.occupied()}')
+print(f'n_buckets={index.n_buckets()}; n_levels={index.n_levels()}; occupied={index.occupied()}, empty_buckets={index.n_empty_buckets()}')
 
 # delete
 id_to_delete = 0

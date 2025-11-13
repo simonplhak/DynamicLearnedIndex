@@ -340,6 +340,10 @@ impl DynamicLearnedIndex {
     fn occupied(&self) -> usize {
         self.index.occupied()
     }
+
+    fn n_empty_buckets(&self) -> usize {
+        self.index.n_empty_buckets()
+    }
 }
 
 fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {

@@ -215,6 +215,19 @@ impl Index {
             + self.buffer.occupied()
     }
 
+    pub fn n_empty_buckets(&self) -> usize {
+        self.levels
+            .iter()
+            .map(|level| {
+                level
+                    .buckets
+                    .iter()
+                    .filter(|bucket| bucket.occupied() == 0)
+                    .count()
+            })
+            .sum()
+    }
+
     pub fn verbose_search<S>(&self, query: &ArraySlice, params: S) -> (Vec<Id>, SearchStatistics)
     where
         S: SearchParamsT,
