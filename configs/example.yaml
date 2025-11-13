@@ -1,8 +1,6 @@
-device: cpu
-input_shape: 768
-arity: 3
-levelling: bentley_saxe
-buffer_size: 40
+compaction_strategy:
+  type: bentley_saxe
+  rebuild_strategy: no_rebuild
 levels:
   0:
     model:
@@ -10,16 +8,23 @@ levels:
       - type: linear
         value: 256
       - type: relu
+      - type: linear
+        value: 256
+      - type: relu
       train_params:
-        epochs: 3
+        threshold_samples: 1000
         batch_size: 8
-        threshold_samples: 100
+        epochs: 3
         max_iters: 10
       retrain_params:
-        epochs: 1
+        threshold_samples: 1000
         batch_size: 8
-        threshold_samples: 100
+        epochs: 3
         max_iters: 10
-    bucket_size: 30
-
+    bucket_size: 50
+buffer_size: 50
+input_shape: 768
+arity: 3
+device: cpu
 distance_fn: dot
+delete_method: oid_to_bucket
