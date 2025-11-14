@@ -64,19 +64,7 @@ impl DynamicLearnedIndexBuilder {
 
     fn compaction_strategy(&self, compaction: &str) -> PyResult<Self> {
         let mut builder = self.clone();
-        match compaction {
-            "bentley_saxe:no_rebuild" => {
-                builder.builder.compaction_strategy =
-                    dynamic_learned_index::CompactionStrategy::BentleySaxe(
-                        dynamic_learned_index::RebuildStrategy::NoRebuild,
-                    );
-            }
-            _ => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "Invalid compaction strategy",
-                ))
-            }
-        }
+        builder.builder.compaction_strategy = compaction.into();
         Ok(builder)
     }
 

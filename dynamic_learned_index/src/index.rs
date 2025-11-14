@@ -305,6 +305,17 @@ impl Default for CompactionStrategy {
     }
 }
 
+impl From<&str> for CompactionStrategy {
+    fn from(val: &str) -> Self {
+        match val {
+            "bentley_saxe:no_rebuild" => {
+                CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild)
+            }
+            _ => panic!("Unknown compaction strategy: {val}"),
+        }
+    }
+}
+
 impl CompactionStrategy {
     fn available_level(&self, index: &Index) -> Option<usize> {
         let mut count = index.buffer.occupied();
