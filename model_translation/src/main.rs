@@ -2,7 +2,7 @@ use std::{collections::HashMap, path::Path};
 
 use anyhow::Result;
 use candle_core::{DType, Device, Result as CandleResult, Tensor, safetensors};
-use candle_nn::{Linear, Module, VarBuilder};
+use candle_nn::{Linear, Module, VarBuilder, VarMap};
 use clap::{Parser, Subcommand, command};
 
 #[derive(Parser, Debug)]
@@ -15,6 +15,7 @@ struct Cli {
 #[derive(Subcommand, Debug)]
 enum Commands {
     LoadPytorchModel,
+    UseF16,
 }
 
 enum CandleModelLayer {
@@ -94,6 +95,28 @@ fn load_pytorch_model() -> Result<()> {
     Ok(())
 }
 
+fn use_f16() -> Result<()> {
+    // LOAD MODEL WEIGHTS //
+    let device = Device::Cpu;
+    let varmap = VarMap::new();
+    let vb = VarBuilder::from_varmap(&varmap, DType::F16, &device);
+    println!("VarBuilder for f16 created successfully");
+    let model = CandleModel::new(vb, 3, &[256], 10)?;
+    println!("Candle model with f16 loaded successfully");
+
+    // LOAD TEST DATA //
+    let test_path = Path::new("test_data.safetensors");
+    let test_data: HashMap<String, Tensor> = safetensors::load(test_path, &device)?;
+
+    let input_tensor = test_data.get("input").unwrap().to_dtype(DType::F16)?;
+
+    // RUN INFERENCE //
+    println!("Running inference on Candle model with f16...");
+    let candle_output = model.forward(&input_tensor)?;
+    println!("output: {candle_output}");
+    Ok(())
+}
+
 fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -101,6 +124,7 @@ fn main() -> Result<()> {
         Commands::LoadPytorchModel => {
             load_pytorch_model()?;
         }
+        Commands::UseF16 => use_f16()?,
     }
 
     Ok(())
