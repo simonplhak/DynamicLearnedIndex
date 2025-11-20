@@ -89,7 +89,7 @@ fn load_pytorch_model() -> Result<()> {
     let diff = (&candle_output - expected_output)?.abs()?;
     println!(
         "Total difference: {}",
-        diff.flatten(0, 1)?.to_vec1()?.iter().sum::<f32>()
+        diff.flatten(0, 1)?.sum(0)?.to_scalar::<f32>()?
     );
     Ok(())
 }
