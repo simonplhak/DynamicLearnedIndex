@@ -1276,6 +1276,7 @@ dependencies = [
  "anyhow",
  "candle-core",
  "candle-nn",
+ "clap",
 ]
 
 [[package]]

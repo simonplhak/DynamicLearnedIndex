@@ -3,6 +3,19 @@ use std::{collections::HashMap, path::Path};
 use anyhow::Result;
 use candle_core::{DType, Device, Result as CandleResult, Tensor, safetensors};
 use candle_nn::{Linear, Module, VarBuilder};
+use clap::{Parser, Subcommand, command};
+
+#[derive(Parser, Debug)]
+#[command(name = "cli_app", version = "1.0", about = "CLI tool", long_about = None)]
+struct Cli {
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand, Debug)]
+enum Commands {
+    LoadPytorchModel,
+}
 
 enum CandleModelLayer {
     Linear(Linear),
@@ -52,7 +65,8 @@ impl Module for CandleModel {
             })
     }
 }
-fn main() -> Result<()> {
+
+fn load_pytorch_model() -> Result<()> {
     // LOAD MODEL WEIGHTS //
     let weights_filename = Path::new("model.safetensors");
     let device = Device::Cpu;
@@ -77,5 +91,17 @@ fn main() -> Result<()> {
         "Total difference: {}",
         diff.flatten(0, 1)?.to_vec1()?.iter().sum::<f32>()
     );
+    Ok(())
+}
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+
+    match &cli.command {
+        Commands::LoadPytorchModel => {
+            load_pytorch_model()?;
+        }
+    }
+
     Ok(())
 }

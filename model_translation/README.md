@@ -17,5 +17,5 @@ uv run dump_pytorch_model.py
 To run the Rust code that loads the model and test data, execute:
 
 ```bash
-cargo run
+cargo run load-pytorch-model
 ```
