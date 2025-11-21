@@ -149,7 +149,7 @@ impl Iterator for BatchIter {
 
 impl Model {
     pub fn predict(&self, xs: &ArraySlice) -> Vec<(usize, f32)> {
-        let tensor_test_votes = Tensor::from_vec(xs.to_vec(), (1, self.input_shape), &self.device)
+        let tensor_test_votes = Tensor::from_slice(xs, (1, self.input_shape), &self.device)
             .unwrap()
             .to_dtype(DType::F32)
             .unwrap();
@@ -165,50 +165,19 @@ impl Model {
 
     pub fn predict_many(&self, xs: &ArraySlice) -> Vec<usize> {
         let dim = xs.len() / self.input_shape;
-        if dim == 0 {
-            return Vec::new();
-        }
-
-        // Create a single dataset tensor (zero-copy on CPU) and iterate in batches.
-        let dataset = Tensor::from_vec(xs.to_vec(), (dim, self.input_shape), &self.device)
+        let dataset = Tensor::from_slice(xs, (dim, self.input_shape), &self.device).unwrap();
+        self.model
+            .forward(&dataset)
             .unwrap()
-            .to_dtype(DType::F32)
-            .unwrap();
-
-        let batch_size = if self.train_params.batch_size > 0 {
-            self.train_params.batch_size
-        } else {
-            dim
-        };
-
-        let mut out = Vec::with_capacity(dim);
-        let mut start = 0usize;
-        while start < dim {
-            let end = std::cmp::min(start + batch_size, dim);
-            let len = end - start;
-
-            let batch = dataset.narrow(0, start, len).unwrap();
-
-            let preds = match len {
-                0 => panic!("Batch size cannot be zero"),
-                1 => self.model.forward(&batch).unwrap().argmax(1).unwrap(),
-                _ => self
-                    .model
-                    .forward(&batch)
-                    .unwrap()
-                    .argmax(1)
-                    .unwrap()
-                    .squeeze(0)
-                    .unwrap(),
-            };
-
-            let preds_vec = preds.to_vec1::<u32>().unwrap();
-            out.extend(preds_vec.into_iter().map(|v| v as usize));
-
-            start = end;
-        }
-
-        out
+            .argmax(1)
+            .unwrap()
+            .squeeze(0)
+            .unwrap()
+            .to_vec1::<u32>()
+            .unwrap()
+            .into_iter()
+            .map(|v| v as usize)
+            .collect::<Vec<_>>()
     }
 
     pub fn train(&mut self, xs: &ArraySlice) {
