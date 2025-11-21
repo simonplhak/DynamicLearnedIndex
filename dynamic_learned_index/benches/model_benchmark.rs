@@ -18,6 +18,7 @@ const NUM_CLUSTERS: usize = 9;
 const BATCH_SIZE: usize = 256;
 const HIDDEN_NEURONS: usize = 256;
 const EPOCHS: usize = 1;
+const PREDICT_MANY_SIZE: usize = 10_000;
 
 fn generate_random_data(size: usize, dim: usize) -> Vec<f32> {
     let mut rng = rand::rng();
@@ -72,7 +73,7 @@ fn bench_pytorch_model_predict_single(b: &mut Bencher) {
 #[bench]
 fn bench_pytorch_model_predict_many(b: &mut Bencher) {
     let train_data = generate_random_data(1000, VECTOR_DIM);
-    let test_data = generate_random_data(1000, VECTOR_DIM); // 100 test vectors
+    let test_data = generate_random_data(PREDICT_MANY_SIZE, VECTOR_DIM); // 100 test vectors
 
     let mut model = pytorch_model();
 
@@ -129,7 +130,7 @@ fn bench_candle_model_predict_single(b: &mut Bencher) {
 #[bench]
 fn bench_candle_model_predict_many(b: &mut Bencher) {
     let train_data = generate_random_data(1000, VECTOR_DIM);
-    let test_data = generate_random_data(1000, VECTOR_DIM);
+    let test_data = generate_random_data(PREDICT_MANY_SIZE, VECTOR_DIM);
 
     let mut model = candle_model();
 
