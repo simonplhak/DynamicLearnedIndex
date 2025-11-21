@@ -564,7 +564,7 @@ impl LevelIndex {
     }
 
     fn size(&self) -> usize {
-        self.buckets.iter().map(|bucket| bucket.size()).sum()
+        self.buckets[0].size() * self.buckets.len()
     }
 
     fn occupied(&self) -> usize {
