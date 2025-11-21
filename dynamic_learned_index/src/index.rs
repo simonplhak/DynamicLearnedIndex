@@ -579,6 +579,14 @@ impl LevelIndex {
     }
 
     fn buckets2visit_predictions(&self, query: &ArraySlice) -> Vec<(usize, f32, usize)> {
+        if self.occupied() == 0 {
+            return self
+                .buckets
+                .iter()
+                .enumerate()
+                .map(|(bucket_id, _)| (bucket_id, 0.0, 0))
+                .collect();
+        }
         self.model
             .predict(query)
             .into_iter()
