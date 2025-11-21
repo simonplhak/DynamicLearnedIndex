@@ -39,8 +39,8 @@ print(f'Safetensors saved to: {out}')
 
 ##### TEST INPUTS ######
 test_input = torch.randn(BATCH_SIZE, N_INPUT, device="cpu", dtype=torch.float32)
-model.eval() # Set model to evaluation mode (important if you had dropout/batchnorm)
-with torch.no_grad(): # Disable gradient calculation for inference
+model.eval()
+with torch.no_grad():
     test_output = model(test_input)
 
 test_state = {

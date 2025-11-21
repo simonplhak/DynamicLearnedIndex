@@ -8,3 +8,4 @@ candle-nn = { git = "https://github.com/huggingface/candle.git", version = "0.9.
 candle-core = { git = "https://github.com/huggingface/candle.git", version = "0.9.1" }
 anyhow = "1.0.100"
 clap = { version = "4.5.32", features = ["derive"] }
+rand = "0.9.0"

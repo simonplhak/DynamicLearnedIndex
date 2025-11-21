@@ -1,3 +1,5 @@
 model.safetensors
+rust-model.safetensors
 .venv/
 test_data.safetensors
+rust-test_data.safetensors

@@ -19,3 +19,16 @@ To run the Rust code that loads the model and test data, execute:
 ```bash
 cargo run load-pytorch-model
 ```
+
+
+To dump model weights from a Rust candle model, run:
+
+```bash
+cargo run dump-model
+```
+
+To load the dumped Rust model weights, run:
+
+```bash
+uv run load_candle_model.py
+```
