@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use candle_core::{DType, Tensor, D};
 use candle_core::{Device, Result as CandleResult};
 use candle_nn::{linear, Linear, Module, Optimizer, VarBuilder, VarMap};
@@ -10,7 +12,7 @@ use crate::errors::BuildError;
 use crate::model::{ModelDevice, ModelLayer, TrainParams};
 use crate::structs::LabelMethod;
 use crate::types::ArraySlice;
-use crate::{clustering, sampling};
+use crate::{clustering, sampling, ModelConfig};
 
 #[derive(Debug, Default)]
 pub struct ModelBuilder {
@@ -21,7 +23,7 @@ pub struct ModelBuilder {
     train_params: Option<TrainParams>,
     label_method: Option<LabelMethod>,
     retrain_params: Option<TrainParams>,
-    weights_path: Option<String>,
+    weights_path: Option<PathBuf>,
 }
 
 impl ModelBuilder {
@@ -60,7 +62,7 @@ impl ModelBuilder {
         self
     }
 
-    pub fn weights_path(&mut self, weights_path: String) -> &mut Self {
+    pub fn weights_path(&mut self, weights_path: PathBuf) -> &mut Self {
         self.weights_path = Some(weights_path);
         self
     }
@@ -277,6 +279,24 @@ impl Model {
 
     pub fn retrain(&mut self, _xs: &ArraySlice) {
         info!(epochs = self.retrain_params.epochs; "model:retrain");
+    }
+
+    pub fn dump(&self, weights_filename: PathBuf) -> ModelConfig {
+        self.varmap.save(&weights_filename).unwrap();
+        ModelConfig {
+            layers: self
+                .model
+                .layers
+                .iter()
+                .map(|layer| match layer {
+                    CandleModelLayer::Linear(lin) => ModelLayer::Linear(lin.weight().dims()[0]),
+                    CandleModelLayer::ReLU => ModelLayer::ReLU,
+                })
+                .collect(),
+            train_params: self.train_params.clone(),
+            retrain_params: self.retrain_params.clone(),
+            weights_path: Some(weights_filename),
+        }
     }
 }
 

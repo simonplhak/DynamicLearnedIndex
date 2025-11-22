@@ -2,6 +2,8 @@
 pub mod candle_model;
 pub mod tch_model;
 
+use std::path::PathBuf;
+
 use serde::{Deserialize, Serialize};
 // pub use tch_model::{Model, ModelBuilder};
 pub use candle_model::{Model, ModelBuilder};
@@ -39,7 +41,7 @@ pub struct ModelConfig {
     pub layers: Vec<ModelLayer>,
     pub train_params: TrainParams,
     pub retrain_params: TrainParams,
-    pub weights_path: Option<String>,
+    pub weights_path: Option<PathBuf>,
 }
 
 impl Default for ModelConfig {
