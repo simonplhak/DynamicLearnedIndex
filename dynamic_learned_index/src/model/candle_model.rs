@@ -21,6 +21,7 @@ pub struct ModelBuilder {
     train_params: Option<TrainParams>,
     label_method: Option<LabelMethod>,
     retrain_params: Option<TrainParams>,
+    weights_path: Option<String>,
 }
 
 impl ModelBuilder {
@@ -59,6 +60,11 @@ impl ModelBuilder {
         self
     }
 
+    pub fn weights_path(&mut self, weights_path: String) -> &mut Self {
+        self.weights_path = Some(weights_path);
+        self
+    }
+
     pub fn build(&self) -> Result<Model, BuildError> {
         let device = self.device.as_ref().ok_or(BuildError::MissingAttribute)?;
         let device = match device {
@@ -67,7 +73,13 @@ impl ModelBuilder {
         };
         let label_method = self.label_method.ok_or(BuildError::MissingAttribute)?;
         let varmap = VarMap::new();
-        let vs = VarBuilder::from_varmap(&varmap, DType::F32, &device);
+        let vs = match &self.weights_path {
+            Some(weights_path) => unsafe {
+                VarBuilder::from_mmaped_safetensors(&[weights_path], DType::F32, &device)
+                    .map_err(|_| BuildError::ModelCreation)?
+            },
+            None => VarBuilder::from_varmap(&varmap, DType::F32, &device),
+        };
         let input_nodes = self.input_nodes.ok_or(BuildError::MissingAttribute)? as usize;
         let labels = self.labels.ok_or(BuildError::MissingAttribute)?;
         assert!(labels > 0, "labels must be greater than 0");
@@ -78,7 +90,8 @@ impl ModelBuilder {
             |(mut layers, input_nodes), (i, layer)| {
                 let (layers, output_nodes) = match layer {
                     ModelLayer::Linear(nodes) => {
-                        let lin = linear(input_nodes, *nodes, vs.pp(format!("layer_{i}"))).unwrap();
+                        let lin =
+                            linear(input_nodes, *nodes, vs.pp(format!("{i}", i = 2 * i))).unwrap();
                         layers.push(CandleModelLayer::Linear(lin));
                         (layers, *nodes)
                     }
@@ -90,8 +103,12 @@ impl ModelBuilder {
                 (layers, output_nodes)
             },
         );
-        let lin =
-            linear(in_nodes, labels, vs.pp("final")).map_err(|_| BuildError::ModelCreation)?;
+        let lin = linear(
+            in_nodes,
+            labels,
+            vs.pp(format!("{i}", i = 2 * layers.len())),
+        )
+        .map_err(|_| BuildError::ModelCreation)?;
         layers.push(CandleModelLayer::Linear(lin));
         let model = CandleModel { layers };
         let model = Model {

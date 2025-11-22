@@ -1,6 +1,7 @@
 // pub use candle::*;
 pub mod candle_model;
 pub mod tch_model;
+
 use serde::{Deserialize, Serialize};
 // pub use tch_model::{Model, ModelBuilder};
 pub use candle_model::{Model, ModelBuilder};
@@ -38,6 +39,7 @@ pub struct ModelConfig {
     pub layers: Vec<ModelLayer>,
     pub train_params: TrainParams,
     pub retrain_params: TrainParams,
+    pub weights_path: Option<String>,
 }
 
 impl Default for ModelConfig {
@@ -51,6 +53,7 @@ impl Default for ModelConfig {
             ],
             train_params: Default::default(),
             retrain_params: Default::default(),
+            weights_path: None,
         }
     }
 }

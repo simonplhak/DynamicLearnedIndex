@@ -538,6 +538,9 @@ impl LevelIndexBuilder {
             .retrain_params(model_config.retrain_params.clone())
             .labels(n_buckets)
             .label_method(distance_fn.clone().into());
+        if let Some(weights_path) = &model_config.weights_path {
+            model_builder.weights_path(weights_path.clone());
+        }
         model_config.layers.iter().for_each(|layer| {
             model_builder.add_layer(*layer);
         });
