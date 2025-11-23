@@ -32,3 +32,21 @@ To load the dumped Rust model weights, run:
 ```bash
 uv run load_candle_model.py
 ```
+
+To dump bucketed data to binary files, run:
+
+```bash
+cargo run dump-buckets2-disk
+```
+
+To load bucketed data from binary files, run:
+
+```bash
+cargo run load-buckets-from-disk
+```
+
+To load bucketed data from binary files in python, run:
+
+```bash
+uv run load_bucket_data.py
+```
