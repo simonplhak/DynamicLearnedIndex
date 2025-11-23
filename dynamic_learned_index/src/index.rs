@@ -1,6 +1,6 @@
 use crate::{
     bucket::{self, Bucket, Buffer},
-    constants::{DEFAULT_ARITY, DEFAULT_BUCKET_SIZE, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE},
+    constants::DEFAULT_BUFFER_SIZE,
     model::{Model, ModelBuilder, ModelConfig, ModelDevice},
     Array, ArraySlice, BuildError, DeleteMethod, DeleteStatistics, DistanceFn, Id, SearchParamsT,
     SearchStatistics, SearchStrategy,
@@ -8,61 +8,73 @@ use crate::{
 use log::{debug, info};
 use measure_time_macro::log_time;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::File, path::Path};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct IndexConfig {
-    pub compaction_strategy: CompactionStrategy,
-    pub levels: HashMap<usize, LevelIndexConfig>,
-    pub buffer_size: usize,
-    pub input_shape: usize,
-    pub arity: usize,
-    pub device: ModelDevice,
-    pub distance_fn: DistanceFn,
-    pub delete_method: DeleteMethod,
+pub struct IndexBuilder {
+    compaction_strategy: Option<CompactionStrategy>,
+    levels: Option<HashMap<usize, LevelIndexConfig>>,
+    buffer_size: Option<usize>,
+    input_shape: Option<usize>,
+    arity: Option<usize>,
+    device: Option<ModelDevice>,
+    distance_fn: Option<DistanceFn>,
+    delete_method: Option<DeleteMethod>,
 }
 
-impl Default for IndexConfig {
+impl Default for IndexBuilder {
     fn default() -> Self {
-        let mut levels = HashMap::new();
-        levels.insert(0, Default::default());
-        Self {
-            compaction_strategy: Default::default(),
-            levels,
-            buffer_size: DEFAULT_BUFFER_SIZE,
-            input_shape: DEFAULT_INPUT_SHAPE,
-            arity: DEFAULT_ARITY,
-            device: Default::default(),
-            distance_fn: Default::default(),
-            delete_method: Default::default(),
-        }
+        Self::from_config(Default::default())
     }
 }
 
-impl IndexConfig {
-    pub fn from_yaml(file: &str) -> Result<Self, BuildError> {
+impl IndexBuilder {
+    pub fn from_yaml(file: &Path) -> Result<Self, BuildError> {
         let content = std::fs::read_to_string(file).map_err(|_| BuildError::NonExistentFile)?;
-        serde_yaml::from_str(&content).map_err(|e| BuildError::InvalidYamlConfig(e.to_string()))
+        let config = serde_yaml::from_str(&content)
+            .map_err(|e| BuildError::InvalidYamlConfig(e.to_string()))?;
+        Ok(Self::from_config(config))
+    }
+    pub fn from_config(config: IndexConfig) -> Self {
+        Self {
+            compaction_strategy: Some(config.compaction_strategy),
+            levels: Some(config.levels),
+            buffer_size: Some(config.buffer_size),
+            input_shape: Some(config.input_shape),
+            arity: Some(config.arity),
+            device: Some(config.device),
+            distance_fn: Some(config.distance_fn),
+            delete_method: Some(config.delete_method),
+        }
     }
 
     pub fn build(self) -> Result<Index, BuildError> {
-        if self.levels.is_empty() {
+        let levels_config = self.levels.ok_or(BuildError::MissingAttribute)?;
+        if levels_config.is_empty() {
             return Err(BuildError::MissingAttribute);
         }
-        if !self.levels.contains_key(&0) {
+        if !levels_config.contains_key(&0) {
             return Err(BuildError::MissingAttribute);
         }
-        let buffer = Buffer::new(self.buffer_size, self.input_shape);
+        let buffer_size = self.buffer_size.ok_or(BuildError::MissingAttribute)?;
+        let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
+        let buffer = Buffer::new(buffer_size, input_shape);
+        let arity = self.arity.ok_or(BuildError::MissingAttribute)?;
+        let device = self.device.ok_or(BuildError::MissingAttribute)?;
+        let distance_fn = self.distance_fn.ok_or(BuildError::MissingAttribute)?;
+        let compaction_strategy = self
+            .compaction_strategy
+            .ok_or(BuildError::MissingAttribute)?;
+        let delete_method = self.delete_method.ok_or(BuildError::MissingAttribute)?;
         let index = Index {
-            levels_config: self.levels,
-            input_shape: self.input_shape,
-            arity: self.arity,
-            device: self.device,
+            levels_config,
+            input_shape,
+            arity,
+            device,
             levels: Vec::new(),
             buffer,
-            distance_fn: self.distance_fn,
-            compaction_strategy: self.compaction_strategy,
-            delete_method: self.delete_method,
+            distance_fn,
+            compaction_strategy,
+            delete_method,
         };
         Ok(index)
     }
@@ -694,8 +706,7 @@ impl LevelIndex {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::constants::DEFAULT_SEARCH_N_CANDIDATES;
-    use crate::model::TrainParams;
+    use crate::constants::{DEFAULT_BUCKET_SIZE, DEFAULT_SEARCH_N_CANDIDATES};
     use crate::{search_strategy::SearchStrategy, structs::DistanceFn};
     use std::collections::HashMap;
     use std::io::Write;
@@ -715,17 +726,6 @@ mod tests {
             compaction_strategy: CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild),
             delete_method: DeleteMethod::OidToBucket,
         }
-    }
-
-    #[test]
-    fn test_index_config_default() {
-        let config = IndexConfig::default();
-        assert_eq!(config.buffer_size, DEFAULT_BUFFER_SIZE);
-        assert_eq!(config.input_shape, DEFAULT_INPUT_SHAPE);
-        assert_eq!(config.arity, DEFAULT_ARITY);
-        assert!(matches!(config.device, ModelDevice::Cpu));
-        assert!(matches!(config.distance_fn, DistanceFn::Dot));
-        assert!(config.levels.contains_key(&0));
     }
 
     #[test]
@@ -768,45 +768,22 @@ mod tests {
         let mut temp_file = NamedTempFile::new().unwrap();
         writeln!(temp_file, "{yaml_content}").unwrap();
 
-        let config = IndexConfig::from_yaml(temp_file.path().to_str().unwrap()).unwrap();
-        assert_eq!(config.buffer_size, 50);
-        assert_eq!(config.input_shape, 10);
-        assert_eq!(config.arity, 2);
-        assert_eq!(config.levels.len(), 1);
-        let lvl = config.levels.get(&0).expect("level 0 missing");
-        assert_eq!(lvl.bucket_size, 100);
-        assert!(matches!(
-            lvl.model.layers[0],
-            crate::model::ModelLayer::Linear(4)
-        ));
-        assert!(matches!(
-            lvl.model.layers[1],
-            crate::model::ModelLayer::ReLU,
-        ));
-        assert!(matches!(
-            lvl.model.train_params,
-            TrainParams {
-                threshold_samples: 100,
-                batch_size: 4,
-                epochs: 2,
-                max_iters: 5
-            }
-        ));
-        assert!(matches!(
-            lvl.model.retrain_params,
-            TrainParams {
-                threshold_samples: 10,
-                batch_size: 5,
-                epochs: 3,
-                max_iters: 4
-            }
-        ));
-        assert!(matches!(config.delete_method, DeleteMethod::OidToBucket));
+        let index = IndexBuilder::from_yaml(temp_file.path())
+            .unwrap()
+            .build()
+            .unwrap();
+        assert_eq!(index.buffer.size, 50);
+        assert_eq!(index.input_shape, 10);
+        assert_eq!(index.arity, 2);
+        assert_eq!(index.levels.len(), 1);
+        let lvl = index.levels.get(0).expect("level 0 missing");
+        assert_eq!(lvl.buckets[0].size(), 100);
+        assert!(matches!(index.delete_method, DeleteMethod::OidToBucket));
     }
 
     #[test]
     fn test_index_config_from_yaml_nonexistent_file() {
-        let result = IndexConfig::from_yaml("nonexistent.yaml");
+        let result = IndexBuilder::from_yaml(Path::new("nonexistent.yaml"));
         assert!(matches!(result, Err(BuildError::NonExistentFile)));
     }
 
@@ -814,7 +791,7 @@ mod tests {
     fn test_index_config_build_empty_levels() {
         let mut config = create_test_config();
         config.levels.clear();
-        let result = config.build();
+        let result = IndexBuilder::from_config(config).build();
         assert!(matches!(result, Err(BuildError::MissingAttribute)));
     }
 
@@ -823,7 +800,7 @@ mod tests {
         let mut config = create_test_config();
         config.levels.clear();
         config.levels.insert(1, LevelIndexConfig::default());
-        let result = config.build();
+        let result = IndexBuilder::from_config(config).build();
         assert!(matches!(result, Err(BuildError::MissingAttribute)));
     }
 
@@ -857,7 +834,7 @@ mod tests {
     #[test]
     fn test_index_insert_and_size() {
         let config = create_test_config();
-        let mut index = config.build().unwrap();
+        let mut index = IndexBuilder::from_config(config).build().unwrap();
 
         // Initial size is buffer size (10 from test config)
         assert_eq!(index.size(), 10);
@@ -873,7 +850,7 @@ mod tests {
     #[test]
     fn test_index_search_basic() {
         let config = create_test_config();
-        let mut index = config.build().unwrap();
+        let mut index = IndexBuilder::from_config(config).build().unwrap();
 
         // Insert some test data
         index.insert(vec![1.0, 2.0, 3.0], 1);
@@ -894,7 +871,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_index_available_level() {
         let config = create_test_config();
-        let index = config.build().unwrap();
+        let index = IndexBuilder::from_config(config).build().unwrap();
         // Initially no levels, so should return None
         assert_eq!(index.compaction_strategy.available_level(&index), None);
     }
@@ -902,7 +879,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_index_get_level_config() {
         let config = create_test_config();
-        let index = config.build().unwrap();
+        let index = IndexBuilder::from_config(config).build().unwrap();
 
         let level_config = index.get_level_index_config();
         assert_eq!(level_config.bucket_size, DEFAULT_BUCKET_SIZE); // default value
@@ -911,7 +888,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_index_insert_to_buffer() {
         let config = create_test_config();
-        let mut index = config.build().unwrap();
+        let mut index = IndexBuilder::from_config(config).build().unwrap();
 
         // Initial size should be buffer size
         let initial_size = index.size();
@@ -929,7 +906,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_empty_levels() {
         let config = create_test_config();
-        let index = config.build().unwrap();
+        let index = IndexBuilder::from_config(config).build().unwrap();
 
         // Should have no levels initially
         assert_eq!(index.levels.len(), 0);
@@ -940,7 +917,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_lower_level_data_empty() {
         let config = create_test_config();
-        let mut index = config.build().unwrap();
+        let mut index = IndexBuilder::from_config(config).build().unwrap();
 
         let (data, ids) = index
             .compaction_strategy

@@ -1,6 +1,40 @@
+use std::{collections::HashMap, path::PathBuf};
+
 use serde::{Deserialize, Serialize};
 
-use crate::{constants::DEFAULT_SEARCH_K, SearchStrategy};
+use crate::{
+    constants::{DEFAULT_ARITY, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE, DEFAULT_SEARCH_K},
+    CompactionStrategy, LevelIndexConfig, ModelDevice, SearchStrategy,
+};
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct IndexConfig {
+    pub compaction_strategy: CompactionStrategy,
+    pub levels: HashMap<usize, LevelIndexConfig>,
+    pub buffer_size: usize,
+    pub input_shape: usize,
+    pub arity: usize,
+    pub device: ModelDevice,
+    pub distance_fn: DistanceFn,
+    pub delete_method: DeleteMethod,
+}
+
+impl Default for IndexConfig {
+    fn default() -> Self {
+        let mut levels = HashMap::new();
+        levels.insert(0, Default::default());
+        Self {
+            compaction_strategy: Default::default(),
+            levels,
+            buffer_size: DEFAULT_BUFFER_SIZE,
+            input_shape: DEFAULT_INPUT_SHAPE,
+            arity: DEFAULT_ARITY,
+            device: Default::default(),
+            distance_fn: Default::default(),
+            delete_method: Default::default(),
+        }
+    }
+}
 
 #[derive(Default, Deserialize, Serialize, Debug, Clone)]
 pub enum DistanceFn {
