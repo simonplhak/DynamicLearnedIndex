@@ -150,3 +150,12 @@ pub struct DiskBuffer {
     pub ids_path: PathBuf,
     pub count: usize,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DiskLevelIndex {
+    pub weights_path: PathBuf,
+    pub records_path: PathBuf,
+    pub ids_path: PathBuf,
+    pub buckets: Vec<DiskBucket>,
+    pub config: LevelIndexConfig,
+}

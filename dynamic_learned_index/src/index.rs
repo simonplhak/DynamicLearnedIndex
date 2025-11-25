@@ -487,6 +487,7 @@ impl Default for LevelIndexConfig {
 pub(crate) struct LevelIndexBuilder {
     id: Option<String>,
     n_buckets: Option<usize>,
+    buckets: Option<(Vec<DiskBucket>, PathBuf, PathBuf)>,
     model_config: Option<ModelConfig>,
     bucket_size: Option<usize>,
     input_shape: Option<usize>,
@@ -495,53 +496,99 @@ pub(crate) struct LevelIndexBuilder {
 }
 
 impl LevelIndexBuilder {
-    pub fn n_buckets(&mut self, size: usize) -> &mut Self {
+    pub fn n_buckets(mut self, size: usize) -> Self {
         self.n_buckets = Some(size);
         self
     }
 
-    pub fn model(&mut self, model: ModelConfig) -> &mut Self {
+    pub fn buckets(
+        mut self,
+        buckets: Vec<DiskBucket>,
+        records_path: PathBuf,
+        ids_path: PathBuf,
+    ) -> Self {
+        self.buckets = Some((buckets, records_path, ids_path));
+        self
+    }
+
+    pub fn model(mut self, model: ModelConfig) -> Self {
         self.model_config = Some(model);
         self
     }
 
-    pub fn bucket_size(&mut self, bucket_size: usize) -> &mut Self {
+    pub fn bucket_size(mut self, bucket_size: usize) -> Self {
         self.bucket_size = Some(bucket_size);
         self
     }
 
-    pub fn input_shape(&mut self, input_shape: usize) -> &mut Self {
+    pub fn input_shape(mut self, input_shape: usize) -> Self {
         self.input_shape = Some(input_shape);
         self
     }
 
-    pub fn id(&mut self, id: String) -> &mut Self {
+    pub fn id(mut self, id: String) -> Self {
         self.id = Some(id);
         self
     }
 
-    pub fn model_device(&mut self, model_device: ModelDevice) -> &mut Self {
+    pub fn model_device(mut self, model_device: ModelDevice) -> Self {
         self.model_device = model_device;
         self
     }
 
-    pub fn distance_fn(&mut self, distance_fn: DistanceFn) -> &mut Self {
+    pub fn distance_fn(mut self, distance_fn: DistanceFn) -> Self {
         self.distance_fn = Some(distance_fn);
         self
     }
 
-    pub fn build(&self) -> Result<LevelIndex, BuildError> {
-        let n_buckets = self.n_buckets.ok_or(BuildError::MissingAttribute)?;
-        let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
-        let bucket_size = self.bucket_size.ok_or(BuildError::MissingAttribute)?;
+    pub fn build(self) -> Result<LevelIndex, BuildError> {
+        let input_shape = self
+            .input_shape
+            .ok_or(BuildError::MissingAttributeStr("input_shape"))?;
+        let bucket_size = self
+            .bucket_size
+            .ok_or(BuildError::MissingAttributeStr("bucket_size"))?;
+        let buckets = match self.buckets {
+            Some((buckets, records_path, ids_path)) => {
+                let mut records_file =
+                    File::open(records_path).map_err(|_| BuildError::NonExistentFile)?;
+                let mut ids_file = File::open(ids_path).map_err(|_| BuildError::NonExistentFile)?;
+                buckets
+                    .into_iter()
+                    .map(|disk_bucket| {
+                        bucket::BucketBuilder::from_disk(
+                            disk_bucket,
+                            &mut records_file,
+                            &mut ids_file,
+                        )
+                        .input_shape(input_shape)
+                        .size(bucket_size)
+                        .build()
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            }
+            None => {
+                let n_buckets = self
+                    .n_buckets
+                    .ok_or(BuildError::MissingAttributeStr("n_buckets"))?;
+                (0..n_buckets)
+                    .map(|_| {
+                        bucket::BucketBuilder::default()
+                            .input_shape(input_shape)
+                            .size(bucket_size)
+                            .build()
+                    })
+                    .collect::<Result<Vec<_>, _>>()?
+            }
+        };
+        let n_buckets = buckets.len();
         let distance_fn = self
             .distance_fn
-            .clone()
-            .ok_or(BuildError::MissingAttribute)?;
+            .ok_or(BuildError::MissingAttributeStr("distance_fn"))?;
         let model_config = self
             .model_config
             .as_ref()
-            .ok_or(BuildError::MissingAttribute)?;
+            .ok_or(BuildError::MissingAttributeStr("model_config"))?;
         let mut model_builder = ModelBuilder::default();
         model_builder
             .device(self.model_device.clone())
@@ -549,7 +596,7 @@ impl LevelIndexBuilder {
             .train_params(model_config.train_params.clone())
             .retrain_params(model_config.retrain_params.clone())
             .labels(n_buckets)
-            .label_method(distance_fn.clone().into());
+            .label_method(distance_fn.into());
         if let Some(weights_path) = &model_config.weights_path {
             model_builder.weights_path(weights_path.clone());
         }
@@ -557,14 +604,7 @@ impl LevelIndexBuilder {
             model_builder.add_layer(*layer);
         });
         let model = model_builder.build()?;
-        let mut bucket_builder = bucket::BucketBuilder::default();
-        bucket_builder
-            .input_shape(input_shape)
-            .size(bucket_size)
-            .is_dynamic(true);
-        let buckets = (0..n_buckets)
-            .map(|_| bucket_builder.build())
-            .collect::<Result<Vec<_>, _>>()?;
+
         let level_index = LevelIndex::new(model, buckets);
         Ok(level_index)
     }
@@ -700,6 +740,31 @@ impl LevelIndex {
 
     fn n_buckets(&self) -> usize {
         self.buckets.len()
+    }
+
+    fn dump(&self, working_dir: &Path, level_id: usize) -> DiskLevelIndex {
+        let weights_path = working_dir.join(format!("model-{level_id}.safetensors"));
+        let model = self.model.dump(weights_path.clone());
+        let records_path = working_dir.join(format!("bucket-records-{level_id}.bin"));
+        let ids_path = working_dir.join(format!("bucket-ids-{level_id}.bin"));
+        let mut records_file = File::create(records_path.clone()).unwrap(); // TODO: remove unwrap
+        let mut ids_file = File::create(ids_path.clone()).unwrap(); // TODO: remove unwrap
+        let disk_buckets = self
+            .buckets
+            .iter()
+            .map(|bucket| bucket.dump(&mut records_file, &mut ids_file))
+            .collect::<Vec<_>>();
+        let config = LevelIndexConfig {
+            model,
+            bucket_size: self.buckets[0].size(),
+        };
+        DiskLevelIndex {
+            weights_path,
+            buckets: disk_buckets,
+            config,
+            records_path,
+            ids_path,
+        }
     }
 }
 
