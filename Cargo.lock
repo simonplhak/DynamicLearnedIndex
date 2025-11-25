@@ -506,6 +506,7 @@ dependencies = [
 name = "dynamic_learned_index"
 version = "0.1.0"
 dependencies = [
+ "bytemuck",
  "candle-core",
  "candle-nn",
  "dotenvy",

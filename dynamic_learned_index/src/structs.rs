@@ -136,3 +136,17 @@ pub struct SearchStatistics {
 pub struct DeleteStatistics {
     pub affected_level: Option<usize>,
 }
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DiskBucket {
+    pub records_offset: u64,
+    pub ids_offset: u64,
+    pub count: usize,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DiskBuffer {
+    pub records_path: PathBuf,
+    pub ids_path: PathBuf,
+    pub count: usize,
+}

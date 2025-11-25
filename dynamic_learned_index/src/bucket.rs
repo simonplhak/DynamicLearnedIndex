@@ -1,6 +1,14 @@
-use std::fmt::Debug;
+use std::{
+    fmt::Debug,
+    fs::File,
+    io::{Read as _, Seek as _, Write as _},
+    path::Path,
+};
 
-use crate::{Array, ArrayNumType, ArraySlice, BuildError, DeleteMethod, Id};
+use crate::{
+    structs::{DiskBucket, DiskBuffer},
+    Array, ArrayNumType, ArraySlice, BuildError, DeleteMethod, Id,
+};
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -12,15 +20,6 @@ pub(crate) struct Buffer {
 }
 
 impl Buffer {
-    pub fn new(size: usize, input_shape: usize) -> Self {
-        Self {
-            records: Vec::with_capacity(size * input_shape),
-            ids: Vec::with_capacity(size),
-            size,
-            input_shape,
-        }
-    }
-
     pub fn record(&self, i: usize) -> &ArraySlice {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
@@ -60,6 +59,24 @@ impl Buffer {
 
     pub fn occupied(&self) -> usize {
         self.ids.len()
+    }
+
+    pub fn dump(&self, working_dir: &Path) -> DiskBuffer {
+        let records_path = working_dir.join("buffer_records.bin");
+        let mut records_file = File::create(records_path.clone()).unwrap();
+        let records_bytes: &[u8] = bytemuck::cast_slice(&self.records);
+        records_file.write_all(records_bytes).unwrap();
+
+        let ids_path = working_dir.join("buffer_ids.bin");
+        let mut ids_file = File::create(ids_path.clone()).unwrap();
+        let ids_bytes: &[u8] = bytemuck::cast_slice(&self.ids);
+        ids_file.write_all(ids_bytes).unwrap();
+
+        DiskBuffer {
+            records_path,
+            ids_path,
+            count: self.occupied(),
+        }
     }
 }
 
@@ -105,15 +122,6 @@ pub(crate) struct Bucket {
 }
 
 impl Bucket {
-    fn new(size: usize, input_shape: usize) -> Self {
-        Self {
-            records: Vec::with_capacity(size * input_shape),
-            ids: Vec::with_capacity(size),
-            size,
-            input_shape,
-        }
-    }
-
     pub fn record(&self, i: usize) -> &ArraySlice {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
@@ -168,45 +176,272 @@ impl Bucket {
     pub fn size(&self) -> usize {
         self.size
     }
-}
 
-#[derive(Debug, Default)]
-pub(crate) struct BucketBuilder {
-    input_shape: Option<usize>,
-    size: Option<usize>,
-    is_dynamic: bool,
-}
-
-impl BucketBuilder {
-    pub fn input_shape(&mut self, input_shape: usize) -> &mut Self {
-        self.input_shape = Some(input_shape);
-        self
+    pub fn dump(&self, records_file: &mut File, ids_file: &mut File) -> DiskBucket {
+        let records_offset = records_file.stream_position().unwrap();
+        let records_bytes: &[u8] = bytemuck::cast_slice(&self.records);
+        records_file.write_all(records_bytes).unwrap();
+        let ids_offset = ids_file.stream_position().unwrap();
+        let ids_bytes: &[u8] = bytemuck::cast_slice(&self.ids);
+        ids_file.write_all(ids_bytes).unwrap();
+        DiskBucket {
+            records_offset,
+            ids_offset,
+            count: self.occupied(),
+        }
     }
+}
 
-    pub fn size(&mut self, size: usize) -> &mut Self {
+#[derive(Default)]
+pub struct BufferBuilder {
+    size: Option<usize>,
+    input_shape: Option<usize>,
+    disk_buffer: Option<DiskBuffer>,
+}
+
+impl BufferBuilder {
+    pub fn size(mut self, size: usize) -> Self {
         self.size = Some(size);
         self
     }
 
-    pub fn is_dynamic(&mut self, is_dynamic: bool) -> &mut Self {
-        self.is_dynamic = is_dynamic;
+    pub fn input_shape(mut self, input_shape: usize) -> Self {
+        self.input_shape = Some(input_shape);
         self
     }
 
-    pub fn build(&self) -> Result<Bucket, BuildError> {
-        let size = self.size.ok_or(BuildError::MissingAttribute)?;
-        let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
-        Ok(Bucket::new(size, input_shape))
+    pub fn disk_buffer(mut self, disk_buffer: DiskBuffer) -> Self {
+        self.disk_buffer = Some(disk_buffer);
+        self
+    }
+
+    pub fn build(self) -> Result<Buffer, BuildError> {
+        let size = self.size.ok_or(BuildError::MissingAttributeStr("size"))?;
+        let input_shape = self
+            .input_shape
+            .ok_or(BuildError::MissingAttributeStr("input_shape"))?;
+        let (records, ids) = match self.disk_buffer {
+            Some(disk_buffer) => {
+                let mut records_file = File::open(&disk_buffer.records_path)
+                    .map_err(|_| BuildError::NonExistentFile)?;
+                let mut ids_file =
+                    File::open(&disk_buffer.ids_path).map_err(|_| BuildError::NonExistentFile)?;
+
+                // Read records
+                records_file.seek(std::io::SeekFrom::Start(0)).unwrap();
+                let mut records = vec![0.0f32; disk_buffer.count * input_shape];
+                let records_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut records);
+                records_file.read_exact(records_bytes).unwrap();
+
+                // Read ids
+                ids_file.seek(std::io::SeekFrom::Start(0)).unwrap();
+                let mut ids = vec![0u32; disk_buffer.count];
+                let ids_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut ids);
+                ids_file.read_exact(ids_bytes).unwrap();
+
+                (records, ids)
+            }
+            None => (
+                Vec::with_capacity(size * input_shape),
+                Vec::with_capacity(size),
+            ),
+        };
+        Ok(Buffer {
+            records,
+            ids,
+            size,
+            input_shape,
+        })
+    }
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct BucketBuilder<'a> {
+    input_shape: Option<usize>,
+    size: Option<usize>,
+    disk_bucket: Option<DiskBucket>,
+    records_file: Option<&'a mut File>,
+    ids_file: Option<&'a mut File>,
+}
+
+impl<'a> BucketBuilder<'a> {
+    pub fn from_disk(
+        disk_bucket: DiskBucket,
+        records_file: &'a mut File,
+        ids_file: &'a mut File,
+    ) -> Self {
+        Self {
+            input_shape: None,
+            size: None,
+            disk_bucket: Some(disk_bucket),
+            records_file: Some(records_file),
+            ids_file: Some(ids_file),
+        }
+    }
+
+    pub fn input_shape(mut self, input_shape: usize) -> Self {
+        self.input_shape = Some(input_shape);
+        self
+    }
+
+    pub fn size(mut self, size: usize) -> Self {
+        self.size = Some(size);
+        self
+    }
+
+    pub fn build(self) -> Result<Bucket, BuildError> {
+        let size = self.size.ok_or(BuildError::MissingAttributeStr("size"))?;
+        let input_shape = self
+            .input_shape
+            .ok_or(BuildError::MissingAttributeStr("input_shape"))?;
+        let (records, ids) = match self.disk_bucket {
+            Some(disk_bucket) => {
+                let records_file = self
+                    .records_file
+                    .ok_or(BuildError::MissingAttributeStr("records_file"))?;
+                let ids_file = self
+                    .ids_file
+                    .ok_or(BuildError::MissingAttributeStr("ids_file"))?;
+
+                // Read records
+                records_file
+                    .seek(std::io::SeekFrom::Start(disk_bucket.records_offset))
+                    .unwrap();
+                let mut records = vec![0.0f32; disk_bucket.count * input_shape];
+                let records_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut records);
+                records_file.read_exact(records_bytes).unwrap();
+
+                // Read ids
+                ids_file
+                    .seek(std::io::SeekFrom::Start(disk_bucket.ids_offset))
+                    .unwrap();
+                let mut ids = vec![0u32; disk_bucket.count];
+                let ids_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut ids);
+                ids_file.read_exact(ids_bytes).unwrap();
+
+                (records, ids)
+            }
+            None => (
+                Vec::with_capacity(size * input_shape),
+                Vec::with_capacity(size),
+            ),
+        };
+        Ok(Bucket {
+            records,
+            ids,
+            size,
+            input_shape,
+        })
     }
 }
 
 #[cfg(test)]
 mod tests {
 
+    use tempfile::NamedTempFile;
+
     use super::*;
 
     fn create_bucket() -> Bucket {
-        Bucket::new(10, 5)
+        BucketBuilder::default()
+            .size(10)
+            .input_shape(5)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_bucket_serialize() {
+        let mut original_bucket = create_bucket();
+        original_bucket.insert(vec![1.0; original_bucket.input_shape], 1);
+        original_bucket.insert(vec![2.0; original_bucket.input_shape], 2);
+        let mut records_file = NamedTempFile::new().unwrap();
+        let mut ids_file = NamedTempFile::new().unwrap();
+        let dump = original_bucket.dump(records_file.as_file_mut(), ids_file.as_file_mut());
+        let deserialized =
+            BucketBuilder::from_disk(dump, records_file.as_file_mut(), ids_file.as_file_mut())
+                .input_shape(original_bucket.input_shape)
+                .size(original_bucket.size)
+                .build()
+                .unwrap();
+
+        assert_eq!(original_bucket.size, deserialized.size);
+        assert_eq!(original_bucket.input_shape, deserialized.input_shape);
+        assert_eq!(original_bucket.records, deserialized.records);
+        assert_eq!(original_bucket.ids, deserialized.ids);
+        assert_eq!(original_bucket.occupied(), deserialized.occupied());
+        assert_eq!(original_bucket.record(0), deserialized.record(0));
+        assert_eq!(original_bucket.record(1), deserialized.record(1));
+    }
+
+    #[test]
+    fn test_bucket_empty_serialize() {
+        let original_bucket = create_bucket();
+        let mut records_file = NamedTempFile::new().unwrap();
+        let mut ids_file = NamedTempFile::new().unwrap();
+        let dump = original_bucket.dump(records_file.as_file_mut(), ids_file.as_file_mut());
+        let deserialized =
+            BucketBuilder::from_disk(dump, records_file.as_file_mut(), ids_file.as_file_mut())
+                .input_shape(original_bucket.input_shape)
+                .size(original_bucket.size)
+                .build()
+                .unwrap();
+
+        assert_eq!(original_bucket.size, deserialized.size);
+        assert_eq!(original_bucket.input_shape, deserialized.input_shape);
+        assert_eq!(original_bucket.records, deserialized.records);
+        assert_eq!(original_bucket.ids, deserialized.ids);
+        assert_eq!(original_bucket.occupied(), deserialized.occupied());
+    }
+
+    #[test]
+    fn test_buffer_serialize() {
+        let mut original_buffer = BufferBuilder::default()
+            .size(10)
+            .input_shape(5)
+            .build()
+            .unwrap();
+        original_buffer.insert(vec![1.0; original_buffer.input_shape], 1);
+        original_buffer.insert(vec![2.0; original_buffer.input_shape], 2);
+        let working_dir = tempfile::tempdir().unwrap();
+        let dump = original_buffer.dump(working_dir.path());
+        let deserialized = BufferBuilder::default()
+            .size(original_buffer.size)
+            .input_shape(original_buffer.input_shape)
+            .disk_buffer(dump)
+            .build()
+            .unwrap();
+
+        assert_eq!(original_buffer.size, deserialized.size);
+        assert_eq!(original_buffer.input_shape, deserialized.input_shape);
+        assert_eq!(original_buffer.records, deserialized.records);
+        assert_eq!(original_buffer.ids, deserialized.ids);
+        assert_eq!(original_buffer.occupied(), deserialized.occupied());
+        assert_eq!(original_buffer.record(0), deserialized.record(0));
+        assert_eq!(original_buffer.record(1), deserialized.record(1));
+    }
+
+    #[test]
+    fn test_buffer_empty_serialize() {
+        let original_buffer = BufferBuilder::default()
+            .size(10)
+            .input_shape(5)
+            .build()
+            .unwrap();
+        let working_dir = tempfile::tempdir().unwrap();
+        let dump = original_buffer.dump(working_dir.path());
+        let deserialized = BufferBuilder::default()
+            .size(original_buffer.size)
+            .input_shape(original_buffer.input_shape)
+            .disk_buffer(dump)
+            .build()
+            .unwrap();
+
+        assert_eq!(original_buffer.size, deserialized.size);
+        assert_eq!(original_buffer.input_shape, deserialized.input_shape);
+        assert_eq!(original_buffer.records, deserialized.records);
+        assert_eq!(original_buffer.ids, deserialized.ids);
+        assert_eq!(original_buffer.occupied(), deserialized.occupied());
     }
 
     #[test]
@@ -222,7 +457,6 @@ mod tests {
         let bucket = BucketBuilder::default()
             .size(20)
             .input_shape(3)
-            .is_dynamic(false)
             .build()
             .unwrap();
 
@@ -272,7 +506,11 @@ mod tests {
 
     #[test]
     fn test_has_space() {
-        let mut bucket = Bucket::new(3, 2);
+        let mut bucket = BucketBuilder::default()
+            .size(3)
+            .input_shape(2)
+            .build()
+            .unwrap();
         assert!(bucket.has_space(1));
         assert!(bucket.has_space(3));
         assert!(!bucket.has_space(4));
@@ -308,7 +546,11 @@ mod tests {
 
     #[test]
     fn test_resize_dynamic_bucket() {
-        let mut bucket = Bucket::new(2, 3);
+        let mut bucket = BucketBuilder::default()
+            .size(2)
+            .input_shape(3)
+            .build()
+            .unwrap();
 
         // Fill the bucket
         bucket.insert(vec![1.0, 2.0, 3.0], 1);
