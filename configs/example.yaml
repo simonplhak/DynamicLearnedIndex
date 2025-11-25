@@ -2,27 +2,26 @@ compaction_strategy:
   type: bentley_saxe
   rebuild_strategy: no_rebuild
 levels:
-  0:
-    model:
-      layers:
-      - type: linear
-        value: 256
-      - type: relu
-      - type: linear
-        value: 256
-      - type: relu
-      train_params:
-        threshold_samples: 1000
-        batch_size: 8
-        epochs: 3
-        max_iters: 10
-      retrain_params:
-        threshold_samples: 1000
-        batch_size: 8
-        epochs: 3
-        max_iters: 10
-    bucket_size: 50
-buffer_size: 50
+  model:
+    layers:
+    - type: linear
+      value: 256
+    - type: relu
+    - type: linear
+      value: 256
+    - type: relu
+    train_params:
+      threshold_samples: 1000
+      batch_size: 8
+      epochs: 3
+      max_iters: 10
+    retrain_params:
+      threshold_samples: 1000
+      batch_size: 8
+      epochs: 3
+      max_iters: 10
+  bucket_size: 200
+buffer_size: 200
 input_shape: 768
 arity: 3
 device: cpu
