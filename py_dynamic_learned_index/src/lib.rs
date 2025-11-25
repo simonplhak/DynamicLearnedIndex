@@ -23,7 +23,7 @@ impl DynamicLearnedIndexBuilder {
     #[staticmethod]
     fn from_yaml(file: &str) -> PyResult<Self> {
         Ok(DynamicLearnedIndexBuilder {
-            builder: IndexBuilder::from_yaml(&Path::new(file))
+            builder: IndexBuilder::from_yaml(Path::new(file))
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?,
         })
     }
