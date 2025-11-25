@@ -1,88 +1,23 @@
 use crate::{
-    bucket::{self, Bucket, Buffer},
-    constants::DEFAULT_BUFFER_SIZE,
+    bucket::{self, Bucket, Buffer, BufferBuilder},
+    constants::DEFAULT_BUCKET_SIZE,
     model::{Model, ModelBuilder, ModelConfig, ModelDevice},
-    Array, ArraySlice, BuildError, DeleteMethod, DeleteStatistics, DistanceFn, Id, SearchParamsT,
-    SearchStatistics, SearchStrategy,
+    structs::{DiskBucket, DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig},
+    Array, ArraySlice, BuildError, DeleteMethod, DeleteStatistics, DistanceFn, Id, ModelLayer,
+    SearchParamsT, SearchStatistics, SearchStrategy,
 };
 use log::{debug, info};
 use measure_time_macro::log_time;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fs::File, path::Path};
-
-pub struct IndexBuilder {
-    compaction_strategy: Option<CompactionStrategy>,
-    levels: Option<HashMap<usize, LevelIndexConfig>>,
-    buffer_size: Option<usize>,
-    input_shape: Option<usize>,
-    arity: Option<usize>,
-    device: Option<ModelDevice>,
-    distance_fn: Option<DistanceFn>,
-    delete_method: Option<DeleteMethod>,
-}
-
-impl Default for IndexBuilder {
-    fn default() -> Self {
-        Self::from_config(Default::default())
-    }
-}
-
-impl IndexBuilder {
-    pub fn from_yaml(file: &Path) -> Result<Self, BuildError> {
-        let content = std::fs::read_to_string(file).map_err(|_| BuildError::NonExistentFile)?;
-        let config = serde_yaml::from_str(&content)
-            .map_err(|e| BuildError::InvalidYamlConfig(e.to_string()))?;
-        Ok(Self::from_config(config))
-    }
-    pub fn from_config(config: IndexConfig) -> Self {
-        Self {
-            compaction_strategy: Some(config.compaction_strategy),
-            levels: Some(config.levels),
-            buffer_size: Some(config.buffer_size),
-            input_shape: Some(config.input_shape),
-            arity: Some(config.arity),
-            device: Some(config.device),
-            distance_fn: Some(config.distance_fn),
-            delete_method: Some(config.delete_method),
-        }
-    }
-
-    pub fn build(self) -> Result<Index, BuildError> {
-        let levels_config = self.levels.ok_or(BuildError::MissingAttribute)?;
-        if levels_config.is_empty() {
-            return Err(BuildError::MissingAttribute);
-        }
-        if !levels_config.contains_key(&0) {
-            return Err(BuildError::MissingAttribute);
-        }
-        let buffer_size = self.buffer_size.ok_or(BuildError::MissingAttribute)?;
-        let input_shape = self.input_shape.ok_or(BuildError::MissingAttribute)?;
-        let buffer = Buffer::new(buffer_size, input_shape);
-        let arity = self.arity.ok_or(BuildError::MissingAttribute)?;
-        let device = self.device.ok_or(BuildError::MissingAttribute)?;
-        let distance_fn = self.distance_fn.ok_or(BuildError::MissingAttribute)?;
-        let compaction_strategy = self
-            .compaction_strategy
-            .ok_or(BuildError::MissingAttribute)?;
-        let delete_method = self.delete_method.ok_or(BuildError::MissingAttribute)?;
-        let index = Index {
-            levels_config,
-            input_shape,
-            arity,
-            device,
-            levels: Vec::new(),
-            buffer,
-            distance_fn,
-            compaction_strategy,
-            delete_method,
-        };
-        Ok(index)
-    }
-}
+use std::{
+    collections::HashMap,
+    fs::{create_dir, File},
+    path::{Path, PathBuf},
+};
 
 pub struct Index {
     compaction_strategy: CompactionStrategy,
-    levels_config: HashMap<usize, LevelIndexConfig>,
+    levels_config: LevelIndexConfig,
     input_shape: usize,
     arity: usize,
     device: ModelDevice,
@@ -182,13 +117,7 @@ impl Index {
     }
 
     fn get_level_index_config(&self) -> LevelIndexConfig {
-        let curr_level = self.levels.len();
-        self.levels_config
-            .iter()
-            .take_while(|(level, _)| **level <= curr_level)
-            .last()
-            .map(|(_, config)| config.to_owned())
-            .unwrap()
+        self.levels_config.clone()
     }
 
     pub fn insert(&mut self, value: Array, id: Id) {
@@ -293,6 +222,31 @@ impl Index {
     fn is_level_underutilized(&self, level_idx: usize) -> bool {
         let level = &self.levels[level_idx];
         level.occupied() < level.buckets[0].size() * self.arity.pow(level_idx as u32)
+    }
+
+    pub fn dump(&self, working_dir: &Path) {
+        create_dir(working_dir).unwrap();
+        let disk_levels = self
+            .levels
+            .iter()
+            .enumerate()
+            .map(|(level_id, level)| level.dump(working_dir, level_id))
+            .collect::<Vec<_>>();
+        let disk_buffer = self.buffer.dump(working_dir);
+        let disk_index = DiskIndex {
+            levels_config: self.levels_config.clone(),
+            compaction_strategy: self.compaction_strategy.clone(),
+            buffer_size: self.buffer.size,
+            input_shape: self.input_shape,
+            arity: self.arity,
+            distance_fn: self.distance_fn.clone(),
+            delete_method: self.delete_method.clone(),
+            levels: disk_levels,
+            disk_buffer,
+        };
+        let meta_path = working_dir.join("meta.json");
+        let meta_file = File::create(meta_path).unwrap();
+        serde_json::to_writer(meta_file, &disk_index).unwrap();
     }
 }
 
@@ -768,21 +722,234 @@ impl LevelIndex {
     }
 }
 
+#[derive(Clone)]
+pub struct IndexBuilder {
+    compaction_strategy: Option<CompactionStrategy>,
+    levels_config: LevelIndexConfig,
+    model_layers: Option<Vec<ModelLayer>>,
+    buffer_size: Option<usize>,
+    input_shape: Option<usize>,
+    arity: Option<usize>,
+    device: Option<ModelDevice>,
+    distance_fn: Option<DistanceFn>,
+    delete_method: Option<DeleteMethod>,
+    levels: Option<Vec<DiskLevelIndex>>,
+    disk_buffer: Option<DiskBuffer>,
+}
+
+impl Default for IndexBuilder {
+    fn default() -> Self {
+        Self::from_config(Default::default())
+    }
+}
+
+impl IndexBuilder {
+    pub fn from_yaml(file: &Path) -> Result<Self, BuildError> {
+        let content = std::fs::read_to_string(file).map_err(|_| BuildError::NonExistentFile)?;
+        let config = serde_yaml::from_str(&content)
+            .map_err(|e| BuildError::InvalidYamlConfig(e.to_string()))?;
+        Ok(Self::from_config(config))
+    }
+
+    pub fn from_config(config: IndexConfig) -> Self {
+        Self {
+            compaction_strategy: Some(config.compaction_strategy),
+            levels_config: config.levels,
+            buffer_size: Some(config.buffer_size),
+            input_shape: Some(config.input_shape),
+            arity: Some(config.arity),
+            device: Some(config.device),
+            distance_fn: Some(config.distance_fn),
+            delete_method: Some(config.delete_method),
+            levels: None,
+            disk_buffer: None,
+            model_layers: None,
+        }
+    }
+
+    pub fn from_disk(working_dir: &Path) -> Result<Self, BuildError> {
+        let meta_path = working_dir.join("meta.json");
+        let meta_file = File::open(meta_path).map_err(|_| BuildError::NonExistentFile)?;
+        let disk_index: DiskIndex = serde_json::from_reader(meta_file)
+            .map_err(|_| BuildError::InvalidYamlConfig("Invalid disk meta file".to_string()))?;
+        Ok(Self {
+            compaction_strategy: Some(disk_index.compaction_strategy),
+            levels_config: disk_index.levels_config,
+            buffer_size: Some(disk_index.buffer_size),
+            input_shape: Some(disk_index.input_shape),
+            arity: Some(disk_index.arity),
+            device: Some(Default::default()),
+            distance_fn: Some(disk_index.distance_fn),
+            delete_method: Some(disk_index.delete_method),
+            levels: Some(disk_index.levels),
+            disk_buffer: Some(disk_index.disk_buffer),
+            model_layers: None,
+        })
+    }
+
+    pub fn buffer_size(mut self, size: usize) -> Self {
+        self.buffer_size = Some(size);
+        self
+    }
+
+    pub fn bucket_size(mut self, size: usize) -> Self {
+        self.levels_config.bucket_size = size;
+        self
+    }
+
+    pub fn arity(mut self, arity: usize) -> Self {
+        self.arity = Some(arity);
+        self
+    }
+
+    pub fn compaction_strategy(mut self, strategy: CompactionStrategy) -> Self {
+        self.compaction_strategy = Some(strategy);
+        self
+    }
+
+    pub fn distance_fn(mut self, distance_fn: DistanceFn) -> Self {
+        self.distance_fn = Some(distance_fn);
+        self
+    }
+
+    pub fn input_shape(mut self, shape: usize) -> Self {
+        self.input_shape = Some(shape);
+        self
+    }
+
+    pub fn device(mut self, device: ModelDevice) -> Self {
+        self.device = Some(device);
+        self
+    }
+
+    pub fn delete_method(mut self, method: DeleteMethod) -> Self {
+        self.delete_method = Some(method);
+        self
+    }
+
+    pub fn train_threshold_samples(mut self, samples: usize) -> Self {
+        self.levels_config.model.train_params.threshold_samples = samples;
+        self
+    }
+
+    pub fn train_batch_size(mut self, batch_size: usize) -> Self {
+        self.levels_config.model.train_params.batch_size = batch_size;
+        self
+    }
+
+    pub fn train_epochs(mut self, epochs: usize) -> Self {
+        self.levels_config.model.train_params.epochs = epochs;
+        self
+    }
+
+    pub fn retrain_threshold_samples(mut self, samples: usize) -> Self {
+        self.levels_config.model.retrain_params.threshold_samples = samples;
+        self
+    }
+
+    pub fn retrain_batch_size(mut self, batch_size: usize) -> Self {
+        self.levels_config.model.retrain_params.batch_size = batch_size;
+        self
+    }
+
+    pub fn retrain_epochs(mut self, epochs: usize) -> Self {
+        self.levels_config.model.retrain_params.epochs = epochs;
+        self
+    }
+
+    pub fn add_layer(mut self, layer: ModelLayer) -> Self {
+        match self.model_layers.as_mut() {
+            Some(layers) => layers.push(layer),
+            None => {
+                self.model_layers = Some(vec![layer]);
+            }
+        };
+        self
+    }
+
+    fn load_disk_level(
+        disk_index: DiskLevelIndex,
+        device: ModelDevice,
+        distance_fn: DistanceFn,
+        input_shape: usize,
+    ) -> Result<LevelIndex, BuildError> {
+        LevelIndexBuilder::default()
+            .model(disk_index.config.model)
+            .distance_fn(distance_fn)
+            .model_device(device)
+            .bucket_size(disk_index.config.bucket_size)
+            .input_shape(input_shape)
+            .buckets(
+                disk_index.buckets,
+                disk_index.records_path,
+                disk_index.ids_path,
+            )
+            .build()
+    }
+
+    pub fn build(self) -> Result<Index, BuildError> {
+        let levels_config = self.levels_config;
+        let buffer_size = self
+            .buffer_size
+            .ok_or(BuildError::MissingAttributeStr("buffer_size"))?;
+        let input_shape = self
+            .input_shape
+            .ok_or(BuildError::MissingAttributeStr("input_shape"))?;
+        let mut buffer = BufferBuilder::default()
+            .input_shape(input_shape)
+            .size(buffer_size);
+        if let Some(disk_buffer) = self.disk_buffer {
+            buffer = buffer.disk_buffer(disk_buffer);
+        }
+        let buffer = buffer.build()?;
+        let arity = self.arity.ok_or(BuildError::MissingAttributeStr("arity"))?;
+        let device = self
+            .device
+            .ok_or(BuildError::MissingAttributeStr("device"))?;
+        let distance_fn = self
+            .distance_fn
+            .ok_or(BuildError::MissingAttributeStr("distance_fn"))?;
+        let compaction_strategy = self
+            .compaction_strategy
+            .ok_or(BuildError::MissingAttributeStr("compaction_strategy"))?;
+        let delete_method = self
+            .delete_method
+            .ok_or(BuildError::MissingAttributeStr("delete_method"))?;
+        let levels = match self.levels {
+            Some(levels) => levels
+                .into_iter()
+                .map(|level| {
+                    Self::load_disk_level(level, device.clone(), distance_fn.clone(), input_shape)
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            None => Vec::new(),
+        };
+        let index = Index {
+            levels_config,
+            input_shape,
+            arity,
+            device,
+            levels,
+            buffer,
+            distance_fn,
+            compaction_strategy,
+            delete_method,
+        };
+        Ok(index)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::constants::{DEFAULT_BUCKET_SIZE, DEFAULT_SEARCH_N_CANDIDATES};
     use crate::{search_strategy::SearchStrategy, structs::DistanceFn};
-    use std::collections::HashMap;
     use std::io::Write;
     use tempfile::NamedTempFile;
 
     fn create_test_config() -> IndexConfig {
-        let mut levels = HashMap::new();
-        levels.insert(0, LevelIndexConfig::default());
-
         IndexConfig {
-            levels,
+            levels: LevelIndexConfig::default(),
             buffer_size: 10,
             input_shape: 3,
             arity: 2,
@@ -802,28 +969,28 @@ mod tests {
     #[test]
     fn test_index_config_from_yaml_valid() {
         let yaml_content = r#"
-        levelling: bentley_saxe
+        compaction_strategy:
+          type: bentley_saxe
+          rebuild_strategy: no_rebuild
         levels:
-          0:
-            model:
-              layers:
-                - type: linear
-                  value: 4
-                - type: relu
-              train_params:
-                threshold_samples: 100
-                max_iters: 5
-                batch_size: 4
-                epochs: 2
-              retrain_params:
-                threshold_samples: 10
-                max_iters: 4
-                batch_size: 5
-                epochs: 3
-            bucket_size: 100
+          model:
+            layers:
+              - type: linear
+                value: 4
+              - type: relu
+            train_params:
+              threshold_samples: 100
+              max_iters: 5
+              batch_size: 4
+              epochs: 2
+            retrain_params:
+              threshold_samples: 10
+              max_iters: 4
+              batch_size: 5
+              epochs: 3
+          bucket_size: 100
         buffer_size: 50
         input_shape: 10
-        compaction_strategy: bentley_saxe
         arity: 2
         device: cpu
         distance_fn: dot
@@ -840,9 +1007,9 @@ mod tests {
         assert_eq!(index.buffer.size, 50);
         assert_eq!(index.input_shape, 10);
         assert_eq!(index.arity, 2);
-        assert_eq!(index.levels.len(), 1);
-        let lvl = index.levels.get(0).expect("level 0 missing");
-        assert_eq!(lvl.buckets[0].size(), 100);
+        assert_eq!(index.levels.len(), 0);
+        let lvl = index.levels_config;
+        assert_eq!(lvl.bucket_size, 100);
         assert!(matches!(index.delete_method, DeleteMethod::OidToBucket));
     }
 
@@ -850,23 +1017,6 @@ mod tests {
     fn test_index_config_from_yaml_nonexistent_file() {
         let result = IndexBuilder::from_yaml(Path::new("nonexistent.yaml"));
         assert!(matches!(result, Err(BuildError::NonExistentFile)));
-    }
-
-    #[test]
-    fn test_index_config_build_empty_levels() {
-        let mut config = create_test_config();
-        config.levels.clear();
-        let result = IndexBuilder::from_config(config).build();
-        assert!(matches!(result, Err(BuildError::MissingAttribute)));
-    }
-
-    #[test]
-    fn test_index_config_build_missing_level_zero() {
-        let mut config = create_test_config();
-        config.levels.clear();
-        config.levels.insert(1, LevelIndexConfig::default());
-        let result = IndexBuilder::from_config(config).build();
-        assert!(matches!(result, Err(BuildError::MissingAttribute)));
     }
 
     #[test]
@@ -1000,8 +1150,7 @@ mod tests {
         } else {
             records[0].len()
         };
-        let mut builder = LevelIndexBuilder::default();
-        let mut level = builder
+        let mut level = LevelIndexBuilder::default()
             .n_buckets(1)
             .input_shape(input_shape)
             .bucket_size(100)
@@ -1102,8 +1251,7 @@ mod tests {
         let rec1 = vec![1.0f32, 1.1, 1.2];
         let rec1b = vec![1.5f32, 1.6, 1.7];
 
-        let mut builder = LevelIndexBuilder::default();
-        let mut level = builder
+        let mut level = LevelIndexBuilder::default()
             .n_buckets(3)
             .input_shape(3)
             .bucket_size(100)

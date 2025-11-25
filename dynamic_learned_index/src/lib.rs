@@ -10,10 +10,11 @@ mod search_strategy;
 pub mod structs;
 pub mod types;
 pub use errors::BuildError;
-pub use index::{CompactionStrategy, Index, IndexConfig, LevelIndexConfig, RebuildStrategy};
+pub use index::{CompactionStrategy, Index, IndexBuilder, LevelIndexConfig, RebuildStrategy};
 pub use model::{ModelConfig, ModelDevice, ModelLayer, TrainParams};
 pub use search_strategy::SearchStrategy;
 pub use structs::{
-    DeleteMethod, DeleteStatistics, DistanceFn, SearchParams, SearchParamsT, SearchStatistics,
+    DeleteMethod, DeleteStatistics, DistanceFn, IndexConfig, SearchParams, SearchParamsT,
+    SearchStatistics,
 };
 pub use types::{Array, ArrayNumType, ArraySlice, Id};

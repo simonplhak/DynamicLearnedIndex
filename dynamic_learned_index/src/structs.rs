@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::PathBuf};
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,7 @@ use crate::{
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
     pub compaction_strategy: CompactionStrategy,
-    pub levels: HashMap<usize, LevelIndexConfig>,
+    pub levels: LevelIndexConfig,
     pub buffer_size: usize,
     pub input_shape: usize,
     pub arity: usize,
@@ -21,11 +21,9 @@ pub struct IndexConfig {
 
 impl Default for IndexConfig {
     fn default() -> Self {
-        let mut levels = HashMap::new();
-        levels.insert(0, Default::default());
         Self {
             compaction_strategy: Default::default(),
-            levels,
+            levels: Default::default(),
             buffer_size: DEFAULT_BUFFER_SIZE,
             input_shape: DEFAULT_INPUT_SHAPE,
             arity: DEFAULT_ARITY,
@@ -158,4 +156,17 @@ pub struct DiskLevelIndex {
     pub ids_path: PathBuf,
     pub buckets: Vec<DiskBucket>,
     pub config: LevelIndexConfig,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DiskIndex {
+    pub compaction_strategy: CompactionStrategy,
+    pub levels_config: LevelIndexConfig,
+    pub buffer_size: usize,
+    pub input_shape: usize,
+    pub arity: usize,
+    pub distance_fn: DistanceFn,
+    pub delete_method: DeleteMethod,
+    pub levels: Vec<DiskLevelIndex>,
+    pub disk_buffer: DiskBuffer,
 }
