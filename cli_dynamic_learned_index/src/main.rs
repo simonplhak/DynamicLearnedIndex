@@ -1,11 +1,15 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 use dataset::load_dataset_config;
-use dynamic_learned_index::{self, SearchStrategy};
+use dynamic_learned_index::{self, IndexBuilder, SearchStrategy};
 use eval::{eval_queries, insert_all_data};
 use log::info;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf, str::FromStr};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 use structured_logger::json::new_writer;
 
 use crate::dataset::DatasetConfig;
@@ -124,18 +128,11 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         .init();
     let config_yaml = serde_yaml::to_string(&config)?;
     fs::write(experiment_dir.join("config.yaml"), config_yaml)?;
-    let index_config = match &config.index_config {
-        Some(index_config_path) => {
-            dynamic_learned_index::IndexConfig::from_yaml(index_config_path.to_str().unwrap())?
-        }
-        None => dynamic_learned_index::IndexConfig::default(),
+    let index_builder = match &config.index_config {
+        Some(index_config_path) => IndexBuilder::from_yaml(index_config_path)?,
+        None => IndexBuilder::default(),
     };
-
-    fs::write(
-        experiment_dir.join("index_config.yaml"),
-        serde_yaml::to_string(&index_config)?,
-    )?;
-    let mut index = index_config.build()?;
+    let mut index = index_builder.build()?;
     let (queries, test_queries, gt) = dataset_config.load()?;
     info!(queries=queries.len(), test_queries=test_queries.len(); "dataset");
     let validation_options = match config.skip_validation {
@@ -166,6 +163,18 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, ncandidates=ncandidates, elapsed_time=metrics.elapsed_time.as_secs_f32(); "metrics");
     }
     info!(buckets = index.n_buckets();"index:filled");
+    let working_dir = experiment_dir.join("serialized_index");
+    index.dump(&working_dir);
+
+    let index = IndexBuilder::from_disk(&working_dir)?.build()?;
+    for ncandidates in &config.ncandidates {
+        let search_strategy = match config.search_strategy {
+            CLISearchStrategy::Knn => SearchStrategy::Base(*ncandidates),
+            CLISearchStrategy::Model => SearchStrategy::ModelDriven(*ncandidates),
+        };
+        let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true);
+        info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, ncandidates=ncandidates, elapsed_time=metrics.elapsed_time.as_secs_f32(); "metrics");
+    }
 
     Ok(())
 }
@@ -182,8 +191,8 @@ fn test() -> Result<()> {
         //     new_writer(fs::File::create(experiment_dir.join("logs.jsonl"))?),
         // )
         .init();
-    let index_config = dynamic_learned_index::IndexConfig::from_yaml("configs/example.yaml")?;
-    let mut index = index_config.build()?;
+    let index_builder = IndexBuilder::from_yaml(Path::new("configs/example.yaml"))?;
+    let mut index = index_builder.build()?;
     let dataset_config = load_dataset_config(&PathBuf::from("data/k300"))?;
     let (queries, _, _) = dataset_config.load()?;
     let validation_options = eval::ValidationOptions {
