@@ -1,6 +1,7 @@
+use std::path::Path;
+
 use dynamic_learned_index::{
-    DeleteStatistics, IndexConfig, LevelIndexConfig, ModelConfig, ModelDevice, ModelLayer,
-    SearchParams, SearchStatistics, TrainParams,
+    DeleteStatistics, IndexBuilder, ModelDevice, ModelLayer, SearchParams, SearchStatistics,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::{prelude::*, types::PyDict, PyErr};
@@ -8,105 +9,90 @@ use pyo3::{prelude::*, types::PyDict, PyErr};
 #[pyclass]
 #[derive(Clone)]
 struct DynamicLearnedIndexBuilder {
-    builder: dynamic_learned_index::IndexConfig,
-    threshold_samples: Option<usize>,
-    bucket_size: Option<usize>,
-    layers: Vec<ModelLayer>,
-    batch_size: Option<usize>,
-    epochs: Option<usize>,
+    builder: IndexBuilder,
 }
 
 #[pymethods]
 impl DynamicLearnedIndexBuilder {
     #[new]
     fn new() -> PyResult<Self> {
-        let builder = dynamic_learned_index::IndexConfig::default();
-        Ok(DynamicLearnedIndexBuilder {
-            builder,
-            threshold_samples: None,
-            bucket_size: None,
-            layers: Vec::new(),
-            batch_size: None,
-            epochs: None,
-        })
+        let builder = IndexBuilder::default();
+        Ok(DynamicLearnedIndexBuilder { builder })
     }
 
     #[staticmethod]
     fn from_yaml(file: &str) -> PyResult<Self> {
         Ok(DynamicLearnedIndexBuilder {
-            builder: IndexConfig::from_yaml(file)
+            builder: IndexBuilder::from_yaml(&Path::new(file))
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?,
-            threshold_samples: None,
-            bucket_size: None,
-            layers: Vec::new(),
-            batch_size: None,
-            epochs: None,
         })
     }
 
     fn buffer_size(&self, size: usize) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.builder.buffer_size = size;
+        builder.builder = builder.builder.buffer_size(size);
         Ok(builder)
     }
 
     fn bucket_size(&self, size: usize) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.bucket_size = Some(size);
+        builder.builder = builder.builder.bucket_size(size);
         Ok(builder)
     }
 
     fn arity(&self, arity: usize) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.builder.arity = arity;
+        builder.builder = builder.builder.arity(arity);
         Ok(builder)
     }
 
     fn compaction_strategy(&self, compaction: &str) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.builder.compaction_strategy = compaction.into();
+        builder.builder = builder.builder.compaction_strategy(compaction.into());
         Ok(builder)
     }
 
     fn distance_fn(&self, distance_fn: &str) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.builder.distance_fn = distance_fn.into();
+        builder.builder = builder.builder.distance_fn(distance_fn.into());
         Ok(builder)
     }
 
-    fn threshold_samples(&self, samples: usize) -> PyResult<Self> {
+    fn train_threshold_samples(&self, samples: usize) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.threshold_samples = Some(samples);
+        builder.builder = builder.builder.train_threshold_samples(samples);
         Ok(builder)
     }
 
     fn linear_model_layer(&self, hidden_neurons: usize) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.layers.push(ModelLayer::Linear(hidden_neurons));
+        builder.builder = builder
+            .builder
+            .add_layer(ModelLayer::Linear(hidden_neurons));
         Ok(builder)
     }
 
     fn relu_layer(&self) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.layers.push(ModelLayer::ReLU);
+        builder.builder = builder.builder.add_layer(ModelLayer::ReLU);
         Ok(builder)
     }
 
-    fn batch_size(&self, size: usize) -> PyResult<Self> {
+    fn train_batch_size(&self, size: usize) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.batch_size = Some(size);
+        builder.builder = builder.builder.train_batch_size(size);
         Ok(builder)
     }
 
-    fn epochs(&self, epochs: usize) -> PyResult<Self> {
+    fn train_epochs(&self, epochs: usize) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.epochs = Some(epochs);
+        builder.builder = builder.builder.train_epochs(epochs);
         Ok(builder)
     }
 
     fn input_shape(&self, shape: usize) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.builder.input_shape = shape;
+        builder.builder = builder.builder.input_shape(shape);
         Ok(builder)
     }
 
@@ -136,48 +122,20 @@ impl DynamicLearnedIndexBuilder {
                 "Invalid device type",
             ));
         };
-        builder.builder.device = device;
+        builder.builder = builder.builder.device(device);
         Ok(builder)
     }
 
     fn delete_method(&self, delete_method: &str) -> PyResult<Self> {
         let mut builder = self.clone();
-        builder.builder.delete_method = delete_method.into();
-        Ok(builder)
-    }
-
-    fn _build_levels_config(&self) -> PyResult<Self> {
-        let mut builder = self.clone();
-        let mut train_params = TrainParams::default();
-        if let Some(threshold) = self.threshold_samples {
-            train_params.threshold_samples = threshold;
-        }
-        if let Some(batch_size) = self.batch_size {
-            train_params.batch_size = batch_size;
-        }
-        if let Some(epochs) = self.epochs {
-            train_params.epochs = epochs;
-        }
-        // todo retrain params
-        let model_config = ModelConfig {
-            layers: builder.layers.clone(),
-            train_params,
-            retrain_params: Default::default(),
-        };
-        let level_config = LevelIndexConfig {
-            model: model_config,
-            bucket_size: self.bucket_size.ok_or_else(|| {
-                PyErr::new::<pyo3::exceptions::PyRuntimeError, _>("bucket_size not set")
-            })?,
-        };
-        builder.builder.levels.insert(0, level_config);
+        builder.builder = builder.builder.delete_method(delete_method.into());
         Ok(builder)
     }
 
     fn build(&self) -> PyResult<DynamicLearnedIndex> {
-        let builder = self._build_levels_config()?;
-        let index = builder
+        let index = self
             .builder
+            .clone()
             .build()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
         Ok(DynamicLearnedIndex { index })
@@ -266,7 +224,7 @@ impl From<DeleteStatistics> for PyDeleteStatistics {
 impl DynamicLearnedIndex {
     #[new]
     fn new() -> PyResult<Self> {
-        let index = dynamic_learned_index::IndexConfig::default()
+        let index = IndexBuilder::default()
             .build()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
         Ok(DynamicLearnedIndex { index })
