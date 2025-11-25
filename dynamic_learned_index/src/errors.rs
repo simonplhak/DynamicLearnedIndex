@@ -5,7 +5,7 @@ pub enum BuildError {
     MissingAttribute,
     NonExistentFile,
     InvalidYamlConfig(String),
-    ModelCreation,
+    ModelCreation(&'static str),
 }
 
 impl fmt::Display for BuildError {
@@ -14,7 +14,7 @@ impl fmt::Display for BuildError {
             BuildError::MissingAttribute => write!(f, "MissingAttribute"),
             BuildError::NonExistentFile => write!(f, "NonExistentFile"),
             BuildError::InvalidYamlConfig(err) => write!(f, "Invalid YAML config: {err}"),
-            BuildError::ModelCreation => write!(f, "Model creation failed"),
+            BuildError::ModelCreation(msg) => write!(f, "Model creation failed: {msg}"),
         }
     }
 }
