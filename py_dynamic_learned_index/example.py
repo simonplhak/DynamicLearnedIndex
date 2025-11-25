@@ -1,3 +1,5 @@
+from pathlib import Path
+import shutil
 import numpy as np
 
 from py_dynamic_learned_index import DynamicLearnedIndexBuilder, DynamicLearnedIndex
@@ -80,3 +82,31 @@ print(f"""delete:
       {deleted_id=}, 
       {deleted_stats=}, 
       {deleted_stats.affected_level=}""")
+
+
+# serialize index to disk
+
+working_dir = Path('index_dump')
+if working_dir.exists():  # remove dir if exists
+    print('Removing existing directory for index dump')
+    shutil.rmtree(working_dir)
+
+# working dir must not exist before dumping index
+index.dump(str(working_dir))
+
+
+
+# load index from disk
+
+loaded_index = DynamicLearnedIndexBuilder.from_disk(str(working_dir)).build()
+assert index.n_buckets() == loaded_index.n_buckets()
+assert index.n_levels() == loaded_index.n_levels()
+assert index.occupied() == loaded_index.occupied()
+assert index.n_empty_buckets() == loaded_index.n_empty_buckets()
+print(f'n_buckets={loaded_index.n_buckets()}; n_levels={loaded_index.n_levels()}; occupied={loaded_index.occupied()}, empty_buckets={loaded_index.n_empty_buckets()}')
+
+for i in range(0, len(queries) - 1, 50):
+    res = index.search(queries[i], k, n_candidates=n_candidates, search_strategy=search_strategy)
+    loaded_res = loaded_index.search(queries[i], k, n_candidates=n_candidates, search_strategy=search_strategy)
+    assert (res == loaded_res).all()
+    print(f'For query "{i}" loaded index found: {loaded_res}')

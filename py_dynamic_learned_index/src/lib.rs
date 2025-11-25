@@ -28,6 +28,14 @@ impl DynamicLearnedIndexBuilder {
         })
     }
 
+    #[staticmethod]
+    fn from_disk(working_dir: &str) -> PyResult<Self> {
+        Ok(DynamicLearnedIndexBuilder {
+            builder: IndexBuilder::from_disk(Path::new(working_dir))
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?,
+        })
+    }
+
     fn buffer_size(&self, size: usize) -> PyResult<Self> {
         let mut builder = self.clone();
         builder.builder = builder.builder.buffer_size(size);
@@ -289,6 +297,10 @@ impl DynamicLearnedIndex {
 
     fn n_empty_buckets(&self) -> usize {
         self.index.n_empty_buckets()
+    }
+
+    fn dump(&self, working_dir: &str) {
+        self.index.dump(Path::new(working_dir));
     }
 }
 
