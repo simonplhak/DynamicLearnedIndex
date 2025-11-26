@@ -468,7 +468,10 @@ mod tests {
     fn test_bucket_builder_missing_attributes() {
         let result = BucketBuilder::default().build();
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), BuildError::MissingAttribute));
+        assert!(matches!(
+            result.unwrap_err(),
+            BuildError::MissingAttributeStr("size")
+        ));
     }
 
     #[test]
