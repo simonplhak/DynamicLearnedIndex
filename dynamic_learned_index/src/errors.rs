@@ -17,3 +17,5 @@ pub enum DliError {
     #[error("Model creation failed: {0}")]
     ModelCreation(&'static str),
 }
+
+pub type DliResult<T> = Result<T, DliError>;

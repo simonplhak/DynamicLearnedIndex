@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     structs::{DiskBucket, DiskBuffer},
-    Array, ArrayNumType, ArraySlice, DeleteMethod, DliError, Id,
+    Array, ArrayNumType, ArraySlice, DeleteMethod, DliError, DliResult, Id,
 };
 use serde::Serialize;
 
@@ -215,7 +215,7 @@ impl BufferBuilder {
         self
     }
 
-    pub fn build(self) -> Result<Buffer, DliError> {
+    pub fn build(self) -> DliResult<Buffer> {
         let size = self.size.ok_or(DliError::MissingAttribute("size"))?;
         let input_shape = self
             .input_shape
@@ -287,7 +287,7 @@ impl<'a> BucketBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Bucket, DliError> {
+    pub fn build(self) -> DliResult<Bucket> {
         let size = self.size.ok_or(DliError::MissingAttribute("size"))?;
         let input_shape = self
             .input_shape

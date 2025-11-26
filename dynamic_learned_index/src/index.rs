@@ -3,8 +3,8 @@ use crate::{
     constants::DEFAULT_BUCKET_SIZE,
     model::{Model, ModelBuilder, ModelConfig, ModelDevice},
     structs::{DiskBucket, DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig},
-    Array, ArraySlice, DeleteMethod, DeleteStatistics, DistanceFn, DliError, Id, ModelLayer,
-    SearchParamsT, SearchStatistics, SearchStrategy,
+    Array, ArraySlice, DeleteMethod, DeleteStatistics, DistanceFn, DliError, DliResult, Id,
+    ModelLayer, SearchParamsT, SearchStatistics, SearchStrategy,
 };
 use log::{debug, info};
 use measure_time_macro::log_time;
@@ -495,7 +495,7 @@ impl LevelIndexBuilder {
         self
     }
 
-    pub fn build(self) -> Result<LevelIndex, DliError> {
+    pub fn build(self) -> DliResult<LevelIndex> {
         let input_shape = self
             .input_shape
             .ok_or(DliError::MissingAttribute("input_shape"))?;
@@ -743,7 +743,7 @@ impl Default for IndexBuilder {
 }
 
 impl IndexBuilder {
-    pub fn from_yaml(file: &Path) -> Result<Self, DliError> {
+    pub fn from_yaml(file: &Path) -> DliResult<Self> {
         let content = std::fs::read_to_string(file)?;
         let config = serde_yaml::from_str(&content)?;
         Ok(Self::from_config(config))
@@ -765,7 +765,7 @@ impl IndexBuilder {
         }
     }
 
-    pub fn from_disk(working_dir: &Path) -> Result<Self, DliError> {
+    pub fn from_disk(working_dir: &Path) -> DliResult<Self> {
         let meta_path = working_dir.join("meta.json");
         let meta_file = File::open(meta_path)?;
         let disk_index: DiskIndex = serde_json::from_reader(meta_file)?;
@@ -869,7 +869,7 @@ impl IndexBuilder {
         device: ModelDevice,
         distance_fn: DistanceFn,
         input_shape: usize,
-    ) -> Result<LevelIndex, DliError> {
+    ) -> DliResult<LevelIndex> {
         LevelIndexBuilder::default()
             .model(disk_index.config.model)
             .distance_fn(distance_fn)
@@ -884,7 +884,7 @@ impl IndexBuilder {
             .build()
     }
 
-    pub fn build(self) -> Result<Index, DliError> {
+    pub fn build(self) -> DliResult<Index> {
         let levels_config = self.levels_config;
         let buffer_size = self
             .buffer_size

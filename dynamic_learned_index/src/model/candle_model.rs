@@ -8,7 +8,7 @@ use log::info;
 use rand::rng;
 use rand::seq::SliceRandom;
 
-use crate::errors::DliError;
+use crate::errors::{DliError, DliResult};
 use crate::model::{ModelDevice, ModelLayer, TrainParams};
 use crate::structs::LabelMethod;
 use crate::types::ArraySlice;
@@ -67,7 +67,7 @@ impl ModelBuilder {
         self
     }
 
-    pub fn build(&self) -> Result<Model, DliError> {
+    pub fn build(&self) -> DliResult<Model> {
         let device = self
             .device
             .as_ref()

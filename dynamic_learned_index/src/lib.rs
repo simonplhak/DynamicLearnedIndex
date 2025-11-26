@@ -9,7 +9,7 @@ mod sampling;
 mod search_strategy;
 pub mod structs;
 pub mod types;
-pub use errors::DliError;
+pub use errors::{DliError, DliResult};
 pub use index::{CompactionStrategy, Index, IndexBuilder, LevelIndexConfig, RebuildStrategy};
 pub use model::{ModelConfig, ModelDevice, ModelLayer, TrainParams};
 pub use search_strategy::SearchStrategy;

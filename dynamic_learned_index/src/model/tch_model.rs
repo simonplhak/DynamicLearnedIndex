@@ -7,7 +7,7 @@ use tch::{
 
 use crate::{
     clustering::{self},
-    errors::DliError,
+    errors::{DliError, DliResult},
     model::{ModelDevice, ModelLayer, TrainParams},
     sampling,
     structs::LabelMethod,
@@ -68,7 +68,7 @@ impl ModelBuilder {
         self
     }
 
-    pub fn build(&self) -> Result<Model, DliError> {
+    pub fn build(&self) -> DliResult<Model> {
         let device = self.device.ok_or(DliError::MissingAttribute("device"))?;
         let label_method = self
             .label_method
