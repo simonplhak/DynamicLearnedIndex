@@ -1322,6 +1322,229 @@ mod tests {
         }
     }
 
+    // IndexBuilder tests
+    #[test]
+    fn test_index_builder_default() {
+        // Test building an index with default configuration
+        let index = IndexBuilder::default().build().unwrap();
+
+        // Verify default values are applied
+        assert_eq!(index.buffer.size, crate::constants::DEFAULT_BUFFER_SIZE);
+        assert_eq!(index.input_shape, crate::constants::DEFAULT_INPUT_SHAPE);
+        assert_eq!(index.arity, crate::constants::DEFAULT_ARITY);
+        assert_eq!(index.levels.len(), 0); // Should start with no levels
+
+        // Verify buffer is empty initially
+        assert_eq!(index.buffer.occupied(), 0);
+
+        // Verify distance function is set to default (Dot)
+        assert!(matches!(index.distance_fn, DistanceFn::Dot));
+
+        // Verify device is CPU by default
+        assert!(matches!(index.device, ModelDevice::Cpu));
+
+        // Verify compaction strategy is set
+        assert!(matches!(
+            index.compaction_strategy,
+            CompactionStrategy::BentleySaxe(_)
+        ));
+
+        // Verify delete method is set
+        assert!(matches!(index.delete_method, DeleteMethod::OidToBucket));
+    }
+
+    #[test]
+    fn test_index_builder_with_custom_params() {
+        // Test building an index with custom parameters
+        let index = IndexBuilder::default()
+            .buffer_size(100)
+            .bucket_size(200)
+            .arity(4)
+            .input_shape(128)
+            .distance_fn(DistanceFn::L2)
+            .train_epochs(10)
+            .train_batch_size(64)
+            .retrain_epochs(5)
+            .retrain_batch_size(32)
+            .build()
+            .unwrap();
+
+        // Verify custom values are applied
+        assert_eq!(index.buffer.size, 100);
+        assert_eq!(index.input_shape, 128);
+        assert_eq!(index.arity, 4);
+        assert_eq!(index.levels_config.bucket_size, 200);
+
+        // Verify distance function
+        assert!(matches!(index.distance_fn, DistanceFn::L2));
+
+        // Verify training parameters were set
+        assert_eq!(index.levels_config.model.train_params.epochs, 10);
+        assert_eq!(index.levels_config.model.train_params.batch_size, 64);
+        assert_eq!(index.levels_config.model.retrain_params.epochs, 5);
+        assert_eq!(index.levels_config.model.retrain_params.batch_size, 32);
+
+        // Verify index is initially empty
+        assert_eq!(index.occupied(), 0);
+        assert_eq!(index.n_levels(), 0);
+    }
+
+    #[test]
+    fn test_index_save_and_load() {
+        use tempfile::TempDir;
+
+        // Build an index with specific configuration
+        let input_shape = 10;
+        let mut index = IndexBuilder::default()
+            .arity(2)
+            .bucket_size(10)
+            .buffer_size(10)
+            .input_shape(input_shape)
+            .distance_fn(DistanceFn::Dot)
+            .build()
+            .unwrap();
+
+        // Verify initial configuration
+        assert_eq!(index.arity, 2);
+        assert_eq!(index.buffer.size, 10);
+        assert_eq!(index.levels_config.bucket_size, 10);
+        assert_eq!(index.input_shape, input_shape);
+
+        // Insert 1000 records into the index
+        for i in 0..100 {
+            let record: Vec<f32> = (0..input_shape)
+                .map(|j| ((i * input_shape + j) % 100) as f32 / 100.0)
+                .collect();
+            index.insert(record, i as u32);
+        }
+
+        // Verify data was inserted
+        let occupied_after_insert = index.occupied();
+        assert_eq!(occupied_after_insert, 100);
+        let n_levels_after_insert = index.n_levels();
+        assert!(
+            n_levels_after_insert > 0,
+            "Should have created levels during insertion"
+        );
+
+        // Create test queries
+        let test_queries: Vec<Vec<f32>> = vec![
+            (0..input_shape).map(|i| i as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i + 5) as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i * 2) as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i + 3) as f32 / 15.0).collect(),
+            (0..input_shape)
+                .map(|i| ((i * 3) % 10) as f32 / 20.0)
+                .collect(),
+        ];
+
+        // Run queries and store results from original index
+        let original_results: Vec<Vec<Id>> = test_queries
+            .iter()
+            .map(|query| index.search(query.as_slice(), 10))
+            .collect();
+
+        // Also get verbose search statistics
+        let original_stats: Vec<(Vec<Id>, SearchStatistics)> = test_queries
+            .iter()
+            .map(|query| index.verbose_search(query.as_slice(), 10))
+            .collect();
+
+        // Save index to temporary directory
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let dump_dir = temp_dir.path().join("index_dump");
+        index.dump(&dump_dir);
+
+        // Verify meta file was created
+        let meta_path = dump_dir.join("meta.json");
+        assert!(meta_path.exists(), "Meta file should exist");
+
+        // Load index from disk
+        let loaded_index = IndexBuilder::from_disk(&dump_dir)
+            .expect("Failed to create builder from disk")
+            .build()
+            .expect("Failed to build index from disk");
+
+        // Verify loaded index has same configuration
+        assert_eq!(loaded_index.arity, index.arity);
+        assert_eq!(loaded_index.buffer.size, index.buffer.size);
+        assert_eq!(loaded_index.input_shape, index.input_shape);
+        assert_eq!(
+            loaded_index.levels_config.bucket_size,
+            index.levels_config.bucket_size
+        );
+        assert!(matches!(loaded_index.distance_fn, DistanceFn::Dot));
+
+        // Verify loaded index has same data
+        assert_eq!(loaded_index.occupied(), occupied_after_insert);
+        assert_eq!(loaded_index.n_levels(), n_levels_after_insert);
+        assert_eq!(loaded_index.size(), index.size());
+        assert_eq!(loaded_index.n_buckets(), index.n_buckets());
+
+        // Run same queries on loaded index
+        let loaded_results: Vec<Vec<Id>> = test_queries
+            .iter()
+            .map(|query| loaded_index.search(query.as_slice(), 10))
+            .collect();
+
+        let loaded_stats: Vec<(Vec<Id>, SearchStatistics)> = test_queries
+            .iter()
+            .map(|query| loaded_index.verbose_search(query.as_slice(), 10))
+            .collect();
+
+        // Verify search results match
+        assert_eq!(original_results.len(), loaded_results.len());
+        for (i, (orig, loaded)) in original_results
+            .iter()
+            .zip(loaded_results.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                orig, loaded,
+                "Query {i} results should match between original and loaded index"
+            );
+        }
+
+        // Verify search statistics match
+        for (i, ((orig_ids, orig_stats), (loaded_ids, loaded_stats))) in
+            original_stats.iter().zip(loaded_stats.iter()).enumerate()
+        {
+            assert_eq!(orig_ids, loaded_ids, "Query {i} IDs should match");
+            assert_eq!(
+                orig_stats.total_visited_buckets, loaded_stats.total_visited_buckets,
+                "Query {i} should visit same number of buckets"
+            );
+            assert_eq!(
+                orig_stats.total_visited_records, loaded_stats.total_visited_records,
+                "Query {i} should visit same number of records"
+            );
+        }
+
+        // Verify buffer contents match
+        assert_eq!(
+            index.buffer.occupied(),
+            loaded_index.buffer.occupied(),
+            "Buffer occupancy should match"
+        );
+
+        // Verify each level matches
+        for level_idx in 0..n_levels_after_insert {
+            let orig_level = &index.levels[level_idx];
+            let loaded_level = &loaded_index.levels[level_idx];
+
+            assert_eq!(
+                orig_level.occupied(),
+                loaded_level.occupied(),
+                "Level {level_idx} occupancy should match"
+            );
+            assert_eq!(
+                orig_level.n_buckets(),
+                loaded_level.n_buckets(),
+                "Level {level_idx} bucket count should match"
+            );
+        }
+    }
+
     #[test]
     fn test_bentley_saxe_index_available_level() {
         let config = create_test_config();
