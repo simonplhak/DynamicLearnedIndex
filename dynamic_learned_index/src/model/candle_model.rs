@@ -82,7 +82,7 @@ impl ModelBuilder {
         let varmap = VarMap::new();
         let vs = match &self.weights_path {
             Some(weights_path) => unsafe {
-                VarBuilder::from_mmaped_safetensors(&[weights_path], DType::F32, &device).unwrap()
+                VarBuilder::from_mmaped_safetensors(&[weights_path], DType::F32, &device)?
             },
             None => VarBuilder::from_varmap(&varmap, DType::F32, &device),
         };
@@ -93,13 +93,12 @@ impl ModelBuilder {
         assert!(labels > 0, "labels must be greater than 0");
         let train_params = self.train_params.clone().unwrap_or_default();
         let retrain_params = self.retrain_params.clone().unwrap_or_default();
-        let (mut layers, in_nodes) = self.layers.iter().enumerate().fold(
-            (Vec::new(), input_nodes),
-            |(mut layers, input_nodes), (i, layer)| {
+        let (mut layers, in_nodes) = self.layers.iter().enumerate().try_fold(
+            (Vec::<CandleModelLayer>::new(), input_nodes),
+            |(mut layers, input_nodes), (i, layer)| -> DliResult<(Vec<CandleModelLayer>, usize)> {
                 let (layers, output_nodes) = match layer {
                     ModelLayer::Linear(nodes) => {
-                        let lin =
-                            linear(input_nodes, *nodes, vs.pp(format!("{i}", i = 2 * i))).unwrap();
+                        let lin = linear(input_nodes, *nodes, vs.pp(format!("{i}", i = 2 * i)))?;
                         layers.push(CandleModelLayer::Linear(lin));
                         (layers, *nodes)
                     }
@@ -108,15 +107,14 @@ impl ModelBuilder {
                         (layers, input_nodes)
                     }
                 };
-                (layers, output_nodes)
+                Ok((layers, output_nodes))
             },
-        );
+        )?;
         let lin = linear(
             in_nodes,
             labels,
             vs.pp(format!("{i}", i = 2 * layers.len())),
-        )
-        .unwrap();
+        )?;
         layers.push(CandleModelLayer::Linear(lin));
         let model = CandleModel { layers };
         let model = Model {
@@ -173,39 +171,32 @@ impl Iterator for BatchIter {
 }
 
 impl Model {
-    pub fn predict(&self, xs: &ArraySlice) -> Vec<(usize, f32)> {
-        let tensor_test_votes = Tensor::from_slice(xs, (1, self.input_shape), &self.device)
-            .unwrap()
-            .to_dtype(DType::F32)
-            .unwrap();
+    pub fn predict(&self, xs: &ArraySlice) -> DliResult<Vec<(usize, f32)>> {
+        let tensor_test_votes =
+            Tensor::from_slice(xs, (1, self.input_shape), &self.device)?.to_dtype(DType::F32)?;
 
-        let logits = self.model.forward(&tensor_test_votes).unwrap();
-        let final_result = ops::softmax(&logits, D::Minus1).unwrap();
-        let predictions = final_result.squeeze(0).unwrap().to_vec1::<f32>().unwrap();
+        let logits = self.model.forward(&tensor_test_votes)?;
+        let final_result = ops::softmax(&logits, D::Minus1)?;
+        let predictions = final_result.squeeze(0)?.to_vec1::<f32>()?;
         let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
         predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         assert!(predictions.len() <= self.labels);
-        predictions
+        Ok(predictions)
     }
 
-    pub fn predict_many(&self, xs: &ArraySlice) -> Vec<usize> {
+    pub fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
         let dim = xs.len() / self.input_shape;
-        let dataset = Tensor::from_slice(xs, (dim, self.input_shape), &self.device).unwrap();
-        self.model
-            .forward(&dataset)
-            .unwrap()
-            .argmax(1)
-            .unwrap()
-            .squeeze(0)
-            .unwrap()
-            .to_vec1::<u32>()
-            .unwrap()
-            .into_iter()
-            .map(|v| v as usize)
-            .collect::<Vec<_>>()
+        let dataset = Tensor::from_slice(xs, (dim, self.input_shape), &self.device)?;
+        let rs = self
+            .model
+            .forward(&dataset)?
+            .argmax(1)?
+            .squeeze(0)?
+            .to_vec1::<u32>()?;
+        Ok(rs.into_iter().map(|v| v as usize).collect::<Vec<_>>())
     }
 
-    pub fn train(&mut self, xs: &ArraySlice) {
+    pub fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
         let sample_size = sampling::select_sample_size(
             self.labels,
             xs.len() / self.input_shape,
@@ -226,22 +217,23 @@ impl Model {
             weight_decay: 0.0, // Make it behave like regular Adam
             ..Default::default()
         };
-        let mut opt = candle_nn::AdamW::new(self.varmap.all_vars(), optim_config).unwrap();
+        let mut opt = candle_nn::AdamW::new(self.varmap.all_vars(), optim_config)?;
 
         for _ in 0..self.train_params.epochs {
             // Create shuffled batches
-            let batches = self.create_shuffled_batches(&xs, &ys);
+            let batches = self.create_shuffled_batches(&xs, &ys)?;
 
             for (batch_xs, batch_ys) in batches {
-                let logits = self.model.forward(&batch_xs).unwrap();
-                let log_sm = ops::log_softmax(&logits, D::Minus1).unwrap();
-                let loss = loss::nll(&log_sm, &batch_ys).unwrap();
-                opt.backward_step(&loss).unwrap();
+                let logits = self.model.forward(&batch_xs)?;
+                let log_sm = ops::log_softmax(&logits, D::Minus1)?;
+                let loss = loss::nll(&log_sm, &batch_ys)?;
+                opt.backward_step(&loss)?;
             }
         }
+        Ok(())
     }
 
-    fn create_shuffled_batches(&self, xs: &[f32], ys: &[i32]) -> BatchIter {
+    fn create_shuffled_batches(&self, xs: &[f32], ys: &[i32]) -> DliResult<BatchIter> {
         let total_samples = ys.len();
         let batch_size = if self.train_params.batch_size > 0 {
             self.train_params.batch_size
@@ -249,11 +241,9 @@ impl Model {
             total_samples
         };
 
-        // Create indices for shuffling and permute the whole dataset once per epoch
         let mut indices: Vec<usize> = (0..total_samples).collect();
         indices.shuffle(&mut rng());
 
-        // Permute xs and ys into contiguous buffers (one full dataset copy per epoch)
         let mut permuted_xs: Vec<f32> = Vec::with_capacity(xs.len());
         let mut permuted_ys: Vec<i64> = Vec::with_capacity(total_samples);
 
@@ -264,32 +254,29 @@ impl Model {
             permuted_ys.push(ys[idx] as i64);
         }
 
-        // Create a single dataset tensor (consumes the Vec) and a labels tensor.
-        // On CPU this should be zero-copy: the Vec's buffer becomes the Tensor storage.
         let dataset =
-            Tensor::from_vec(permuted_xs, (total_samples, self.input_shape), &self.device)
-                .unwrap()
-                .to_dtype(DType::F32)
-                .unwrap();
+            Tensor::from_vec(permuted_xs, (total_samples, self.input_shape), &self.device)?
+                .to_dtype(DType::F32)?;
 
-        let labels_tensor = Tensor::from_vec(permuted_ys, (total_samples,), &self.device).unwrap();
+        let labels_tensor = Tensor::from_vec(permuted_ys, (total_samples,), &self.device)?;
 
-        BatchIter {
+        Ok(BatchIter {
             dataset,
             labels: labels_tensor,
             batch_size,
             total_samples,
             start_sample: 0,
-        }
+        })
     }
 
-    pub fn retrain(&mut self, _xs: &ArraySlice) {
+    pub fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
         info!(epochs = self.retrain_params.epochs; "model:retrain");
+        Ok(())
     }
 
-    pub fn dump(&self, weights_filename: PathBuf) -> ModelConfig {
-        self.varmap.save(&weights_filename).unwrap();
-        ModelConfig {
+    pub fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig> {
+        self.varmap.save(&weights_filename)?;
+        Ok(ModelConfig {
             layers: self
                 .model
                 .layers
@@ -303,7 +290,7 @@ impl Model {
             train_params: self.train_params.clone(),
             retrain_params: self.retrain_params.clone(),
             weights_path: Some(weights_filename),
-        }
+        })
     }
 }
 
@@ -419,7 +406,7 @@ mod tests {
         let training_data: Vec<f32> = (0..500).map(|i| (i % 100) as f32 / 100.0).collect();
 
         // Train the model
-        model.train(&training_data);
+        model.train(&training_data).unwrap();
 
         // Create test queries
         let test_queries: Vec<Vec<f32>> = vec![
@@ -431,13 +418,13 @@ mod tests {
         // Get predictions from original model
         let original_predictions: Vec<Vec<(usize, f32)>> = test_queries
             .iter()
-            .map(|query| model.predict(query))
-            .collect();
+            .map(|query| model.predict(query).unwrap())
+            .collect::<Vec<_>>();
 
         // Save model to temporary file
         let temp_file = NamedTempFile::new().expect("Failed to create temp file");
         let weights_path = temp_file.path().to_path_buf();
-        model.dump(weights_path.clone());
+        model.dump(weights_path.clone()).unwrap();
 
         // Load model from weights
         let mut loaded_builder = ModelBuilder::default();
@@ -456,8 +443,8 @@ mod tests {
         // Get predictions from loaded model
         let loaded_predictions: Vec<Vec<(usize, f32)>> = test_queries
             .iter()
-            .map(|query| loaded_model.predict(query))
-            .collect();
+            .map(|query| loaded_model.predict(query).unwrap())
+            .collect::<Vec<_>>();
 
         // Verify predictions match
         assert_eq!(original_predictions.len(), loaded_predictions.len());

@@ -14,6 +14,9 @@ pub enum DliError {
     #[error("Invalid JSON config: {0}")]
     JsonError(#[from] serde_json::Error),
 
+    #[error("Candle error: {0}")]
+    Candle(#[from] candle_core::Error),
+
     #[error("Model creation failed: {0}")]
     ModelCreation(&'static str),
 }

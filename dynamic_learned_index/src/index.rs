@@ -606,6 +606,7 @@ impl LevelIndex {
         }
         self.model
             .predict(query)
+            .unwrap()
             .into_iter()
             .map(|(bucket_id, prob)| (bucket_id, prob, self.buckets[bucket_id].occupied()))
             .collect()
@@ -613,17 +614,17 @@ impl LevelIndex {
 
     #[log_time]
     fn train(&mut self, xs: &ArraySlice) {
-        self.model.train(xs);
+        self.model.train(xs).unwrap();
     }
 
     #[log_time]
     fn retrain(&mut self, xs: &ArraySlice) {
-        self.model.retrain(xs);
+        self.model.retrain(xs).unwrap();
     }
     fn insert_many(&mut self, records: Array, ids: Vec<Id>) {
         let input_shape = self.model.input_shape;
         assert!(records.len() / input_shape == ids.len());
-        let assignments = self.model.predict_many(&records);
+        let assignments = self.model.predict_many(&records).unwrap();
         assert!(assignments.len() == ids.len());
         // Calculate frequency of each bucket index in assignments
         let mut frequencies = vec![0; self.buckets.len()];
@@ -697,7 +698,7 @@ impl LevelIndex {
 
     fn dump(&self, working_dir: &Path, level_id: usize) -> DiskLevelIndex {
         let weights_path = working_dir.join(format!("model-{level_id}.safetensors"));
-        let model = self.model.dump(weights_path.clone());
+        let model = self.model.dump(weights_path.clone()).unwrap(); // TODO: remove unwrap
         let records_path = working_dir.join(format!("bucket-records-{level_id}.bin"));
         let ids_path = working_dir.join(format!("bucket-ids-{level_id}.bin"));
         let mut records_file = File::create(records_path.clone()).unwrap(); // TODO: remove unwrap
