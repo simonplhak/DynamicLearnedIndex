@@ -944,6 +944,7 @@ mod tests {
     use super::*;
     use crate::constants::{DEFAULT_BUCKET_SIZE, DEFAULT_SEARCH_N_CANDIDATES};
     use crate::{search_strategy::SearchStrategy, structs::DistanceFn};
+    use crate::{ModelConfig, ModelLayer, TrainParams};
     use std::io::Write;
     use tempfile::NamedTempFile;
 
@@ -1080,7 +1081,245 @@ mod tests {
     fn test_level_index_builder_missing_attributes() {
         let builder = LevelIndexBuilder::default();
         let result = builder.build();
-        assert!(matches!(result, Err(BuildError::MissingAttribute)));
+        assert!(matches!(
+            result,
+            Err(BuildError::MissingAttributeStr("input_shape"))
+        ));
+    }
+
+    #[test]
+    fn test_level_index_builder_minimal_params() {
+        let builder = LevelIndexBuilder::default();
+
+        let level = builder
+            .n_buckets(4)
+            .input_shape(10)
+            .bucket_size(50)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()
+            .expect("Failed to build LevelIndex with minimal params");
+
+        // Verify level has correct number of buckets
+        assert_eq!(level.n_buckets(), 4);
+
+        // Verify each bucket has correct configuration
+        for bucket in &level.buckets {
+            assert_eq!(bucket.size(), 50);
+            assert_eq!(bucket.occupied(), 0); // Should be empty initially
+        }
+
+        // Verify model configuration
+        assert_eq!(level.model.input_shape, 10);
+        // Note: labels field is private, but should equal n_buckets (4)
+
+        // Verify level is initially empty
+        assert_eq!(level.occupied(), 0);
+        assert_eq!(level.size(), 4 * 50); // n_buckets * bucket_size
+        assert_eq!(level.free_space(), 200); // All space is free
+
+        // Verify ids_map is empty
+        assert!(level.ids_map.is_empty());
+    }
+
+    #[test]
+    fn test_level_index_builder_model_integration() {
+        // Test that the model is built correctly with different configurations
+
+        // Test with L2 distance
+        let level_l2 = LevelIndexBuilder::default()
+            .n_buckets(3)
+            .input_shape(5)
+            .bucket_size(20)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::L2)
+            .build()
+            .expect("Failed to build with L2 distance");
+
+        assert_eq!(level_l2.model.input_shape, 5);
+        assert_eq!(level_l2.n_buckets(), 3);
+
+        // Test with Dot distance
+        let level_dot = LevelIndexBuilder::default()
+            .n_buckets(5)
+            .input_shape(8)
+            .bucket_size(30)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()
+            .expect("Failed to build with Dot distance");
+
+        assert_eq!(level_dot.model.input_shape, 8);
+        assert_eq!(level_dot.n_buckets(), 5);
+
+        // Test with custom model config
+        let custom_model_config = ModelConfig {
+            layers: vec![
+                ModelLayer::Linear(16),
+                ModelLayer::ReLU,
+                ModelLayer::Linear(8),
+            ],
+            train_params: TrainParams {
+                epochs: 20,
+                batch_size: 64,
+                threshold_samples: 500,
+                max_iters: 100,
+            },
+            retrain_params: TrainParams {
+                epochs: 10,
+                batch_size: 32,
+                threshold_samples: 250,
+                max_iters: 50,
+            },
+            weights_path: None,
+        };
+
+        let level_custom = LevelIndexBuilder::default()
+            .n_buckets(2)
+            .input_shape(12)
+            .bucket_size(40)
+            .model(custom_model_config)
+            .distance_fn(DistanceFn::Dot)
+            .build()
+            .expect("Failed to build with custom model config");
+
+        assert_eq!(level_custom.model.input_shape, 12);
+        assert_eq!(level_custom.n_buckets(), 2);
+    }
+
+    #[test]
+    fn test_level_index_save_and_load() {
+        use tempfile::TempDir;
+
+        // Create a level with some buckets
+        let input_shape = 10;
+        let n_buckets = 4;
+        let bucket_size = 50;
+
+        let mut level = LevelIndexBuilder::default()
+            .n_buckets(n_buckets)
+            .input_shape(input_shape)
+            .bucket_size(bucket_size)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()
+            .expect("Failed to build level");
+
+        // Generate training data (100 samples, 10 features each)
+        let training_data: Vec<f32> = (0..1000).map(|i| (i % 100) as f32 / 100.0).collect();
+
+        // Train the level
+        level.train(&training_data);
+
+        // Insert some data into the level
+        let mut insert_data: Vec<f32> = Vec::new();
+        let mut insert_ids: Vec<u32> = Vec::new();
+        for i in 0..20 {
+            let record: Vec<f32> = (0..input_shape)
+                .map(|j| (i * 10 + j) as f32 / 100.0)
+                .collect();
+            insert_data.extend(record);
+            insert_ids.push(i as u32);
+        }
+        level.insert_many(insert_data, insert_ids);
+
+        // Create test queries
+        let test_queries: Vec<Vec<f32>> = vec![
+            (0..input_shape).map(|i| i as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i + 5) as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i * 2) as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i + 3) as f32 / 15.0).collect(),
+        ];
+
+        // Get predictions from original level
+        let original_predictions: Vec<Vec<(usize, f32, usize)>> = test_queries
+            .iter()
+            .map(|query| level.buckets2visit_predictions(query))
+            .collect();
+
+        // Save level to temporary directory
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let level_id = 0;
+        let disk_level = level.dump(temp_dir.path(), level_id);
+
+        // Verify disk files were created
+        assert!(disk_level.weights_path.exists());
+        assert!(disk_level.records_path.exists());
+        assert!(disk_level.ids_path.exists());
+
+        // Load level from disk
+        let loaded_level = LevelIndexBuilder::default()
+            .model(disk_level.config.model)
+            .distance_fn(DistanceFn::Dot)
+            .model_device(ModelDevice::Cpu)
+            .bucket_size(disk_level.config.bucket_size)
+            .input_shape(input_shape)
+            .buckets(
+                disk_level.buckets,
+                disk_level.records_path,
+                disk_level.ids_path,
+            )
+            .build()
+            .expect("Failed to build level from disk");
+
+        // Verify loaded level has same properties
+        assert_eq!(loaded_level.n_buckets(), n_buckets);
+        assert_eq!(loaded_level.model.input_shape, input_shape);
+        assert_eq!(loaded_level.occupied(), 20); // Same number of records
+
+        // Get predictions from loaded level
+        let loaded_predictions: Vec<Vec<(usize, f32, usize)>> = test_queries
+            .iter()
+            .map(|query| loaded_level.buckets2visit_predictions(query))
+            .collect();
+
+        // Verify predictions match
+        assert_eq!(original_predictions.len(), loaded_predictions.len());
+        for (original, loaded) in original_predictions.iter().zip(loaded_predictions.iter()) {
+            assert_eq!(original.len(), loaded.len());
+            for ((orig_bucket, orig_prob, orig_count), (load_bucket, load_prob, load_count)) in
+                original.iter().zip(loaded.iter())
+            {
+                assert_eq!(orig_bucket, load_bucket, "Bucket indices should match");
+                assert_eq!(orig_count, load_count, "Bucket counts should match");
+                assert!(
+                    (orig_prob - load_prob).abs() < 1e-5,
+                    "Probabilities should match (original: {orig_prob}, loaded: {load_prob})"
+                );
+            }
+        }
+
+        // Verify the actual data in buckets matches
+        for bucket_idx in 0..n_buckets {
+            let orig_bucket = &level.buckets[bucket_idx];
+            let loaded_bucket = &loaded_level.buckets[bucket_idx];
+
+            assert_eq!(
+                orig_bucket.occupied(),
+                loaded_bucket.occupied(),
+                "Bucket {bucket_idx} should have same occupied count"
+            );
+            assert_eq!(
+                orig_bucket.size(),
+                loaded_bucket.size(),
+                "Bucket {bucket_idx} should have same size"
+            );
+
+            // Compare records in each bucket
+            for record_idx in 0..orig_bucket.occupied() {
+                let orig_record = orig_bucket.record(record_idx);
+                let loaded_record = loaded_bucket.record(record_idx);
+                assert_eq!(
+                    orig_record, loaded_record,
+                    "Record {record_idx} in bucket {bucket_idx} should match"
+                );
+
+                assert_eq!(
+                    orig_bucket.ids[record_idx], loaded_bucket.ids[record_idx],
+                    "ID {record_idx} in bucket {bucket_idx} should match"
+                );
+            }
+        }
     }
 
     #[test]
