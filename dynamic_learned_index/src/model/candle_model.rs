@@ -86,29 +86,24 @@ impl ModelBuilder {
         assert!(labels > 0, "labels must be greater than 0");
         let train_params = self.train_params.clone().unwrap_or_default();
         let retrain_params = self.retrain_params.clone().unwrap_or_default();
-        let (mut layers, in_nodes) = self
-            .layers
-            .iter()
-            .enumerate()
-            .take(self.layers.len() - 1)
-            .fold(
-                (Vec::new(), input_nodes),
-                |(mut layers, input_nodes), (i, layer)| {
-                    let (layers, output_nodes) = match layer {
-                        ModelLayer::Linear(nodes) => {
-                            let lin = linear(input_nodes, *nodes, vs.pp(format!("{i}", i = 2 * i)))
-                                .unwrap();
-                            layers.push(CandleModelLayer::Linear(lin));
-                            (layers, *nodes)
-                        }
-                        ModelLayer::ReLU => {
-                            layers.push(CandleModelLayer::ReLU);
-                            (layers, input_nodes)
-                        }
-                    };
-                    (layers, output_nodes)
-                },
-            );
+        let (mut layers, in_nodes) = self.layers.iter().enumerate().fold(
+            (Vec::new(), input_nodes),
+            |(mut layers, input_nodes), (i, layer)| {
+                let (layers, output_nodes) = match layer {
+                    ModelLayer::Linear(nodes) => {
+                        let lin =
+                            linear(input_nodes, *nodes, vs.pp(format!("{i}", i = 2 * i))).unwrap();
+                        layers.push(CandleModelLayer::Linear(lin));
+                        (layers, *nodes)
+                    }
+                    ModelLayer::ReLU => {
+                        layers.push(CandleModelLayer::ReLU);
+                        (layers, input_nodes)
+                    }
+                };
+                (layers, output_nodes)
+            },
+        );
         let lin = linear(
             in_nodes,
             labels,
@@ -292,6 +287,7 @@ impl Model {
                 .model
                 .layers
                 .iter()
+                .take(self.model.layers.len() - 1)
                 .map(|layer| match layer {
                     CandleModelLayer::Linear(lin) => ModelLayer::Linear(lin.weight().dims()[0]),
                     CandleModelLayer::ReLU => ModelLayer::ReLU,
