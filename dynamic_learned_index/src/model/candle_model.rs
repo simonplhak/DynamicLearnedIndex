@@ -313,15 +313,18 @@ struct CandleModel {
     layers: Vec<CandleModelLayer>,
 }
 
-// Implement the forward pass for our model, which is required by the
-// `Module` trait. This is where we chain the layers and activations.
 impl Module for CandleModel {
     fn forward(&self, xs: &Tensor) -> CandleResult<Tensor> {
-        self.layers
-            .iter()
-            .try_fold(xs.clone(), |acc, layer| match layer {
-                CandleModelLayer::Linear(lin) => lin.forward(&acc),
-                CandleModelLayer::ReLU => acc.relu(),
-            })
+        let mut current = match &self.layers[0] {
+            CandleModelLayer::Linear(lin) => lin.forward(xs)?,
+            CandleModelLayer::ReLU => xs.relu()?,
+        };
+        for layer in &self.layers[1..] {
+            current = match layer {
+                CandleModelLayer::Linear(lin) => lin.forward(&current)?,
+                CandleModelLayer::ReLU => current.relu()?,
+            };
+        }
+        Ok(current)
     }
 }
