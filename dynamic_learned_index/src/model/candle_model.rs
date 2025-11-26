@@ -77,8 +77,7 @@ impl ModelBuilder {
         let varmap = VarMap::new();
         let vs = match &self.weights_path {
             Some(weights_path) => unsafe {
-                VarBuilder::from_mmaped_safetensors(&[weights_path], DType::F32, &device)
-                    .map_err(|_| BuildError::ModelCreation("Failed to load weights"))?
+                VarBuilder::from_mmaped_safetensors(&[weights_path], DType::F32, &device).unwrap()
             },
             None => VarBuilder::from_varmap(&varmap, DType::F32, &device),
         };
@@ -115,7 +114,7 @@ impl ModelBuilder {
             labels,
             vs.pp(format!("{i}", i = 2 * layers.len())),
         )
-        .map_err(|_| BuildError::ModelCreation("Failed to create model from weights"))?;
+        .unwrap();
         layers.push(CandleModelLayer::Linear(lin));
         let model = CandleModel { layers };
         let model = Model {
