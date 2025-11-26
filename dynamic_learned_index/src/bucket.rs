@@ -7,7 +7,7 @@ use std::{
 
 use crate::{
     structs::{DiskBucket, DiskBuffer},
-    Array, ArrayNumType, ArraySlice, BuildError, DeleteMethod, Id,
+    Array, ArrayNumType, ArraySlice, DeleteMethod, DliError, Id,
 };
 use serde::Serialize;
 
@@ -215,17 +215,15 @@ impl BufferBuilder {
         self
     }
 
-    pub fn build(self) -> Result<Buffer, BuildError> {
-        let size = self.size.ok_or(BuildError::MissingAttributeStr("size"))?;
+    pub fn build(self) -> Result<Buffer, DliError> {
+        let size = self.size.ok_or(DliError::MissingAttribute("size"))?;
         let input_shape = self
             .input_shape
-            .ok_or(BuildError::MissingAttributeStr("input_shape"))?;
+            .ok_or(DliError::MissingAttribute("input_shape"))?;
         let (records, ids) = match self.disk_buffer {
             Some(disk_buffer) => {
-                let mut records_file = File::open(&disk_buffer.records_path)
-                    .map_err(|_| BuildError::NonExistentFile)?;
-                let mut ids_file =
-                    File::open(&disk_buffer.ids_path).map_err(|_| BuildError::NonExistentFile)?;
+                let mut records_file = File::open(&disk_buffer.records_path)?;
+                let mut ids_file = File::open(&disk_buffer.ids_path)?;
 
                 // Read records
                 records_file.seek(std::io::SeekFrom::Start(0)).unwrap();
@@ -289,19 +287,19 @@ impl<'a> BucketBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> Result<Bucket, BuildError> {
-        let size = self.size.ok_or(BuildError::MissingAttributeStr("size"))?;
+    pub fn build(self) -> Result<Bucket, DliError> {
+        let size = self.size.ok_or(DliError::MissingAttribute("size"))?;
         let input_shape = self
             .input_shape
-            .ok_or(BuildError::MissingAttributeStr("input_shape"))?;
+            .ok_or(DliError::MissingAttribute("input_shape"))?;
         let (records, ids) = match self.disk_bucket {
             Some(disk_bucket) => {
                 let records_file = self
                     .records_file
-                    .ok_or(BuildError::MissingAttributeStr("records_file"))?;
+                    .ok_or(DliError::MissingAttribute("records_file"))?;
                 let ids_file = self
                     .ids_file
-                    .ok_or(BuildError::MissingAttributeStr("ids_file"))?;
+                    .ok_or(DliError::MissingAttribute("ids_file"))?;
 
                 // Read records
                 records_file
@@ -470,7 +468,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            BuildError::MissingAttributeStr("size")
+            DliError::MissingAttribute("size")
         ));
     }
 

@@ -1,28 +1,19 @@
-use std::fmt;
+use thiserror::Error;
 
-#[derive(Debug)]
-pub enum BuildError {
-    MissingAttribute,
-    NonExistentFile,
-    InvalidYamlConfig(String),
+#[derive(Debug, Error)]
+pub enum DliError {
+    #[error("Missing attribute: {0}")]
+    MissingAttribute(&'static str),
+
+    #[error("File operation failed: {0}")]
+    IoError(#[from] std::io::Error),
+
+    #[error("Invalid YAML config: {0}")]
+    YamlError(#[from] serde_yaml::Error),
+
+    #[error("Invalid JSON config: {0}")]
+    JsonError(#[from] serde_json::Error),
+
+    #[error("Model creation failed: {0}")]
     ModelCreation(&'static str),
-    MissingAttributeStr(&'static str),
-}
-
-impl fmt::Display for BuildError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            BuildError::MissingAttribute => write!(f, "MissingAttribute"),
-            BuildError::NonExistentFile => write!(f, "NonExistentFile"),
-            BuildError::InvalidYamlConfig(err) => write!(f, "Invalid YAML config: {err}"),
-            BuildError::ModelCreation(msg) => write!(f, "Model creation failed: {msg}"),
-            BuildError::MissingAttributeStr(err) => write!(f, "Missing attribute: {err}"),
-        }
-    }
-}
-
-impl std::error::Error for BuildError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
 }

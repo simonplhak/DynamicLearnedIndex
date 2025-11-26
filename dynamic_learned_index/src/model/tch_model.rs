@@ -7,7 +7,7 @@ use tch::{
 
 use crate::{
     clustering::{self},
-    errors::BuildError,
+    errors::DliError,
     model::{ModelDevice, ModelLayer, TrainParams},
     sampling,
     structs::LabelMethod,
@@ -68,13 +68,17 @@ impl ModelBuilder {
         self
     }
 
-    pub fn build(&self) -> Result<Model, BuildError> {
-        let device = self.device.ok_or(BuildError::MissingAttribute)?;
-        let label_method = self.label_method.ok_or(BuildError::MissingAttribute)?;
+    pub fn build(&self) -> Result<Model, DliError> {
+        let device = self.device.ok_or(DliError::MissingAttribute("device"))?;
+        let label_method = self
+            .label_method
+            .ok_or(DliError::MissingAttribute("label_method"))?;
         let vs = nn::VarStore::new(device);
         let vs_root = vs.root();
-        let input_nodes = self.input_nodes.ok_or(BuildError::MissingAttribute)?;
-        let labels = self.labels.ok_or(BuildError::MissingAttribute)?;
+        let input_nodes = self
+            .input_nodes
+            .ok_or(DliError::MissingAttribute("input_nodes"))?;
+        let labels = self.labels.ok_or(DliError::MissingAttribute("labels"))?;
         assert!(labels > 0, "labels must be greater than 0");
         let (mut model, output_nodes) = self.layers.iter().enumerate().fold(
             (nn::seq(), input_nodes),

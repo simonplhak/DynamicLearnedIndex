@@ -8,7 +8,7 @@ use log::info;
 use rand::rng;
 use rand::seq::SliceRandom;
 
-use crate::errors::BuildError;
+use crate::errors::DliError;
 use crate::model::{ModelDevice, ModelLayer, TrainParams};
 use crate::structs::LabelMethod;
 use crate::types::ArraySlice;
@@ -67,13 +67,18 @@ impl ModelBuilder {
         self
     }
 
-    pub fn build(&self) -> Result<Model, BuildError> {
-        let device = self.device.as_ref().ok_or(BuildError::MissingAttribute)?;
+    pub fn build(&self) -> Result<Model, DliError> {
+        let device = self
+            .device
+            .as_ref()
+            .ok_or(DliError::MissingAttribute("device"))?;
         let device = match device {
             ModelDevice::Cpu => Device::Cpu,
             ModelDevice::Gpu(_) => todo!(),
         };
-        let label_method = self.label_method.ok_or(BuildError::MissingAttribute)?;
+        let label_method = self
+            .label_method
+            .ok_or(DliError::MissingAttribute("label_method"))?;
         let varmap = VarMap::new();
         let vs = match &self.weights_path {
             Some(weights_path) => unsafe {
@@ -81,8 +86,10 @@ impl ModelBuilder {
             },
             None => VarBuilder::from_varmap(&varmap, DType::F32, &device),
         };
-        let input_nodes = self.input_nodes.ok_or(BuildError::MissingAttribute)? as usize;
-        let labels = self.labels.ok_or(BuildError::MissingAttribute)?;
+        let input_nodes = self
+            .input_nodes
+            .ok_or(DliError::MissingAttribute("input_nodes"))? as usize;
+        let labels = self.labels.ok_or(DliError::MissingAttribute("labels"))?;
         assert!(labels > 0, "labels must be greater than 0");
         let train_params = self.train_params.clone().unwrap_or_default();
         let retrain_params = self.retrain_params.clone().unwrap_or_default();

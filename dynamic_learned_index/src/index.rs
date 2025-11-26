@@ -3,7 +3,7 @@ use crate::{
     constants::DEFAULT_BUCKET_SIZE,
     model::{Model, ModelBuilder, ModelConfig, ModelDevice},
     structs::{DiskBucket, DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig},
-    Array, ArraySlice, BuildError, DeleteMethod, DeleteStatistics, DistanceFn, Id, ModelLayer,
+    Array, ArraySlice, DeleteMethod, DeleteStatistics, DistanceFn, DliError, Id, ModelLayer,
     SearchParamsT, SearchStatistics, SearchStrategy,
 };
 use log::{debug, info};
@@ -495,18 +495,17 @@ impl LevelIndexBuilder {
         self
     }
 
-    pub fn build(self) -> Result<LevelIndex, BuildError> {
+    pub fn build(self) -> Result<LevelIndex, DliError> {
         let input_shape = self
             .input_shape
-            .ok_or(BuildError::MissingAttributeStr("input_shape"))?;
+            .ok_or(DliError::MissingAttribute("input_shape"))?;
         let bucket_size = self
             .bucket_size
-            .ok_or(BuildError::MissingAttributeStr("bucket_size"))?;
+            .ok_or(DliError::MissingAttribute("bucket_size"))?;
         let buckets = match self.buckets {
             Some((buckets, records_path, ids_path)) => {
-                let mut records_file =
-                    File::open(records_path).map_err(|_| BuildError::NonExistentFile)?;
-                let mut ids_file = File::open(ids_path).map_err(|_| BuildError::NonExistentFile)?;
+                let mut records_file = File::open(records_path)?;
+                let mut ids_file = File::open(ids_path)?;
                 buckets
                     .into_iter()
                     .map(|disk_bucket| {
@@ -524,7 +523,7 @@ impl LevelIndexBuilder {
             None => {
                 let n_buckets = self
                     .n_buckets
-                    .ok_or(BuildError::MissingAttributeStr("n_buckets"))?;
+                    .ok_or(DliError::MissingAttribute("n_buckets"))?;
                 (0..n_buckets)
                     .map(|_| {
                         bucket::BucketBuilder::default()
@@ -538,11 +537,11 @@ impl LevelIndexBuilder {
         let n_buckets = buckets.len();
         let distance_fn = self
             .distance_fn
-            .ok_or(BuildError::MissingAttributeStr("distance_fn"))?;
+            .ok_or(DliError::MissingAttribute("distance_fn"))?;
         let model_config = self
             .model_config
             .as_ref()
-            .ok_or(BuildError::MissingAttributeStr("model_config"))?;
+            .ok_or(DliError::MissingAttribute("model_config"))?;
         let mut model_builder = ModelBuilder::default();
         model_builder
             .device(self.model_device.clone())
@@ -744,10 +743,9 @@ impl Default for IndexBuilder {
 }
 
 impl IndexBuilder {
-    pub fn from_yaml(file: &Path) -> Result<Self, BuildError> {
-        let content = std::fs::read_to_string(file).map_err(|_| BuildError::NonExistentFile)?;
-        let config = serde_yaml::from_str(&content)
-            .map_err(|e| BuildError::InvalidYamlConfig(e.to_string()))?;
+    pub fn from_yaml(file: &Path) -> Result<Self, DliError> {
+        let content = std::fs::read_to_string(file)?;
+        let config = serde_yaml::from_str(&content)?;
         Ok(Self::from_config(config))
     }
 
@@ -767,11 +765,10 @@ impl IndexBuilder {
         }
     }
 
-    pub fn from_disk(working_dir: &Path) -> Result<Self, BuildError> {
+    pub fn from_disk(working_dir: &Path) -> Result<Self, DliError> {
         let meta_path = working_dir.join("meta.json");
-        let meta_file = File::open(meta_path).map_err(|_| BuildError::NonExistentFile)?;
-        let disk_index: DiskIndex = serde_json::from_reader(meta_file)
-            .map_err(|_| BuildError::InvalidYamlConfig("Invalid disk meta file".to_string()))?;
+        let meta_file = File::open(meta_path)?;
+        let disk_index: DiskIndex = serde_json::from_reader(meta_file)?;
         Ok(Self {
             compaction_strategy: Some(disk_index.compaction_strategy),
             levels_config: disk_index.levels_config,
@@ -872,7 +869,7 @@ impl IndexBuilder {
         device: ModelDevice,
         distance_fn: DistanceFn,
         input_shape: usize,
-    ) -> Result<LevelIndex, BuildError> {
+    ) -> Result<LevelIndex, DliError> {
         LevelIndexBuilder::default()
             .model(disk_index.config.model)
             .distance_fn(distance_fn)
@@ -887,14 +884,14 @@ impl IndexBuilder {
             .build()
     }
 
-    pub fn build(self) -> Result<Index, BuildError> {
+    pub fn build(self) -> Result<Index, DliError> {
         let levels_config = self.levels_config;
         let buffer_size = self
             .buffer_size
-            .ok_or(BuildError::MissingAttributeStr("buffer_size"))?;
+            .ok_or(DliError::MissingAttribute("buffer_size"))?;
         let input_shape = self
             .input_shape
-            .ok_or(BuildError::MissingAttributeStr("input_shape"))?;
+            .ok_or(DliError::MissingAttribute("input_shape"))?;
         let mut buffer = BufferBuilder::default()
             .input_shape(input_shape)
             .size(buffer_size);
@@ -902,19 +899,17 @@ impl IndexBuilder {
             buffer = buffer.disk_buffer(disk_buffer);
         }
         let buffer = buffer.build()?;
-        let arity = self.arity.ok_or(BuildError::MissingAttributeStr("arity"))?;
-        let device = self
-            .device
-            .ok_or(BuildError::MissingAttributeStr("device"))?;
+        let arity = self.arity.ok_or(DliError::MissingAttribute("arity"))?;
+        let device = self.device.ok_or(DliError::MissingAttribute("device"))?;
         let distance_fn = self
             .distance_fn
-            .ok_or(BuildError::MissingAttributeStr("distance_fn"))?;
+            .ok_or(DliError::MissingAttribute("distance_fn"))?;
         let compaction_strategy = self
             .compaction_strategy
-            .ok_or(BuildError::MissingAttributeStr("compaction_strategy"))?;
+            .ok_or(DliError::MissingAttribute("compaction_strategy"))?;
         let delete_method = self
             .delete_method
-            .ok_or(BuildError::MissingAttributeStr("delete_method"))?;
+            .ok_or(DliError::MissingAttribute("delete_method"))?;
         let levels = match self.levels {
             Some(levels) => levels
                 .into_iter()
@@ -1017,7 +1012,7 @@ mod tests {
     #[test]
     fn test_index_config_from_yaml_nonexistent_file() {
         let result = IndexBuilder::from_yaml(Path::new("nonexistent.yaml"));
-        assert!(matches!(result, Err(BuildError::NonExistentFile)));
+        assert!(matches!(result, Err(DliError::IoError(_))));
     }
 
     #[test]
@@ -1083,7 +1078,7 @@ mod tests {
         let result = builder.build();
         assert!(matches!(
             result,
-            Err(BuildError::MissingAttributeStr("input_shape"))
+            Err(DliError::MissingAttribute("input_shape"))
         ));
     }
 
