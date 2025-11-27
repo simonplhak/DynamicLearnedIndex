@@ -3,6 +3,7 @@ use crate::{
     constants::DEFAULT_BUCKET_SIZE,
     model::{Model, ModelBuilder, ModelConfig, ModelDevice},
     structs::{DiskBucket, DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig},
+    types::Records2Visit,
     Array, ArraySlice, DeleteMethod, DeleteStatistics, DistanceFn, DliError, DliResult, Id,
     ModelLayer, SearchParamsT, SearchStatistics, SearchStrategy,
 };
@@ -47,10 +48,10 @@ impl Index {
     }
 
     fn records2visit(
-        &self,
+        &'_ self,
         query: &ArraySlice,
         search_strategy: SearchStrategy,
-    ) -> DliResult<(Vec<&[f32]>, Vec<Id>, usize)> {
+    ) -> DliResult<Records2Visit<'_>> {
         // (records, ids, total_visited_buckets)
         let bucket_predictions = self
             .levels
