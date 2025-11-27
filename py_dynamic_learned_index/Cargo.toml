@@ -9,6 +9,6 @@ name = "py_dynamic_learned_index"
 crate-type = ["cdylib"]
 
 [dependencies]
-dynamic_learned_index = { path = "../dynamic_learned_index" }
+dynamic_learned_index = { path = "../dynamic_learned_index", features = ["pyo3"] }
 numpy = { version = "0.22.0" }
 pyo3 = { version = "0.22.0", features = ["extension-module"]  }

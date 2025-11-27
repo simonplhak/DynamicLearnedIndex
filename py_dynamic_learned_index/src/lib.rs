@@ -23,16 +23,14 @@ impl DynamicLearnedIndexBuilder {
     #[staticmethod]
     fn from_yaml(file: &str) -> PyResult<Self> {
         Ok(DynamicLearnedIndexBuilder {
-            builder: IndexBuilder::from_yaml(Path::new(file))
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?,
+            builder: IndexBuilder::from_yaml(Path::new(file))?,
         })
     }
 
     #[staticmethod]
     fn from_disk(working_dir: &str) -> PyResult<Self> {
         Ok(DynamicLearnedIndexBuilder {
-            builder: IndexBuilder::from_disk(Path::new(working_dir))
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?,
+            builder: IndexBuilder::from_disk(Path::new(working_dir))?,
         })
     }
 
@@ -141,11 +139,7 @@ impl DynamicLearnedIndexBuilder {
     }
 
     fn build(&self) -> PyResult<DynamicLearnedIndex> {
-        let index = self
-            .builder
-            .clone()
-            .build()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        let index = self.builder.clone().build()?;
         Ok(DynamicLearnedIndex { index })
     }
 }
@@ -232,9 +226,7 @@ impl From<DeleteStatistics> for PyDeleteStatistics {
 impl DynamicLearnedIndex {
     #[new]
     fn new() -> PyResult<Self> {
-        let index = IndexBuilder::default()
-            .build()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        let index = IndexBuilder::default().build()?;
         Ok(DynamicLearnedIndex { index })
     }
 
@@ -248,7 +240,7 @@ impl DynamicLearnedIndex {
     ) -> PyResult<(Bound<'py, PyArray1<u32>>, PySearchStatistics)> {
         let query = array2vec(query);
         let search_params = parse_search_kwargs(py_kwargs, k)?;
-        let (r, stats) = self.index.verbose_search(&query, search_params);
+        let (r, stats) = self.index.verbose_search(&query, search_params)?;
         let x = r.into_pyarray_bound(py);
         Ok((x, stats.into()))
     }
@@ -263,24 +255,29 @@ impl DynamicLearnedIndex {
     ) -> PyResult<Bound<'py, PyArray1<u32>>> {
         let query = array2vec(query);
         let search_params = parse_search_kwargs(py_kwargs, k)?;
-        let r = self.index.search(&query, search_params);
+        let r = self.index.search(&query, search_params)?;
         let x = r.into_pyarray_bound(py);
         Ok(x)
     }
 
-    fn insert<'py>(&mut self, record: PyReadonlyArray1<'py, f32>, id: u32) {
+    fn insert<'py>(&mut self, record: PyReadonlyArray1<'py, f32>, id: u32) -> PyResult<()> {
         let record = array2vec(record);
-        self.index.insert(record, id);
+        self.index.insert(record, id)?;
+        Ok(())
     }
 
-    fn verbose_delete(&mut self, id: u32) -> Option<((Vec<f32>, u32), PyDeleteStatistics)> {
-        self.index
-            .verbose_delete(id)
-            .map(|(data, stats)| (data, stats.into()))
+    fn verbose_delete(
+        &mut self,
+        id: u32,
+    ) -> PyResult<Option<((Vec<f32>, u32), PyDeleteStatistics)>> {
+        Ok(self
+            .index
+            .verbose_delete(id)?
+            .map(|(data, stats)| (data, stats.into())))
     }
 
-    fn delete(&mut self, id: u32) -> Option<(Vec<f32>, u32)> {
-        self.index.delete(id)
+    fn delete(&mut self, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
+        Ok(self.index.delete(id)?)
     }
 
     fn n_buckets(&self) -> usize {
@@ -299,8 +296,9 @@ impl DynamicLearnedIndex {
         self.index.n_empty_buckets()
     }
 
-    fn dump(&self, working_dir: &str) {
-        self.index.dump(Path::new(working_dir));
+    fn dump(&self, working_dir: &str) -> PyResult<()> {
+        self.index.dump(Path::new(working_dir))?;
+        Ok(())
     }
 }
 

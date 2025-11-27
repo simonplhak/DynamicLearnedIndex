@@ -1,5 +1,6 @@
+use anyhow::{Ok, Result};
 use dynamic_learned_index::types::{Array, Id};
-use dynamic_learned_index::{Index, SearchStrategy};
+use dynamic_learned_index::{DliResult, Index, SearchStrategy};
 use indicatif::ProgressBar;
 use log::info;
 use measure_time_macro::log_time;
@@ -21,7 +22,7 @@ pub fn eval_queries(
     queries: &[Array],
     search_strategy: SearchStrategy,
     use_progress: bool,
-) -> EvalMetrics {
+) -> Result<EvalMetrics> {
     assert!(queries.len() == gt.len());
     let max_k = 10;
     assert!(queries.len() > max_k);
@@ -31,7 +32,7 @@ pub fn eval_queries(
         false => None,
     };
     let start = std::time::Instant::now();
-    let results: Vec<_> = queries
+    let results = queries
         .iter()
         .map(|query| {
             if let Some(bar) = &bar {
@@ -39,7 +40,7 @@ pub fn eval_queries(
             }
             index.search(query, (max_k, search_strategy))
         })
-        .collect();
+        .collect::<DliResult<Vec<_>>>()?;
     let elapsed_time = start.elapsed();
     let (recall_top1, recall_top5, recall_top10) = results
         .iter()
@@ -72,13 +73,13 @@ pub fn eval_queries(
     if let Some(bar) = &bar {
         bar.finish();
     }
-    EvalMetrics {
+    Ok(EvalMetrics {
         total: total as u64,
         recall_top1: recall_top1 / total,
         recall_top5: recall_top5 / total,
         recall_top10: recall_top10 / total,
         elapsed_time,
-    }
+    })
 }
 
 #[derive(Copy, Clone)]
@@ -95,7 +96,7 @@ pub fn insert_all_data(
     validation_options: Option<ValidationOptions>,
     start_from_one: bool,
     search_strategy: SearchStrategy,
-) {
+) -> Result<()> {
     let limit = limit.unwrap_or(queries.len());
 
     let mut validation_ids = Vec::new();
@@ -105,7 +106,7 @@ pub fn insert_all_data(
         true => 1..=limit,
         false => 0..=limit - 1,
     };
-    range.zip(queries.into_iter()).for_each(|(id, query)| {
+    for (id, query) in range.zip(queries.into_iter()) {
         if let Some(validation_options) = validation_options {
             if id > 0 && id % validation_options.validate_after_n == 0 {
                 let metrics = eval_queries(
@@ -114,7 +115,7 @@ pub fn insert_all_data(
                     &validation_queries,
                     search_strategy,
                     false,
-                );
+                )?;
                 info!(total = metrics.total, recall_top1=metrics.recall_top1; "validation_metrics");
             }
             if id % validation_options.include_each_n == 0 {
@@ -122,9 +123,9 @@ pub fn insert_all_data(
                 validation_queries.push(query.clone());
             }
         }
-        index.insert(query, id as Id);
+        index.insert(query, id as Id)?;
         bar.inc(1);
-    });
+    }
     bar.finish();
     assert!(
         index.occupied() == limit,
@@ -132,4 +133,5 @@ pub fn insert_all_data(
         limit,
         index.occupied()
     );
+    Ok(())
 }

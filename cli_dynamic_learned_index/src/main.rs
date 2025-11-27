@@ -153,18 +153,18 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         validation_options,
         config.start_from_one,
         search_strategy,
-    );
+    )?;
     for ncandidates in &config.ncandidates {
         let search_strategy = match config.search_strategy {
             CLISearchStrategy::Knn => SearchStrategy::Base(*ncandidates),
             CLISearchStrategy::Model => SearchStrategy::ModelDriven(*ncandidates),
         };
-        let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true);
+        let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true)?;
         info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, ncandidates=ncandidates, elapsed_time=metrics.elapsed_time.as_secs_f32(); "metrics");
     }
     info!(buckets = index.n_buckets();"index:filled");
     let working_dir = experiment_dir.join("serialized_index");
-    index.dump(&working_dir);
+    index.dump(&working_dir)?;
 
     let index = IndexBuilder::from_disk(&working_dir)?.build()?;
     for ncandidates in &config.ncandidates {
@@ -172,7 +172,7 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
             CLISearchStrategy::Knn => SearchStrategy::Base(*ncandidates),
             CLISearchStrategy::Model => SearchStrategy::ModelDriven(*ncandidates),
         };
-        let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true);
+        let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true)?;
         info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, ncandidates=ncandidates, elapsed_time=metrics.elapsed_time.as_secs_f32(); "metrics");
     }
 
@@ -206,7 +206,7 @@ fn test() -> Result<()> {
         Some(validation_options),
         true,
         Default::default(),
-    );
+    )?;
     info!(buckets = index.n_buckets(), occupied = index.occupied(); "index:filled");
     Ok(())
 }

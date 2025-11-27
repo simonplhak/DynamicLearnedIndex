@@ -28,12 +28,12 @@ pub struct Index {
 }
 
 impl Index {
-    pub fn search<S>(&self, query: &ArraySlice, params: S) -> Vec<Id>
+    pub fn search<S>(&self, query: &ArraySlice, params: S) -> DliResult<Vec<Id>>
     where
         S: SearchParamsT,
     {
         let params = params.into_search_params();
-        let (records2visit, ids2visit, _) = self.records2visit(query, params.search_strategy);
+        let (records2visit, ids2visit, _) = self.records2visit(query, params.search_strategy)?;
         let rs = flat_knn::knn(
             records2visit,
             query,
@@ -43,20 +43,20 @@ impl Index {
                 DistanceFn::Dot => flat_knn::Metric::Dot,
             },
         );
-        rs.into_iter().map(|(_, idx)| ids2visit[idx]).collect()
+        Ok(rs.into_iter().map(|(_, idx)| ids2visit[idx]).collect())
     }
 
     fn records2visit(
         &self,
         query: &ArraySlice,
         search_strategy: SearchStrategy,
-    ) -> (Vec<&[f32]>, Vec<Id>, usize) {
+    ) -> DliResult<(Vec<&[f32]>, Vec<Id>, usize)> {
         // (records, ids, total_visited_buckets)
         let bucket_predictions = self
             .levels
             .iter()
             .map(|level| level.buckets2visit_predictions(query))
-            .collect::<Vec<_>>();
+            .collect::<DliResult<Vec<_>>>()?;
         let level_bucket_idxs =
             search_strategy.buckets2visit(bucket_predictions, self.buffer.occupied());
         let buckets2visit_count: usize = level_bucket_idxs.iter().map(|v| v.len()).sum();
@@ -96,10 +96,10 @@ impl Index {
             ids.push(self.buffer.ids[i]);
         }
 
-        (records, ids, buckets2visit_count)
+        Ok((records, ids, buckets2visit_count))
     }
 
-    pub fn add_level(&mut self) -> usize {
+    pub fn add_level(&mut self) -> DliResult<usize> {
         let level_index_config = self.get_level_index_config();
         let n_buckets = self.arity.pow(self.levels.len() as u32 + 1);
         let level_index = LevelIndexBuilder::default()
@@ -110,29 +110,29 @@ impl Index {
             .model_device(self.device.clone())
             .bucket_size(level_index_config.bucket_size)
             .distance_fn(self.distance_fn.clone())
-            .build()
-            .unwrap();
+            .build()?;
         self.levels.push(level_index);
-        self.levels.len() - 1
+        Ok(self.levels.len() - 1)
     }
 
     fn get_level_index_config(&self) -> LevelIndexConfig {
         self.levels_config.clone()
     }
 
-    pub fn insert(&mut self, value: Array, id: Id) {
+    pub fn insert(&mut self, value: Array, id: Id) -> DliResult<()> {
         if self.buffer.has_space(1) {
             self.buffer.insert(value, id);
-            return; // value fits into buffer
+            return Ok(()); // value fits into buffer
         }
         debug!(levels = self.levels.len(), occupied = self.occupied(); "index:buffer_flush");
-        self.compaction_strategy.clone().compact(self);
+        self.compaction_strategy.clone().compact(self)?;
         assert!(self.buffer.has_space(1));
         self.buffer.insert(value, id);
+        Ok(())
     }
 
-    pub fn delete(&mut self, id: Id) -> Option<(Array, Id)> {
-        self.verbose_delete(id).map(|(deleted, _)| deleted)
+    pub fn delete(&mut self, id: Id) -> DliResult<Option<(Array, Id)>> {
+        Ok(self.verbose_delete(id)?.map(|(deleted, _)| deleted))
     }
 
     pub fn size(&self) -> usize {
@@ -168,13 +168,17 @@ impl Index {
             .sum()
     }
 
-    pub fn verbose_search<S>(&self, query: &ArraySlice, params: S) -> (Vec<Id>, SearchStatistics)
+    pub fn verbose_search<S>(
+        &self,
+        query: &ArraySlice,
+        params: S,
+    ) -> DliResult<(Vec<Id>, SearchStatistics)>
     where
         S: SearchParamsT,
     {
         let params = params.into_search_params();
         let (records2visit, ids2visit, total_visited_buckets) =
-            self.records2visit(query, params.search_strategy);
+            self.records2visit(query, params.search_strategy)?;
         let rs = flat_knn::knn(
             records2visit,
             query,
@@ -185,38 +189,38 @@ impl Index {
             },
         );
         let res = rs.into_iter().map(|(_, idx)| ids2visit[idx]).collect();
-        (
+        Ok((
             res,
             SearchStatistics {
                 total_visited_buckets,
                 total_visited_records: ids2visit.len(),
             },
-        )
+        ))
     }
 
-    pub fn verbose_delete(&mut self, id: Id) -> Option<((Array, Id), DeleteStatistics)> {
+    pub fn verbose_delete(&mut self, id: Id) -> DliResult<Option<((Array, Id), DeleteStatistics)>> {
         if let Some(deleted) = self.buffer.delete(&id) {
-            return Some((
+            return Ok(Some((
                 deleted,
                 DeleteStatistics {
                     affected_level: None,
                 },
-            ));
+            )));
         }
         for (level_idx, level) in &mut self.levels.iter_mut().enumerate() {
-            if let Some(deleted) = level.delete(&id, &self.delete_method) {
+            if let Some(deleted) = level.delete(&id, &self.delete_method)? {
                 if self.is_level_underutilized(level_idx) {
-                    self.compaction_strategy.clone().rebuild(self, level_idx)
+                    self.compaction_strategy.clone().rebuild(self, level_idx)?;
                 }
-                return Some((
+                return Ok(Some((
                     deleted,
                     DeleteStatistics {
                         affected_level: Some(level_idx),
                     },
-                ));
+                )));
             }
         }
-        None
+        Ok(None)
     }
 
     fn is_level_underutilized(&self, level_idx: usize) -> bool {
@@ -224,14 +228,14 @@ impl Index {
         level.occupied() < level.buckets[0].size() * self.arity.pow(level_idx as u32)
     }
 
-    pub fn dump(&self, working_dir: &Path) {
-        create_dir(working_dir).unwrap();
+    pub fn dump(&self, working_dir: &Path) -> DliResult<()> {
+        create_dir(working_dir)?;
         let disk_levels = self
             .levels
             .iter()
             .enumerate()
             .map(|(level_id, level)| level.dump(working_dir, level_id))
-            .collect::<Vec<_>>();
+            .collect::<DliResult<Vec<_>>>()?;
         let disk_buffer = self.buffer.dump(working_dir);
         let disk_index = DiskIndex {
             levels_config: self.levels_config.clone(),
@@ -245,8 +249,9 @@ impl Index {
             disk_buffer,
         };
         let meta_path = working_dir.join("meta.json");
-        let meta_file = File::create(meta_path).unwrap();
-        serde_json::to_writer(meta_file, &disk_index).unwrap();
+        let meta_file = File::create(meta_path)?;
+        serde_json::to_writer(meta_file, &disk_index)?;
+        Ok(())
     }
 }
 
@@ -325,7 +330,7 @@ impl CompactionStrategy {
         (data, ids)
     }
 
-    pub fn compact(&self, index: &mut Index) {
+    pub fn compact(&self, index: &mut Index) -> DliResult<()> {
         let original_occupied = index.occupied();
         match self {
             CompactionStrategy::BentleySaxe(_) => {
@@ -334,24 +339,25 @@ impl CompactionStrategy {
                         let (data, ids) = self.lower_level_data(index, level_idx);
                         let level = &mut index.levels[level_idx];
                         if level.size() == 0 {
-                            level.retrain(&data);
+                            level.retrain(&data)?;
                         }
-                        level.insert_many(data, ids);
+                        level.insert_many(data, ids)?;
                     }
                     None => {
-                        let level_idx = index.add_level();
+                        let level_idx = index.add_level()?;
                         let (data, ids) = self.lower_level_data(index, level_idx);
                         let level = &mut index.levels[level_idx];
-                        level.train(&data);
-                        level.insert_many(data, ids);
+                        level.train(&data)?;
+                        level.insert_many(data, ids)?;
                     }
                 };
             }
         }
         assert_eq!(original_occupied, index.occupied());
+        Ok(())
     }
 
-    pub fn rebuild(&self, index: &mut Index, level_idx: usize) {
+    pub fn rebuild(&self, index: &mut Index, level_idx: usize) -> DliResult<()> {
         assert!(level_idx < index.levels.len());
         match self {
             CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild) => {}
@@ -367,7 +373,9 @@ impl CompactionStrategy {
                     let from_level_occupied = index.levels[from_level_idx].occupied();
                     let to_level_occupied = index.levels[to_level_idx].occupied();
                     let (data, ids) = index.levels[from_level_idx].get_data();
-                    index.levels[to_level_idx].insert_many(data, ids);
+                    index.levels[to_level_idx]
+                        .insert_many(data, ids)
+                        .expect("insert_many failed inside rebuild move_data closure");
                     assert!(index.levels[from_level_idx].occupied() == 0);
                     assert!(
                         index.levels[to_level_idx].occupied()
@@ -379,22 +387,22 @@ impl CompactionStrategy {
                     if let Some(lower_level_idx) = lower_level(index, level_idx, level_occupied) {
                         assert!(lower_level_idx > level_idx);
                         move_data(index, level_idx, lower_level_idx);
-                        return;
+                        return Ok(());
                     };
                     // flush buffer
                     let buffer_occupied = index.buffer.occupied();
                     let (data, ids) = index.buffer.get_data();
-                    index.levels[level_idx].insert_many(data, ids);
+                    index.levels[level_idx].insert_many(data, ids)?;
                     assert!(index.buffer.occupied() == 0);
                     assert!(index.levels[level_idx].occupied() == level_occupied + buffer_occupied);
-                    return;
+                    return Ok(());
                 }
                 // Middle level
                 if level_idx < index.levels.len() - 1 {
                     if let Some(lower_level_idx) = lower_level(index, level_idx, level_occupied) {
                         assert!(lower_level_idx > level_idx);
                         move_data(index, level_idx, lower_level_idx);
-                        return;
+                        return Ok(());
                     };
                 }
                 // Last level or no lower level found for middle level
@@ -402,12 +410,13 @@ impl CompactionStrategy {
                 let upper_level_idx = level_idx - 1;
                 if index.levels[upper_level_idx].free_space() >= level_occupied {
                     move_data(index, level_idx, upper_level_idx);
-                    return;
+                    return Ok(());
                 }
                 // Top up current level from upper level
                 move_data(index, upper_level_idx, level_idx);
             }
         }
+        Ok(())
     }
 }
 
@@ -595,36 +604,38 @@ impl LevelIndex {
         }
     }
 
-    fn buckets2visit_predictions(&self, query: &ArraySlice) -> Vec<(usize, f32, usize)> {
+    fn buckets2visit_predictions(&self, query: &ArraySlice) -> DliResult<Vec<(usize, f32, usize)>> {
         if self.occupied() == 0 {
-            return self
+            return Ok(self
                 .buckets
                 .iter()
                 .enumerate()
                 .map(|(bucket_id, _)| (bucket_id, 0.0, 0))
-                .collect();
+                .collect());
         }
-        self.model
-            .predict(query)
-            .unwrap()
+        let preds = self
+            .model
+            .predict(query)?
             .into_iter()
             .map(|(bucket_id, prob)| (bucket_id, prob, self.buckets[bucket_id].occupied()))
-            .collect()
+            .collect();
+        Ok(preds)
+    }
+    #[log_time]
+    fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
+        self.model.train(xs)?;
+        Ok(())
     }
 
     #[log_time]
-    fn train(&mut self, xs: &ArraySlice) {
-        self.model.train(xs).unwrap();
+    fn retrain(&mut self, xs: &ArraySlice) -> DliResult<()> {
+        self.model.retrain(xs)?;
+        Ok(())
     }
-
-    #[log_time]
-    fn retrain(&mut self, xs: &ArraySlice) {
-        self.model.retrain(xs).unwrap();
-    }
-    fn insert_many(&mut self, records: Array, ids: Vec<Id>) {
+    fn insert_many(&mut self, records: Array, ids: Vec<Id>) -> DliResult<()> {
         let input_shape = self.model.input_shape;
         assert!(records.len() / input_shape == ids.len());
-        let assignments = self.model.predict_many(&records).unwrap();
+        let assignments = self.model.predict_many(&records)?;
         assert!(assignments.len() == ids.len());
         // Calculate frequency of each bucket index in assignments
         let mut frequencies = vec![0; self.buckets.len()];
@@ -645,8 +656,8 @@ impl LevelIndex {
             let mut assignments = assignments;
             while !records.is_empty() {
                 let query = records.split_off(records.len() - input_shape);
-                let id = ids.pop().unwrap();
-                let bucket_idx = assignments.pop().unwrap();
+                let id = ids.pop().expect("ids mismatch");
+                let bucket_idx = assignments.pop().expect("assignments mismatch");
                 let record_idx = self.buckets[bucket_idx].insert(query, id);
                 self.ids_map.insert(id, (bucket_idx, record_idx));
             }
@@ -654,6 +665,7 @@ impl LevelIndex {
             assert!(ids.is_empty());
             assert!(records.is_empty());
         }
+        Ok(())
     }
 
     fn get_data(&mut self) -> (Array, Vec<Id>) {
@@ -670,15 +682,21 @@ impl LevelIndex {
         )
     }
 
-    fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> Option<(Array, Id)> {
+    fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> DliResult<Option<(Array, Id)>> {
         let deleted = self.ids_map.get(id).cloned();
         if let Some((bucket_idx, record_idx)) = deleted {
             assert!(bucket_idx < self.buckets.len());
             assert!(record_idx < self.buckets[bucket_idx].occupied());
             let bucket = &mut self.buckets[bucket_idx];
             let (deleted, (swapped_new_idx, swapped_id)) =
-                bucket.delete(record_idx, delete_method)?;
-            let (deleted_bucket_idx, deleted_record_idx) = self.ids_map.remove(id).unwrap(); // we are sure it exists
+                match bucket.delete(record_idx, delete_method) {
+                    Some(v) => v,
+                    None => return Ok(None),
+                };
+            let (deleted_bucket_idx, deleted_record_idx) = match self.ids_map.remove(id) {
+                Some(v) => v,
+                None => return Ok(None),
+            }; // we are sure it exists
             assert_eq!(deleted_bucket_idx, bucket_idx);
             assert_eq!(deleted_record_idx, record_idx);
             // Only insert the swapped id mapping if a different record was moved into the deleted slot.
@@ -687,22 +705,22 @@ impl LevelIndex {
                 self.ids_map
                     .insert(swapped_id, (bucket_idx, swapped_new_idx));
             }
-            return Some(deleted);
+            return Ok(Some(deleted));
         }
-        None
+        Ok(None)
     }
 
     fn n_buckets(&self) -> usize {
         self.buckets.len()
     }
 
-    fn dump(&self, working_dir: &Path, level_id: usize) -> DiskLevelIndex {
+    fn dump(&self, working_dir: &Path, level_id: usize) -> DliResult<DiskLevelIndex> {
         let weights_path = working_dir.join(format!("model-{level_id}.safetensors"));
-        let model = self.model.dump(weights_path.clone()).unwrap(); // TODO: remove unwrap
+        let model = self.model.dump(weights_path.clone())?; // propagate
         let records_path = working_dir.join(format!("bucket-records-{level_id}.bin"));
         let ids_path = working_dir.join(format!("bucket-ids-{level_id}.bin"));
-        let mut records_file = File::create(records_path.clone()).unwrap(); // TODO: remove unwrap
-        let mut ids_file = File::create(ids_path.clone()).unwrap(); // TODO: remove unwrap
+        let mut records_file = File::create(records_path.clone())?;
+        let mut ids_file = File::create(ids_path.clone())?;
         let disk_buckets = self
             .buckets
             .iter()
@@ -712,13 +730,13 @@ impl LevelIndex {
             model,
             bucket_size: self.buckets[0].size(),
         };
-        DiskLevelIndex {
+        Ok(DiskLevelIndex {
             weights_path,
             buckets: disk_buckets,
             config,
             records_path,
             ids_path,
-        }
+        })
     }
 }
 
@@ -939,6 +957,7 @@ impl IndexBuilder {
 mod tests {
     use super::*;
     use crate::constants::{DEFAULT_BUCKET_SIZE, DEFAULT_SEARCH_N_CANDIDATES};
+    use crate::errors::DliResult;
     use crate::{search_strategy::SearchStrategy, structs::DistanceFn};
     use crate::{ModelConfig, ModelLayer, TrainParams};
     use std::io::Write;
@@ -964,7 +983,7 @@ mod tests {
     }
 
     #[test]
-    fn test_index_config_from_yaml_valid() {
+    fn test_index_config_from_yaml_valid() -> DliResult<()> {
         let yaml_content = r#"
         compaction_strategy:
           type: bentley_saxe
@@ -994,13 +1013,10 @@ mod tests {
         delete_method: oid_to_bucket
         "#;
 
-        let mut temp_file = NamedTempFile::new().unwrap();
-        writeln!(temp_file, "{yaml_content}").unwrap();
+        let mut temp_file = NamedTempFile::new()?;
+        writeln!(temp_file, "{yaml_content}")?;
 
-        let index = IndexBuilder::from_yaml(temp_file.path())
-            .unwrap()
-            .build()
-            .unwrap();
+        let index = IndexBuilder::from_yaml(temp_file.path())?.build()?;
         assert_eq!(index.buffer.size, 50);
         assert_eq!(index.input_shape, 10);
         assert_eq!(index.arity, 2);
@@ -1008,6 +1024,7 @@ mod tests {
         let lvl = index.levels_config;
         assert_eq!(lvl.bucket_size, 100);
         assert!(matches!(index.delete_method, DeleteMethod::OidToBucket));
+        Ok(())
     }
 
     #[test]
@@ -1044,33 +1061,35 @@ mod tests {
     }
 
     #[test]
-    fn test_index_insert_and_size() {
+    fn test_index_insert_and_size() -> DliResult<()> {
         let config = create_test_config();
-        let mut index = IndexBuilder::from_config(config).build().unwrap();
+        let mut index = IndexBuilder::from_config(config).build()?;
 
         // Initial size is buffer size (10 from test config)
         assert_eq!(index.size(), 10);
 
-        index.insert(vec![1.0, 2.0, 3.0], 1);
+        index.insert(vec![1.0, 2.0, 3.0], 1)?;
         // Size method returns total capacity, not occupied count
         assert_eq!(index.size(), 10);
 
-        index.insert(vec![4.0, 5.0, 6.0], 2);
+        index.insert(vec![4.0, 5.0, 6.0], 2)?;
         assert_eq!(index.size(), 10);
+        Ok(())
     }
 
     #[test]
-    fn test_index_search_basic() {
+    fn test_index_search_basic() -> DliResult<()> {
         let config = create_test_config();
-        let mut index = IndexBuilder::from_config(config).build().unwrap();
+        let mut index = IndexBuilder::from_config(config).build()?;
 
         // Insert some test data
-        index.insert(vec![1.0, 2.0, 3.0], 1);
-        index.insert(vec![4.0, 5.0, 6.0], 2);
+        index.insert(vec![1.0, 2.0, 3.0], 1)?;
+        index.insert(vec![4.0, 5.0, 6.0], 2)?;
 
         // We can't actually search with no levels because it would trigger empty predictions
         // But we can verify that data was inserted
         assert_eq!(index.size(), 10); // Buffer size
+        Ok(())
     }
 
     #[test]
@@ -1184,7 +1203,7 @@ mod tests {
     }
 
     #[test]
-    fn test_level_index_save_and_load() {
+    fn test_level_index_save_and_load() -> DliResult<()> {
         use tempfile::TempDir;
 
         // Create a level with some buckets
@@ -1198,14 +1217,13 @@ mod tests {
             .bucket_size(bucket_size)
             .model(ModelConfig::default())
             .distance_fn(DistanceFn::Dot)
-            .build()
-            .expect("Failed to build level");
+            .build()?;
 
         // Generate training data (100 samples, 10 features each)
         let training_data: Vec<f32> = (0..1000).map(|i| (i % 100) as f32 / 100.0).collect();
 
         // Train the level
-        level.train(&training_data);
+        level.train(&training_data)?;
 
         // Insert some data into the level
         let mut insert_data: Vec<f32> = Vec::new();
@@ -1217,7 +1235,7 @@ mod tests {
             insert_data.extend(record);
             insert_ids.push(i as u32);
         }
-        level.insert_many(insert_data, insert_ids);
+        level.insert_many(insert_data, insert_ids)?;
 
         // Create test queries
         let test_queries: Vec<Vec<f32>> = vec![
@@ -1228,15 +1246,15 @@ mod tests {
         ];
 
         // Get predictions from original level
-        let original_predictions: Vec<Vec<(usize, f32, usize)>> = test_queries
+        let original_predictions = test_queries
             .iter()
             .map(|query| level.buckets2visit_predictions(query))
-            .collect();
+            .collect::<DliResult<Vec<_>>>()?;
 
         // Save level to temporary directory
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let level_id = 0;
-        let disk_level = level.dump(temp_dir.path(), level_id);
+        let disk_level = level.dump(temp_dir.path(), level_id)?;
 
         // Verify disk files were created
         assert!(disk_level.weights_path.exists());
@@ -1255,8 +1273,7 @@ mod tests {
                 disk_level.records_path,
                 disk_level.ids_path,
             )
-            .build()
-            .expect("Failed to build level from disk");
+            .build()?;
 
         // Verify loaded level has same properties
         assert_eq!(loaded_level.n_buckets(), n_buckets);
@@ -1264,10 +1281,10 @@ mod tests {
         assert_eq!(loaded_level.occupied(), 20); // Same number of records
 
         // Get predictions from loaded level
-        let loaded_predictions: Vec<Vec<(usize, f32, usize)>> = test_queries
+        let loaded_predictions = test_queries
             .iter()
             .map(|query| loaded_level.buckets2visit_predictions(query))
-            .collect();
+            .collect::<DliResult<Vec<_>>>()?;
 
         // Verify predictions match
         assert_eq!(original_predictions.len(), loaded_predictions.len());
@@ -1316,6 +1333,7 @@ mod tests {
                 );
             }
         }
+        Ok(())
     }
 
     // IndexBuilder tests
@@ -1386,7 +1404,7 @@ mod tests {
     }
 
     #[test]
-    fn test_index_save_and_load() {
+    fn test_index_save_and_load() -> DliResult<()> {
         use tempfile::TempDir;
 
         // Build an index with specific configuration
@@ -1397,8 +1415,7 @@ mod tests {
             .buffer_size(10)
             .input_shape(input_shape)
             .distance_fn(DistanceFn::Dot)
-            .build()
-            .unwrap();
+            .build()?;
 
         // Verify initial configuration
         assert_eq!(index.arity, 2);
@@ -1411,7 +1428,7 @@ mod tests {
             let record: Vec<f32> = (0..input_shape)
                 .map(|j| ((i * input_shape + j) % 100) as f32 / 100.0)
                 .collect();
-            index.insert(record, i as u32);
+            index.insert(record, i as u32)?;
         }
 
         // Verify data was inserted
@@ -1435,31 +1452,28 @@ mod tests {
         ];
 
         // Run queries and store results from original index
-        let original_results: Vec<Vec<Id>> = test_queries
+        let original_results = test_queries
             .iter()
             .map(|query| index.search(query.as_slice(), 10))
-            .collect();
+            .collect::<DliResult<Vec<_>>>()?;
 
         // Also get verbose search statistics
-        let original_stats: Vec<(Vec<Id>, SearchStatistics)> = test_queries
+        let original_stats = test_queries
             .iter()
             .map(|query| index.verbose_search(query.as_slice(), 10))
-            .collect();
+            .collect::<DliResult<Vec<_>>>()?;
 
         // Save index to temporary directory
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let dump_dir = temp_dir.path().join("index_dump");
-        index.dump(&dump_dir);
+        index.dump(&dump_dir)?;
 
         // Verify meta file was created
         let meta_path = dump_dir.join("meta.json");
         assert!(meta_path.exists(), "Meta file should exist");
 
         // Load index from disk
-        let loaded_index = IndexBuilder::from_disk(&dump_dir)
-            .expect("Failed to create builder from disk")
-            .build()
-            .expect("Failed to build index from disk");
+        let loaded_index = IndexBuilder::from_disk(&dump_dir)?.build()?;
 
         // Verify loaded index has same configuration
         assert_eq!(loaded_index.arity, index.arity);
@@ -1478,15 +1492,15 @@ mod tests {
         assert_eq!(loaded_index.n_buckets(), index.n_buckets());
 
         // Run same queries on loaded index
-        let loaded_results: Vec<Vec<Id>> = test_queries
+        let loaded_results = test_queries
             .iter()
             .map(|query| loaded_index.search(query.as_slice(), 10))
-            .collect();
+            .collect::<DliResult<Vec<_>>>()?;
 
-        let loaded_stats: Vec<(Vec<Id>, SearchStatistics)> = test_queries
+        let loaded_stats = test_queries
             .iter()
             .map(|query| loaded_index.verbose_search(query.as_slice(), 10))
-            .collect();
+            .collect::<DliResult<Vec<_>>>()?;
 
         // Verify search results match
         assert_eq!(original_results.len(), loaded_results.len());
@@ -1539,29 +1553,32 @@ mod tests {
                 "Level {level_idx} bucket count should match"
             );
         }
+        Ok(())
     }
 
     #[test]
-    fn test_bentley_saxe_index_available_level() {
+    fn test_bentley_saxe_index_available_level() -> DliResult<()> {
         let config = create_test_config();
-        let index = IndexBuilder::from_config(config).build().unwrap();
+        let index = IndexBuilder::from_config(config).build()?;
         // Initially no levels, so should return None
         assert_eq!(index.compaction_strategy.available_level(&index), None);
+        Ok(())
     }
 
     #[test]
-    fn test_bentley_saxe_index_get_level_config() {
+    fn test_bentley_saxe_index_get_level_config() -> DliResult<()> {
         let config = create_test_config();
-        let index = IndexBuilder::from_config(config).build().unwrap();
+        let index = IndexBuilder::from_config(config).build()?;
 
         let level_config = index.get_level_index_config();
         assert_eq!(level_config.bucket_size, DEFAULT_BUCKET_SIZE); // default value
+        Ok(())
     }
 
     #[test]
-    fn test_bentley_saxe_index_insert_to_buffer() {
+    fn test_bentley_saxe_index_insert_to_buffer() -> DliResult<()> {
         let config = create_test_config();
-        let mut index = IndexBuilder::from_config(config).build().unwrap();
+        let mut index = IndexBuilder::from_config(config).build()?;
 
         // Initial size should be buffer size
         let initial_size = index.size();
@@ -1569,28 +1586,30 @@ mod tests {
 
         // Insert data that should go to buffer
         for i in 1..=5 {
-            index.insert(vec![i as f32, i as f32 + 1.0, i as f32 + 2.0], i as u32);
+            index.insert(vec![i as f32, i as f32 + 1.0, i as f32 + 2.0], i as u32)?;
         }
 
         // Size should remain the same (capacity, not occupancy)
         assert_eq!(index.size(), 10);
+        Ok(())
     }
 
     #[test]
-    fn test_bentley_saxe_empty_levels() {
+    fn test_bentley_saxe_empty_levels() -> DliResult<()> {
         let config = create_test_config();
-        let index = IndexBuilder::from_config(config).build().unwrap();
+        let index = IndexBuilder::from_config(config).build()?;
 
         // Should have no levels initially
         assert_eq!(index.levels.len(), 0);
         // Should have a buffer
         assert_eq!(index.buffer.size, 10);
+        Ok(())
     }
 
     #[test]
-    fn test_bentley_saxe_lower_level_data_empty() {
+    fn test_bentley_saxe_lower_level_data_empty() -> DliResult<()> {
         let config = create_test_config();
-        let mut index = IndexBuilder::from_config(config).build().unwrap();
+        let mut index = IndexBuilder::from_config(config).build()?;
 
         let (data, ids) = index
             .compaction_strategy
@@ -1599,6 +1618,7 @@ mod tests {
         // Should only have buffer data initially
         assert!(data.is_empty());
         assert!(ids.is_empty());
+        Ok(())
     }
 
     // Helper to build a LevelIndex with one bucket and populate it with records and ids
@@ -1616,7 +1636,7 @@ mod tests {
             .model_device(ModelDevice::Cpu)
             .distance_fn(DistanceFn::Dot)
             .build()
-            .unwrap();
+            .expect("level build failed");
 
         for (rec, id) in records.into_iter().zip(ids.into_iter()) {
             level.buckets[0].insert(rec, id);
@@ -1628,14 +1648,12 @@ mod tests {
     }
 
     #[test]
-    fn test_level_index_delete_last_element() {
+    fn test_level_index_delete_last_element() -> DliResult<()> {
         let rec = vec![1.0f32, 2.0, 3.0];
         let id = 42u32;
         let mut level = make_level_with_records(vec![rec.clone()], vec![id]);
-
-        let res = level.delete(&id, &DeleteMethod::OidToBucket);
-        assert!(res.is_some());
-        let (deleted_vec, deleted_id) = res.unwrap();
+        let res = level.delete(&id, &DeleteMethod::OidToBucket)?;
+        let (deleted_vec, deleted_id) = res.expect("expected deletion");
         assert_eq!(deleted_id, id);
         assert_eq!(deleted_vec, rec);
 
@@ -1643,10 +1661,11 @@ mod tests {
         assert!(!level.ids_map.contains_key(&id));
         // bucket should be empty
         assert_eq!(level.buckets[0].occupied(), 0);
+        Ok(())
     }
 
     #[test]
-    fn test_level_index_delete_middle_swaps_last_in() {
+    fn test_level_index_delete_middle_swaps_last_in() -> DliResult<()> {
         let rec0 = vec![0.0f32, 0.1, 0.2];
         let rec1 = vec![1.0f32, 1.1, 1.2];
         let rec2 = vec![2.0f32, 2.1, 2.2];
@@ -1655,9 +1674,8 @@ mod tests {
             make_level_with_records(vec![rec0.clone(), rec1.clone(), rec2.clone()], ids.clone());
 
         // delete middle id (2)
-        let res = level.delete(&2u32, &DeleteMethod::OidToBucket);
-        assert!(res.is_some());
-        let (deleted_vec, deleted_id) = res.unwrap();
+        let res = level.delete(&2u32, &DeleteMethod::OidToBucket)?;
+        let (deleted_vec, deleted_id) = res.expect("expected middle deletion");
         assert_eq!(deleted_id, 2u32);
         assert_eq!(deleted_vec, rec1);
 
@@ -1668,13 +1686,15 @@ mod tests {
         // bucket should have two records and record(1) equals rec2
         assert_eq!(level.buckets[0].occupied(), 2);
         assert_eq!(level.buckets[0].record(1), rec2.as_slice());
+        Ok(())
     }
 
     #[test]
-    fn test_level_index_delete_missing_id_returns_none() {
+    fn test_level_index_delete_missing_id_returns_none() -> DliResult<()> {
         let mut level = make_level_with_records(vec![], vec![]);
-        let res = level.delete(&999u32, &DeleteMethod::OidToBucket);
+        let res = level.delete(&999u32, &DeleteMethod::OidToBucket)?;
         assert!(res.is_none());
+        Ok(())
     }
 
     #[test]

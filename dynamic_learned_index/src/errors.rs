@@ -22,3 +22,11 @@ pub enum DliError {
 }
 
 pub type DliResult<T> = Result<T, DliError>;
+
+// PyO3 integration: automatic error conversion
+#[cfg(feature = "pyo3")]
+impl From<DliError> for pyo3::PyErr {
+    fn from(err: DliError) -> pyo3::PyErr {
+        pyo3::exceptions::PyRuntimeError::new_err(err.to_string())
+    }
+}
