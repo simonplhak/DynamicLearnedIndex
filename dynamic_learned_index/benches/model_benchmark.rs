@@ -109,7 +109,7 @@ fn bench_candle_model_train(b: &mut Bencher) {
 
     b.iter(|| {
         let mut model = candle_model();
-        model.train(&data);
+        model.train(&data).unwrap();
     });
 }
 
@@ -120,7 +120,7 @@ fn bench_candle_model_predict_single(b: &mut Bencher) {
 
     let mut model = candle_model();
 
-    model.train(&train_data);
+    model.train(&train_data).unwrap();
 
     b.iter(|| {
         let _result = model.predict(&test_vector);
@@ -134,7 +134,7 @@ fn bench_candle_model_predict_many(b: &mut Bencher) {
 
     let mut model = candle_model();
 
-    model.train(&train_data);
+    model.train(&train_data).unwrap();
 
     b.iter(|| {
         let _result = model.predict_many(&test_data);
