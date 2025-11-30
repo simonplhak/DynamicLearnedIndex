@@ -235,7 +235,7 @@ dependencies = [
 [[package]]
 name = "candle-core"
 version = "0.9.1"
-source = "git+https://github.com/huggingface/candle.git#26a3222d557caefab41b9c3e63a08213c32e5472"
+source = "git+https://github.com/huggingface/candle.git?tag=0.9.1#cd96fa80da255e34f7b16b4ff98b6a31d557201b"
 dependencies = [
  "byteorder",
  "gemm 0.17.1",
@@ -256,7 +256,7 @@ dependencies = [
 [[package]]
 name = "candle-nn"
 version = "0.9.1"
-source = "git+https://github.com/huggingface/candle.git#26a3222d557caefab41b9c3e63a08213c32e5472"
+source = "git+https://github.com/huggingface/candle.git?tag=0.9.1#cd96fa80da255e34f7b16b4ff98b6a31d557201b"
 dependencies = [
  "candle-core",
  "half",

@@ -37,17 +37,6 @@ CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --bin=cli_dynamic_learned_inde
 Thi library uses SIMD instructions for performance. It needs to know at a compile time the number of bits in SIMD register that CPU supports. To specify the number of bits go to [`dynamic_learned_index/src/constants.rs`](dynamic_learned_index/src/constants.rs) and change `SIMD_REGISTER_SIZE` constant (do not change any other constants). To find out how many bits in SIMD register your CPU support visit manufacturer webpage (in Linux you can find your CPU model via command `cat /proc/cpuinfo | grep -i 'model name'`). 
 
 
-Crate depends on `tch-rs` dependency that serves as a wrapper for `libtorch` c++ implementation. 
-Follow the installation instructions for `libtorch` from [tch-rs homepage](https://github.com/LaurentMazare/tch-rs).
-
-When using libtorch from pip installation, you need to call cargo build within the environment where the torch package is installed.
-
-```shell
-# build is stored in `./target/release`
-# entrypoint is in `./target/release/cli_dynamic_learned_index` binary
-cargo build --release
-```
-
 ### Linking with Python
 
 To link the Rust library with Python, we use `maturin` to build a Python package. This allows us to use the Rust code as a Python module.
@@ -169,4 +158,32 @@ To run the project in a Docker container.
 ```shell
 docker build -t dli-cli --exclude py_dynamic_learned_index .
 docker run -it --rm -v ${PWD}/experiments_data:/app/experiments_data -v ${PWD}/data:/app/data -v ${PWD}/configs:/app/configs dli-cli
+```
+
+
+## Benchmarks
+
+To run benchmarks, use the following command:
+
+```shell
+cargo bench -p dynamic_learned_index
+```
+
+In basic case there is just candle model benchmark. To run tch model benchmark, enable `tch` feature:
+
+```shell
+cargo bench -p dynamic_learned_index --features tch
+```
+
+### Libtorch installation
+
+Crate depends on `tch-rs` dependency that serves as a wrapper for `libtorch` c++ implementation. 
+Follow the installation instructions for `libtorch` from [tch-rs homepage](https://github.com/LaurentMazare/tch-rs).
+
+When using libtorch from pip installation, you need to call cargo build within the environment where the torch package is installed.
+
+```shell
+# build is stored in `./target/release`
+# entrypoint is in `./target/release/cli_dynamic_learned_index` binary
+cargo build --release
 ```

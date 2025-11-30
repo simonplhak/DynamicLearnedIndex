@@ -1,12 +1,11 @@
-// pub use candle::*;
 pub mod candle_model;
+#[cfg(feature = "tch")]
 pub mod tch_model;
 
 use std::path::PathBuf;
 
-use serde::{Deserialize, Serialize};
-// pub use tch_model::{Model, ModelBuilder};
 pub use candle_model::{Model, ModelBuilder};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone)]
 pub enum ModelDevice {

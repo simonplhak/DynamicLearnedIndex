@@ -5,6 +5,7 @@ extern crate test;
 use dynamic_learned_index::model::candle_model::{
     Model as ModelNew, ModelBuilder as ModelNewBuilder,
 };
+#[cfg(feature = "tch")]
 use dynamic_learned_index::model::tch_model::{Model, ModelBuilder};
 use dynamic_learned_index::model::{ModelLayer, TrainParams};
 use dynamic_learned_index::structs::LabelMethod;
@@ -27,6 +28,7 @@ fn generate_random_data(size: usize, dim: usize) -> Vec<f32> {
         .collect()
 }
 
+#[cfg(feature = "tch")]
 fn pytorch_model() -> Model {
     ModelBuilder::default()
         .device(ModelDevice::Cpu)
@@ -46,6 +48,7 @@ fn pytorch_model() -> Model {
         .unwrap()
 }
 
+#[cfg(feature = "tch")]
 #[bench]
 fn bench_pytorch_model_train(b: &mut Bencher) {
     let data = generate_random_data(SAMPLE_SIZE, VECTOR_DIM);
@@ -56,6 +59,7 @@ fn bench_pytorch_model_train(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "tch")]
 #[bench]
 fn bench_pytorch_model_predict_single(b: &mut Bencher) {
     let train_data = generate_random_data(1000, VECTOR_DIM); // Smaller training set
@@ -70,6 +74,7 @@ fn bench_pytorch_model_predict_single(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "tch")]
 #[bench]
 fn bench_pytorch_model_predict_many(b: &mut Bencher) {
     let train_data = generate_random_data(1000, VECTOR_DIM);
