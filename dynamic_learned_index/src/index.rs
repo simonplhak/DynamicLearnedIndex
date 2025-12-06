@@ -716,8 +716,9 @@ impl LevelIndex {
     }
 
     fn dump(&self, working_dir: &Path, level_id: usize) -> DliResult<DiskLevelIndex> {
-        let weights_path = working_dir.join(format!("model-{level_id}.safetensors"));
-        let model = self.model.dump(weights_path.clone())?; // propagate
+        let model = self
+            .model
+            .dump(working_dir.join(format!("model-{level_id}.safetensors")))?;
         let records_path = working_dir.join(format!("bucket-records-{level_id}.bin"));
         let ids_path = working_dir.join(format!("bucket-ids-{level_id}.bin"));
         let mut records_file = File::create(records_path.clone())?;
@@ -732,7 +733,6 @@ impl LevelIndex {
             bucket_size: self.buckets[0].size(),
         };
         Ok(DiskLevelIndex {
-            weights_path,
             buckets: disk_buckets,
             config,
             records_path,
@@ -1258,7 +1258,6 @@ mod tests {
         let disk_level = level.dump(temp_dir.path(), level_id)?;
 
         // Verify disk files were created
-        assert!(disk_level.weights_path.exists());
         assert!(disk_level.records_path.exists());
         assert!(disk_level.ids_path.exists());
 
