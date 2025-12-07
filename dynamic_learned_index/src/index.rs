@@ -2,8 +2,7 @@ use crate::{
     bucket::{self, Bucket, Buffer, BufferBuilder},
     constants::DEFAULT_BUCKET_SIZE,
     model::{Model, ModelBuilder, ModelConfig, ModelDevice},
-    structs::{DiskBucket, DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig},
-    types::Records2Visit,
+    structs::{DiskBucket, DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig, Records2Visit},
     Array, ArraySlice, DeleteMethod, DeleteStatistics, DistanceFn, DliError, DliResult, Id,
     ModelLayer, SearchParamsT, SearchStatistics, SearchStrategy,
 };
@@ -33,71 +32,70 @@ impl Index {
     where
         S: SearchParamsT,
     {
-        let params = params.into_search_params();
-        let (records2visit, ids2visit, _) = self.records2visit(query, params.search_strategy)?;
-        let rs = flat_knn::knn(
-            records2visit,
-            query,
-            params.k,
-            match self.distance_fn {
-                DistanceFn::L2 => flat_knn::Metric::L2,
-                DistanceFn::Dot => flat_knn::Metric::Dot,
-            },
-        );
-        Ok(rs.into_iter().map(|(_, idx)| ids2visit[idx]).collect())
+        self.verbose_search(query, params).map(|(res, _)| res)
     }
 
     fn records2visit(
         &'_ self,
-        query: &ArraySlice,
+        predictions: Vec<Vec<(usize, f32, usize)>>,
         search_strategy: SearchStrategy,
-    ) -> DliResult<Records2Visit<'_>> {
-        // (records, ids, total_visited_buckets)
-        let bucket_predictions = self
-            .levels
-            .iter()
-            .map(|level| level.buckets2visit_predictions(query))
-            .collect::<DliResult<Vec<_>>>()?;
-        let level_bucket_idxs =
-            search_strategy.buckets2visit(bucket_predictions, self.buffer.occupied());
-        let buckets2visit_count: usize = level_bucket_idxs.iter().map(|v| v.len()).sum();
-
-        // Pre-calculate total capacity to avoid repeated allocations
-        let total_capacity = level_bucket_idxs
-            .iter()
-            .zip(self.levels.iter())
-            .map(|(bucket_idxs, level)| {
-                bucket_idxs
-                    .iter()
-                    .map(|&bucket_idx| level.buckets[bucket_idx].occupied())
-                    .sum::<usize>()
-            })
-            .sum::<usize>()
-            + self.buffer.occupied();
-
-        let mut records = Vec::with_capacity(total_capacity);
-        let mut ids = Vec::with_capacity(total_capacity);
-
-        // Process levels
-        for (bucket_idxs, level) in level_bucket_idxs.into_iter().zip(self.levels.iter()) {
-            for bucket_idx in bucket_idxs {
-                let bucket = &level.buckets[bucket_idx];
-                let occupied = bucket.occupied();
-                for i in 0..occupied {
-                    records.push(bucket.record(i));
-                    ids.push(bucket.ids[i]);
+    ) -> Records2Visit<'_> {
+        assert!(!predictions.is_empty(), "Predictions cannot be empty");
+        match search_strategy {
+            SearchStrategy::Base(_nprobe) => todo!(),
+            SearchStrategy::ModelDriven(ncandidates) => {
+                let arity = predictions[0].len();
+                let normalize_probability =
+                    |prob: f32, level_idx| (arity.pow(level_idx) as f32) * prob.max(0.0);
+                let levels = predictions.len();
+                let mut buckets2visit = Vec::with_capacity(self.n_buckets() + 1);
+                for (level_idx, level_predictions) in predictions.iter().enumerate() {
+                    for (bucket_id, prob, occupied) in level_predictions {
+                        buckets2visit.push((
+                            level_idx,
+                            *bucket_id,
+                            normalize_probability(*prob, level_idx as u32),
+                            *occupied,
+                        ));
+                    }
+                }
+                // add buffer as a special "bucket"
+                buckets2visit.push((levels, self.n_buckets(), 1.0, self.buffer.occupied()));
+                buckets2visit.sort_by(|a, b| b.2.total_cmp(&a.2));
+                let total_visited_buckets = buckets2visit.len();
+                let mut records = Vec::new();
+                let mut ids = Vec::new();
+                let mut total_occupied = 0;
+                for (level_idx, bucket_id, _prob, occupied) in buckets2visit {
+                    if occupied > 0 && total_occupied < ncandidates {
+                        if level_idx == levels {
+                            // buffer
+                            for i in 0..self.buffer.occupied() {
+                                records.push(self.buffer.record(i));
+                                ids.push(self.buffer.ids[i]);
+                            }
+                        } else {
+                            let level = &self.levels[level_idx];
+                            let bucket = &level.buckets[bucket_id];
+                            let occupied = bucket.occupied();
+                            for i in 0..occupied {
+                                records.push(bucket.record(i));
+                                ids.push(bucket.ids[i]);
+                            }
+                        }
+                        total_occupied += occupied;
+                    }
+                    if total_occupied >= ncandidates {
+                        break;
+                    }
+                }
+                Records2Visit {
+                    records,
+                    ids,
+                    total_visited_buckets,
                 }
             }
         }
-
-        // Process buffer
-        let buffer_occupied = self.buffer.occupied();
-        for i in 0..buffer_occupied {
-            records.push(self.buffer.record(i));
-            ids.push(self.buffer.ids[i]);
-        }
-
-        Ok((records, ids, buckets2visit_count))
     }
 
     pub fn add_level(&mut self) -> DliResult<usize> {
@@ -178,10 +176,14 @@ impl Index {
         S: SearchParamsT,
     {
         let params = params.into_search_params();
-        let (records2visit, ids2visit, total_visited_buckets) =
-            self.records2visit(query, params.search_strategy)?;
+        let predictions = self
+            .levels
+            .iter()
+            .map(|level| level.buckets2visit_predictions(query))
+            .collect::<DliResult<Vec<_>>>()?;
+        let records2visit = self.records2visit(predictions, params.search_strategy);
         let rs = flat_knn::knn(
-            records2visit,
+            records2visit.records,
             query,
             params.k,
             match self.distance_fn {
@@ -189,12 +191,15 @@ impl Index {
                 DistanceFn::Dot => flat_knn::Metric::Dot,
             },
         );
-        let res = rs.into_iter().map(|(_, idx)| ids2visit[idx]).collect();
+        let res = rs
+            .into_iter()
+            .map(|(_, idx)| records2visit.ids[idx])
+            .collect();
         Ok((
             res,
             SearchStatistics {
-                total_visited_buckets,
-                total_visited_records: ids2visit.len(),
+                total_visited_buckets: records2visit.total_visited_buckets,
+                total_visited_records: records2visit.ids.len(),
             },
         ))
     }
@@ -452,6 +457,7 @@ pub(crate) struct LevelIndexBuilder {
     id: Option<String>,
     n_buckets: Option<usize>,
     buckets: Option<(Vec<DiskBucket>, PathBuf, PathBuf)>,
+    buckets_in_memory: Option<Vec<Bucket>>,
     model_config: Option<ModelConfig>,
     bucket_size: Option<usize>,
     input_shape: Option<usize>,
@@ -505,6 +511,12 @@ impl LevelIndexBuilder {
         self
     }
 
+    #[allow(dead_code)]
+    pub fn buckets_in_memory(mut self, buckets: Vec<Bucket>) -> Self {
+        self.buckets_in_memory = Some(buckets);
+        self
+    }
+
     pub fn build(self) -> DliResult<LevelIndex> {
         let input_shape = self
             .input_shape
@@ -512,37 +524,35 @@ impl LevelIndexBuilder {
         let bucket_size = self
             .bucket_size
             .ok_or(DliError::MissingAttribute("bucket_size"))?;
-        let buckets = match self.buckets {
-            Some((buckets, records_path, ids_path)) => {
-                let mut records_file = File::open(records_path)?;
-                let mut ids_file = File::open(ids_path)?;
-                buckets
-                    .into_iter()
-                    .map(|disk_bucket| {
-                        bucket::BucketBuilder::from_disk(
-                            disk_bucket,
-                            &mut records_file,
-                            &mut ids_file,
-                        )
+        let buckets = if let Some(buckets) = self.buckets_in_memory {
+            // Use pre-built in-memory buckets directly
+            buckets
+        } else if let Some((buckets, records_path, ids_path)) = self.buckets {
+            // Load buckets from disk
+            let mut records_file = File::open(records_path)?;
+            let mut ids_file = File::open(ids_path)?;
+            buckets
+                .into_iter()
+                .map(|disk_bucket| {
+                    bucket::BucketBuilder::from_disk(disk_bucket, &mut records_file, &mut ids_file)
                         .input_shape(input_shape)
                         .size(bucket_size)
                         .build()
-                    })
-                    .collect::<Result<Vec<_>, _>>()?
-            }
-            None => {
-                let n_buckets = self
-                    .n_buckets
-                    .ok_or(DliError::MissingAttribute("n_buckets"))?;
-                (0..n_buckets)
-                    .map(|_| {
-                        bucket::BucketBuilder::default()
-                            .input_shape(input_shape)
-                            .size(bucket_size)
-                            .build()
-                    })
-                    .collect::<Result<Vec<_>, _>>()?
-            }
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            // Create empty buckets
+            let n_buckets = self
+                .n_buckets
+                .ok_or(DliError::MissingAttribute("n_buckets"))?;
+            (0..n_buckets)
+                .map(|_| {
+                    bucket::BucketBuilder::default()
+                        .input_shape(input_shape)
+                        .size(bucket_size)
+                        .build()
+                })
+                .collect::<Result<Vec<_>, _>>()?
         };
         let n_buckets = buckets.len();
         let distance_fn = self
@@ -959,7 +969,7 @@ mod tests {
     use super::*;
     use crate::constants::{DEFAULT_BUCKET_SIZE, DEFAULT_SEARCH_N_CANDIDATES};
     use crate::errors::DliResult;
-    use crate::{search_strategy::SearchStrategy, structs::DistanceFn};
+    use crate::structs::{DistanceFn, SearchStrategy};
     use crate::{ModelConfig, ModelLayer, TrainParams};
     use std::io::Write;
     use tempfile::NamedTempFile;
@@ -975,6 +985,54 @@ mod tests {
             compaction_strategy: CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild),
             delete_method: DeleteMethod::OidToBucket,
         }
+    }
+
+    /// Helper function to create a Level with predefined buckets containing records.
+    /// Each bucket contains a list of (records, ids) tuples.
+    #[allow(dead_code)]
+    fn create_level_with_records_per_bucket(
+        input_shape: usize,
+        bucket_size: usize,
+        buckets_data: Vec<(Array, Vec<Id>)>,
+    ) -> DliResult<LevelIndex> {
+        let mut buckets: Vec<Bucket> = buckets_data
+            .iter()
+            .map(|(records, ids)| {
+                let mut bucket = bucket::BucketBuilder::default()
+                    .input_shape(input_shape)
+                    .size(bucket_size)
+                    .build()
+                    .expect("Failed to create bucket");
+                // Populate the bucket with records
+                for (rec, id) in records.chunks_exact(input_shape).zip(ids.iter()) {
+                    bucket.insert(rec.to_vec(), *id);
+                }
+                bucket
+            })
+            .collect();
+
+        // If no buckets provided, create a single empty one for model training purposes
+        if buckets.is_empty() {
+            buckets.push(
+                bucket::BucketBuilder::default()
+                    .input_shape(input_shape)
+                    .size(bucket_size)
+                    .build()
+                    .expect("Failed to create empty bucket"),
+            );
+        }
+
+        let _n_buckets = buckets.len();
+        let level = LevelIndexBuilder::default()
+            .input_shape(input_shape)
+            .bucket_size(bucket_size)
+            .buckets_in_memory(buckets)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        Ok(level)
     }
 
     #[test]
@@ -1763,5 +1821,194 @@ mod tests {
         // after get_data, ids_map cleared and buckets empty
         assert!(level.ids_map.is_empty());
         assert_eq!(level.buckets.iter().map(|b| b.occupied()).sum::<usize>(), 0);
+    }
+
+    #[test]
+    fn test_records2visit() -> DliResult<()> {
+        // Create an index with one level with predefined bucket structure
+        let input_shape = 3;
+        let bucket_size = 50;
+
+        // Bucket 0: 4 records (IDs 1, 2, 3, 4)
+        let bucket_0_records = [
+            1.0, 2.0, 3.0, // ID 1
+            4.0, 5.0, 6.0, // ID 2
+            7.0, 8.0, 9.0, // ID 3
+            10.0, 11.0, 12.0, // ID 4
+        ];
+        let bucket_0_ids = [1u32, 2u32, 3u32, 4u32];
+
+        // Bucket 1: 2 records (IDs 5, 6)
+        let bucket_1_records = [
+            13.0, 14.0, 15.0, // ID 5
+            16.0, 17.0, 18.0, // ID 6
+        ];
+        let bucket_1_ids = [5u32, 6u32];
+
+        // Create buckets in memory
+        let mut bucket_0 = bucket::BucketBuilder::default()
+            .input_shape(input_shape)
+            .size(bucket_size)
+            .build()?;
+        for (rec, id) in bucket_0_records
+            .chunks_exact(input_shape)
+            .zip(bucket_0_ids.iter())
+        {
+            bucket_0.insert(rec.to_vec(), *id);
+        }
+
+        let mut bucket_1 = bucket::BucketBuilder::default()
+            .input_shape(input_shape)
+            .size(bucket_size)
+            .build()?;
+        for (rec, id) in bucket_1_records
+            .chunks_exact(input_shape)
+            .zip(bucket_1_ids.iter())
+        {
+            bucket_1.insert(rec.to_vec(), *id);
+        }
+
+        // Build the index with one level containing these predefined buckets
+        let mut index = IndexBuilder::default()
+            .input_shape(input_shape)
+            .buffer_size(5)
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        // Manually create and add a level with in-memory buckets
+        let level = LevelIndexBuilder::default()
+            .input_shape(input_shape)
+            .bucket_size(bucket_size)
+            .buckets_in_memory(vec![bucket_0, bucket_1])
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        index.levels.push(level);
+
+        // Add some records to buffer for testing
+        index.insert(vec![19.0, 20.0, 21.0], 7)?;
+        index.insert(vec![22.0, 23.0, 24.0], 8)?;
+
+        // Verify the structure we created
+        assert_eq!(index.n_levels(), 1);
+        assert_eq!(index.levels[0].n_buckets(), 2);
+        assert_eq!(index.levels[0].buckets[0].occupied(), 4); // bucket 0 has 4 records
+        assert_eq!(index.levels[0].buckets[1].occupied(), 2); // bucket 1 has 2 records
+        assert_eq!(index.buffer.occupied(), 2); // buffer has 2 records
+
+        // Create mock predictions with controlled probabilities
+        // Bucket 0 has higher probability (0.8) than bucket 1 (0.2)
+        let predictions = vec![vec![
+            (0, 0.8, 4), // bucket 0, high prob, 4 records
+            (1, 0.2, 2), // bucket 1, low prob, 2 records
+        ]];
+
+        // Test 1: with ncandidates = 5
+        // Bucket normalization: arity=2, level_idx=0
+        // bucket 0: 0.8 * 2^0 = 0.8
+        // bucket 1: 0.2 * 2^0 = 0.2
+        // buffer: 1.0
+        // Sorted: buffer(1.0), bucket 0(0.8), bucket 1(0.2)
+        // Collection: buffer(2) + bucket 0(4) = 6 total (exceeds ncandidates=5 but whole buckets collected)
+        let ncandidates = 5;
+        let search_strategy = SearchStrategy::ModelDriven(ncandidates);
+        let result = index.records2visit(predictions.clone(), search_strategy);
+
+        // 1. records and ids should have same length
+        assert_eq!(result.records.len(), result.ids.len());
+
+        // 2. Should collect whole buckets, may exceed ncandidates
+        // Buffer (2 records) + bucket 0 (4 records) = 6 total
+        assert_eq!(result.records.len(), 6);
+
+        // 3. All collected IDs should be from buffer and bucket 0
+        // Buffer IDs: 7, 8; Bucket 0 IDs: 1, 2, 3, 4
+        for id in &result.ids {
+            assert!(
+                (*id >= 1 && *id <= 4) || (*id == 7 || *id == 8),
+                "Invalid id: {id}"
+            );
+        }
+
+        // 4. total_visited_buckets should count all buckets + buffer
+        // In this case: 2 data buckets + 1 buffer = 3
+        assert_eq!(result.total_visited_buckets, 3);
+
+        // Test 2: with larger ncandidates to verify all records collected
+        let ncandidates_large = 20;
+        let search_strategy_large = SearchStrategy::ModelDriven(ncandidates_large);
+        let result_large = index.records2visit(predictions, search_strategy_large);
+
+        // Should collect all available records: 4 + 2 + 2 = 8
+        assert_eq!(result_large.records.len(), 8);
+        assert_eq!(result_large.ids.len(), 8);
+
+        // All IDs from 1-8 should be present
+        for id in &result_large.ids {
+            assert!(*id >= 1 && *id <= 8, "Invalid id: {id}");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_level_builder_with_in_memory_buckets() -> DliResult<()> {
+        // Test that we can build a level directly with pre-populated buckets in memory
+        let input_shape = 3;
+        let bucket_size = 50;
+
+        // Create records for two buckets
+        let bucket_0_records = [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2 records
+        let bucket_0_ids = [1u32, 2u32];
+
+        let bucket_1_records = [7.0, 8.0, 9.0]; // 1 record
+        let bucket_1_ids = [3u32];
+
+        // Create buckets in memory
+        let mut bucket_0 = bucket::BucketBuilder::default()
+            .input_shape(input_shape)
+            .size(bucket_size)
+            .build()?;
+        for (rec, id) in bucket_0_records
+            .chunks_exact(input_shape)
+            .zip(bucket_0_ids.iter())
+        {
+            bucket_0.insert(rec.to_vec(), *id);
+        }
+
+        let mut bucket_1 = bucket::BucketBuilder::default()
+            .input_shape(input_shape)
+            .size(bucket_size)
+            .build()?;
+        for (rec, id) in bucket_1_records
+            .chunks_exact(input_shape)
+            .zip(bucket_1_ids.iter())
+        {
+            bucket_1.insert(rec.to_vec(), *id);
+        }
+
+        // Build level with in-memory buckets
+        let level = LevelIndexBuilder::default()
+            .input_shape(input_shape)
+            .bucket_size(bucket_size)
+            .buckets_in_memory(vec![bucket_0, bucket_1])
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        // Verify the level was created correctly
+        assert_eq!(level.n_buckets(), 2);
+        assert_eq!(level.occupied(), 3); // 2 + 1 records
+        assert_eq!(level.buckets[0].occupied(), 2);
+        assert_eq!(level.buckets[1].occupied(), 1);
+
+        // Verify the records are correct
+        assert_eq!(level.buckets[0].ids, vec![1u32, 2u32]);
+        assert_eq!(level.buckets[1].ids, vec![3u32]);
+
+        Ok(())
     }
 }

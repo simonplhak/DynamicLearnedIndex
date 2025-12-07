@@ -3,8 +3,11 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    constants::{DEFAULT_ARITY, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE, DEFAULT_SEARCH_K},
-    CompactionStrategy, LevelIndexConfig, ModelDevice, SearchStrategy,
+    constants::{
+        DEFAULT_ARITY, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE, DEFAULT_SEARCH_K,
+        DEFAULT_SEARCH_N_CANDIDATES,
+    },
+    ArrayNumType, CompactionStrategy, Id, LevelIndexConfig, ModelDevice,
 };
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -124,6 +127,24 @@ impl SearchParamsT for usize {
             search_strategy: SearchStrategy::default(),
         }
     }
+}
+
+#[derive(Debug, Copy, Clone)]
+pub enum SearchStrategy {
+    Base(usize), // todo rename to KnnDriven
+    ModelDriven(usize),
+}
+
+impl Default for SearchStrategy {
+    fn default() -> Self {
+        SearchStrategy::ModelDriven(DEFAULT_SEARCH_N_CANDIDATES)
+    }
+}
+
+pub struct Records2Visit<'a> {
+    pub records: Vec<&'a [ArrayNumType]>,
+    pub ids: Vec<Id>,
+    pub total_visited_buckets: usize,
 }
 
 pub struct SearchStatistics {
