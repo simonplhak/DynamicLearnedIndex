@@ -93,12 +93,14 @@ impl ModelBuilder {
         assert!(labels > 0, "labels must be greater than 0");
         let train_params = self.train_params.clone().unwrap_or_default();
         let retrain_params = self.retrain_params.clone().unwrap_or_default();
-        let (mut layers, in_nodes) = self.layers.iter().enumerate().try_fold(
+        let mut i = 0;
+        let (mut layers, in_nodes) = self.layers.iter().try_fold(
             (Vec::<CandleModelLayer>::new(), input_nodes),
-            |(mut layers, input_nodes), (i, layer)| -> DliResult<(Vec<CandleModelLayer>, usize)> {
+            |(mut layers, input_nodes), layer| -> DliResult<(Vec<CandleModelLayer>, usize)> {
                 let (layers, output_nodes) = match layer {
                     ModelLayer::Linear(nodes) => {
                         let lin = linear(input_nodes, *nodes, vs.pp(format!("{i}", i = 2 * i)))?;
+                        i += 1;
                         layers.push(CandleModelLayer::Linear(lin));
                         (layers, *nodes)
                     }
@@ -110,11 +112,7 @@ impl ModelBuilder {
                 Ok((layers, output_nodes))
             },
         )?;
-        let lin = linear(
-            in_nodes,
-            labels,
-            vs.pp(format!("{i}", i = 2 * layers.len())),
-        )?;
+        let lin = linear(in_nodes, labels, vs.pp(format!("{i}", i = 2 * i)))?;
         layers.push(CandleModelLayer::Linear(lin));
         let model = CandleModel { layers };
         let model = Model {
