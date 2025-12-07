@@ -12,12 +12,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 
-WORKDIR /opt
-RUN wget -O libtorch.zip https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.6.0%2Bcpu.zip \
-    && unzip libtorch.zip -d libtorch \
-    && rm libtorch.zip
-ENV LIBTORCH=/opt/libtorch/libtorch
-ENV LD_LIBRARY_PATH=/opt/libtorch/libtorch/lib
 
 ENV SIMD_REGISTRY_BITS=256
 ENV BUCKET_SCALING_FACTOR=1.0
@@ -56,15 +50,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-COPY --from=builder /opt/libtorch /opt/libtorch
-ENV LIBTORCH=/opt/libtorch/libtorch
 
 # Copy HDF5 libraries from builder to ensure version compatibility
 COPY --from=builder /usr/lib/x86_64-linux-gnu/libhdf5*.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=builder /usr/lib/x86_64-linux-gnu/libsz.so* /usr/lib/x86_64-linux-gnu/
 COPY --from=builder /usr/lib/x86_64-linux-gnu/libaec.so* /usr/lib/x86_64-linux-gnu/
 
-ENV LD_LIBRARY_PATH=/opt/libtorch/libtorch/lib:/usr/lib/x86_64-linux-gnu
 
 COPY --from=builder /app/target/release/cli_dynamic_learned_index /app
 
