@@ -46,12 +46,7 @@ pub struct ModelConfig {
 impl Default for ModelConfig {
     fn default() -> Self {
         Self {
-            layers: vec![
-                ModelLayer::Linear(256),
-                ModelLayer::ReLU,
-                ModelLayer::Linear(256),
-                ModelLayer::ReLU,
-            ],
+            layers: vec![ModelLayer::Linear(128), ModelLayer::ReLU],
             train_params: Default::default(),
             retrain_params: Default::default(),
             weights_path: None,
