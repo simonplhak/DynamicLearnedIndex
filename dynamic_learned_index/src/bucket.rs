@@ -643,4 +643,73 @@ mod tests {
         assert_eq!(ids, vec![10u32, 12u32]);
         assert_eq!(records, vec![10.0f32, 12.0f32]);
     }
+
+    #[test]
+    fn test_buffer_delete() {
+        let mut buffer = BufferBuilder::default()
+            .size(5)
+            .input_shape(2)
+            .build()
+            .unwrap();
+
+        // Insert records: ID 1 -> [1.0, 1.0], ID 2 -> [2.0, 2.0], ID 3 -> [3.0, 3.0]
+        buffer.insert(vec![1.0, 1.0], 1);
+        buffer.insert(vec![2.0, 2.0], 2);
+        buffer.insert(vec![3.0, 3.0], 3);
+
+        assert_eq!(buffer.occupied(), 3);
+
+        // Case A: Delete existing ID (ID 2)
+        // This is the middle element, so ID 3 should be swapped into its place.
+        let result = buffer.delete(&2);
+        assert!(result.is_some());
+        let (deleted_record, deleted_id) = result.unwrap();
+
+        assert_eq!(deleted_id, 2);
+        assert_eq!(deleted_record, vec![2.0, 2.0]);
+        assert_eq!(buffer.occupied(), 2);
+
+        // Verify swap: Index 0 is still ID 1, Index 1 should now be ID 3
+        assert_eq!(buffer.ids, vec![1, 3]);
+        assert_eq!(buffer.record(0), &[1.0, 1.0]);
+        assert_eq!(buffer.record(1), &[3.0, 3.0]);
+
+        // Case B: Delete non-existent ID (ID 99)
+        let result = buffer.delete(&99);
+        assert!(result.is_none());
+        assert_eq!(buffer.occupied(), 2);
+        assert_eq!(buffer.ids, vec![1, 3]);
+    }
+
+    #[test]
+    fn test_buffer_get_data_state() {
+        let mut buffer = BufferBuilder::default()
+            .size(5)
+            .input_shape(2)
+            .build()
+            .unwrap();
+
+        // Fill partially
+        buffer.insert(vec![1.0, 1.0], 1);
+        buffer.insert(vec![2.0, 2.0], 2);
+        assert_eq!(buffer.occupied(), 2);
+
+        // Call get_data
+        let (records, ids) = buffer.get_data();
+
+        // Verify returned data
+        assert_eq!(ids, vec![1, 2]);
+        assert_eq!(records, vec![1.0, 1.0, 2.0, 2.0]);
+
+        // Verify buffer state after get_data
+        assert_eq!(buffer.occupied(), 0);
+        assert_eq!(buffer.size, 5); // Capacity/Size setting should remain
+        assert_eq!(buffer.input_shape, 2); // Input shape should remain
+
+        // Verify reuse
+        buffer.insert(vec![3.0, 3.0], 3);
+        assert_eq!(buffer.occupied(), 1);
+        assert_eq!(buffer.ids, vec![3]);
+        assert_eq!(buffer.record(0), &[3.0, 3.0]);
+    }
 }
