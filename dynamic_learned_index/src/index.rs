@@ -40,11 +40,10 @@ impl Index {
         predictions: Vec<Vec<(usize, f32, usize)>>,
         search_strategy: SearchStrategy,
     ) -> Records2Visit<'_> {
-        assert!(!predictions.is_empty(), "Predictions cannot be empty");
         match search_strategy {
             SearchStrategy::Base(_nprobe) => todo!(),
             SearchStrategy::ModelDriven(ncandidates) => {
-                let arity = predictions[0].len();
+                let arity = self.arity;
                 let normalize_probability =
                     |prob: f32, level_idx| (arity.pow(level_idx) as f32) * prob.max(0.0);
                 let levels = predictions.len();
