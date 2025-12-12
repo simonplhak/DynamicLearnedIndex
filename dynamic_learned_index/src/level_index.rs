@@ -777,4 +777,152 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_mixed_operations() -> DliResult<()> {
+        // 1. Initialize LevelIndex with 1 bucket
+        let input_shape = 3;
+        let mut level = LevelIndexBuilder::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        let rec_a = vec![1.0, 1.0, 1.0];
+        let id_a = 1u32;
+        let rec_b = vec![2.0, 2.0, 2.0];
+        let id_b = 2u32;
+        let rec_c = vec![3.0, 3.0, 3.0];
+        let id_c = 3u32;
+
+        // 2. Insert A
+        level.insert_many(rec_a.clone(), vec![id_a])?;
+        assert_eq!(level.ids_map.get(&id_a), Some(&(0, 0)));
+
+        // 3. Insert B
+        level.insert_many(rec_b.clone(), vec![id_b])?;
+        assert_eq!(level.ids_map.get(&id_a), Some(&(0, 0)));
+        assert_eq!(level.ids_map.get(&id_b), Some(&(0, 1)));
+
+        // 4. Delete A
+        // Since we have [A, B], deleting A (idx 0) should swap B (last) to idx 0.
+        level.delete(&id_a, &DeleteMethod::OidToBucket)?;
+
+        assert!(!level.ids_map.contains_key(&id_a));
+        assert_eq!(
+            level.ids_map.get(&id_b),
+            Some(&(0, 0)),
+            "B should have moved to index 0"
+        );
+
+        // Verify bucket content
+        assert_eq!(level.buckets[0].occupied(), 1);
+        assert_eq!(level.buckets[0].record(0), rec_b.as_slice());
+
+        // 5. Insert C
+        level.insert_many(rec_c.clone(), vec![id_c])?;
+
+        // 6. Verify ids_map consistency
+        assert_eq!(level.ids_map.get(&id_b), Some(&(0, 0)));
+        assert_eq!(level.ids_map.get(&id_c), Some(&(0, 1)));
+
+        // 7. Verify bucket data
+        assert_eq!(level.buckets[0].occupied(), 2);
+        assert_eq!(level.buckets[0].record(0), rec_b.as_slice());
+        assert_eq!(level.buckets[0].record(1), rec_c.as_slice());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_many_empty() -> DliResult<()> {
+        let mut level = LevelIndexBuilder::default()
+            .n_buckets(1)
+            .input_shape(3)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        // Initial state check
+        assert_eq!(level.occupied(), 0);
+        assert!(level.ids_map.is_empty());
+
+        // Call insert_many with empty vectors
+        level.insert_many(vec![], vec![])?;
+
+        // Verify state hasn't changed
+        assert_eq!(level.occupied(), 0);
+        assert!(level.ids_map.is_empty());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_level_stats() -> DliResult<()> {
+        let bucket_size = 10;
+        let n_buckets = 2;
+        let input_shape = 2;
+
+        // Create level
+        let mut level = LevelIndexBuilder::default()
+            .n_buckets(n_buckets)
+            .input_shape(input_shape)
+            .bucket_size(bucket_size)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        // 1. Initialization
+        assert_eq!(level.size(), 20);
+        assert_eq!(level.occupied(), 0);
+        assert_eq!(level.free_space(), 20);
+        assert_eq!(level.n_empty_buckets(), 2);
+
+        // 2. Manual Insertion to control distribution
+        // Insert into bucket 0
+        let rec1 = vec![1.0, 1.0];
+        let id1 = 1u32;
+        level.buckets[0].insert(rec1.clone(), id1);
+        level.ids_map.insert(id1, (0, 0));
+
+        assert_eq!(level.size(), 20);
+        assert_eq!(level.occupied(), 1);
+        assert_eq!(level.free_space(), 19);
+        assert_eq!(level.n_empty_buckets(), 1);
+
+        // 3. Insert into bucket 1
+        let rec2 = vec![2.0, 2.0];
+        let id2 = 2u32;
+        level.buckets[1].insert(rec2.clone(), id2);
+        level.ids_map.insert(id2, (1, 0));
+
+        assert_eq!(level.occupied(), 2);
+        assert_eq!(level.free_space(), 18);
+        assert_eq!(level.n_empty_buckets(), 0);
+
+        // 4. Insert another into bucket 0
+        let rec3 = vec![3.0, 3.0];
+        let id3 = 3u32;
+        level.buckets[0].insert(rec3.clone(), id3);
+        level.ids_map.insert(id3, (0, 1));
+
+        assert_eq!(level.occupied(), 3);
+        assert_eq!(level.free_space(), 17);
+        assert_eq!(level.n_empty_buckets(), 0);
+
+        // 5. Deletion from bucket 1 (making it empty)
+        level.delete(&id2, &DeleteMethod::OidToBucket)?;
+
+        assert_eq!(level.occupied(), 2);
+        assert_eq!(level.free_space(), 18);
+        assert_eq!(level.n_empty_buckets(), 1);
+
+        Ok(())
+    }
 }
