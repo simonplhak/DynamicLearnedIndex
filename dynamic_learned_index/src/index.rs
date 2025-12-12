@@ -119,14 +119,13 @@ impl Index {
     }
 
     pub fn insert(&mut self, value: Array, id: Id) -> DliResult<()> {
+        self.buffer.insert(value, id);
         if self.buffer.has_space(1) {
-            self.buffer.insert(value, id);
-            return Ok(()); // value fits into buffer
+            return Ok(()); // buffer is not full yet
         }
         debug!(levels = self.levels.len(), occupied = self.occupied(); "index:buffer_flush");
         self.compaction_strategy.clone().compact(self)?;
-        assert!(self.buffer.has_space(1));
-        self.buffer.insert(value, id);
+        assert!(self.buffer.occupied() == 0);
         Ok(())
     }
 
