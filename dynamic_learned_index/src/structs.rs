@@ -4,11 +4,26 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     constants::{
-        DEFAULT_ARITY, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE, DEFAULT_SEARCH_K,
-        DEFAULT_SEARCH_N_CANDIDATES,
+        DEFAULT_ARITY, DEFAULT_BUCKET_SIZE, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE,
+        DEFAULT_SEARCH_K, DEFAULT_SEARCH_N_CANDIDATES,
     },
-    ArrayNumType, CompactionStrategy, Id, LevelIndexConfig, ModelDevice,
+    ArrayNumType, CompactionStrategy, Id, ModelConfig, ModelDevice,
 };
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LevelIndexConfig {
+    pub model: ModelConfig,
+    pub bucket_size: usize,
+}
+
+impl Default for LevelIndexConfig {
+    fn default() -> Self {
+        Self {
+            model: ModelConfig::default(),
+            bucket_size: DEFAULT_BUCKET_SIZE,
+        }
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
