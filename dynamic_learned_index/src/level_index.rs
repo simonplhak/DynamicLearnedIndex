@@ -228,6 +228,9 @@ impl LevelIndex {
     pub(crate) fn insert_many(&mut self, records: Array, ids: Vec<Id>) -> DliResult<()> {
         let input_shape = self.model.input_shape;
         assert!(records.len() / input_shape == ids.len());
+        if records.is_empty() {
+            return Ok(());
+        }
         let assignments = self.model.predict_many(&records)?;
         assert!(assignments.len() == ids.len());
         // Calculate frequency of each bucket index in assignments
