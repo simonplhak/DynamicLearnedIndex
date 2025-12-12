@@ -197,7 +197,7 @@ impl Model {
 
     fn dataset(&self, xs: &[f32], ys: &[i32]) -> Dataset {
         let total_queries = ys.len();
-        assert!(xs.len() % self.input_shape == 0);
+        assert!(xs.len().is_multiple_of(self.input_shape));
         assert!(xs.len() / self.input_shape == ys.len());
         let xs = Tensor::from_slice(xs);
         let xs = xs.view((
