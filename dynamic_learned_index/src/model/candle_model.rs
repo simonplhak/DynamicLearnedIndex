@@ -454,4 +454,181 @@ mod tests {
             }
         }
     }
+
+    #[test]
+    fn test_predict_many_consistency() {
+        // Arrange
+        let input_nodes = 10;
+        let labels = 5;
+        let mut builder = ModelBuilder::default();
+        let mut model = builder
+            .device(ModelDevice::Cpu)
+            .input_nodes(input_nodes)
+            .add_layer(ModelLayer::Linear(32))
+            .add_layer(ModelLayer::ReLU)
+            .labels(labels)
+            .train_params(TrainParams {
+                epochs: 1,
+                batch_size: 10,
+                threshold_samples: 50,
+                max_iters: 10,
+            })
+            .label_method(LabelMethod::KMeans)
+            .build()
+            .unwrap();
+
+        // Create random training data to initialize weights properly
+        let training_data: Vec<f32> = (0..100).map(|i| (i % 100) as f32 / 100.0).collect();
+        model.train(&training_data).unwrap();
+
+        // Create test queries (batch of 5 vectors)
+        let batch_size = 5;
+        let test_data: Vec<f32> = (0..batch_size * input_nodes as usize)
+            .map(|i| (i % 100) as f32 / 100.0)
+            .collect();
+
+        // Act 1: Predict individually
+        let mut individual_predictions = Vec::new();
+        for i in 0..batch_size {
+            let start = i * input_nodes as usize;
+            let end = start + input_nodes as usize;
+            let query = &test_data[start..end];
+            let result = model.predict(query).unwrap();
+            // predict returns sorted (label, prob), so first one is top-1
+            individual_predictions.push(result[0].0);
+        }
+
+        // Act 2: Predict as a batch
+        let batch_predictions = model.predict_many(&test_data).unwrap();
+
+        // Assert
+        assert_eq!(
+            individual_predictions.len(),
+            batch_predictions.len(),
+            "Should have same number of predictions"
+        );
+
+        for (i, (individual, batch)) in individual_predictions
+            .iter()
+            .zip(batch_predictions.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                individual, batch,
+                "Prediction mismatch at index {}: individual={}, batch={}",
+                i, individual, batch
+            );
+        }
+    }
+
+    #[test]
+    fn test_basic_learning_capability() {
+        // Arrange
+        let input_nodes = 2;
+        let labels = 2;
+        let mut builder = ModelBuilder::default();
+        let mut model = builder
+            .device(ModelDevice::Cpu)
+            .input_nodes(input_nodes)
+            .add_layer(ModelLayer::Linear(16))
+            .add_layer(ModelLayer::ReLU)
+            .labels(labels)
+            .train_params(TrainParams {
+                epochs: 50,
+                batch_size: 10,
+                threshold_samples: 200,
+                max_iters: 10,
+            })
+            .label_method(LabelMethod::KMeans)
+            .build()
+            .unwrap();
+
+        // Create two distinct clusters
+        let mut training_data = Vec::new();
+        // Cluster 1: around 0.2
+        for _ in 0..50 {
+            training_data.push(0.2);
+            training_data.push(0.2);
+        }
+        // Cluster 2: around 0.8
+        for _ in 0..50 {
+            training_data.push(0.8);
+            training_data.push(0.8);
+        }
+
+        // Act
+        model.train(&training_data).unwrap();
+
+        // Assert
+        // Check predictions for representative points
+        let p1 = vec![0.2, 0.2];
+        let p2 = vec![0.8, 0.8];
+
+        let res1 = model.predict(&p1).unwrap();
+        let res2 = model.predict(&p2).unwrap();
+
+        let label1 = res1[0].0;
+        let label2 = res2[0].0;
+
+        assert_ne!(
+            label1, label2,
+            "Model should assign different labels to distinct clusters"
+        );
+
+        // Verify consistency within clusters
+        let p1_b = vec![0.21, 0.19];
+        let res1_b = model.predict(&p1_b).unwrap();
+        assert_eq!(
+            res1_b[0].0, label1,
+            "Model should be consistent within cluster 1"
+        );
+
+        let p2_b = vec![0.79, 0.81];
+        let res2_b = model.predict(&p2_b).unwrap();
+        assert_eq!(
+            res2_b[0].0, label2,
+            "Model should be consistent within cluster 2"
+        );
+    }
+
+    #[test]
+    fn test_builder_validation() {
+        // Test missing device
+        let res = ModelBuilder::default().build();
+        assert!(matches!(res, Err(DliError::MissingAttribute("device"))));
+
+        // Test missing label_method (device provided)
+        let res = ModelBuilder::default().device(ModelDevice::Cpu).build();
+        assert!(matches!(
+            res,
+            Err(DliError::MissingAttribute("label_method"))
+        ));
+
+        // Test missing input_nodes (device and label_method provided)
+        let res = ModelBuilder::default()
+            .device(ModelDevice::Cpu)
+            .label_method(LabelMethod::KMeans)
+            .build();
+        assert!(matches!(
+            res,
+            Err(DliError::MissingAttribute("input_nodes"))
+        ));
+
+        // Test missing labels (others provided)
+        let res = ModelBuilder::default()
+            .device(ModelDevice::Cpu)
+            .label_method(LabelMethod::KMeans)
+            .input_nodes(10)
+            .build();
+        assert!(matches!(res, Err(DliError::MissingAttribute("labels"))));
+
+        // Test success
+        let res = ModelBuilder::default()
+            .device(ModelDevice::Cpu)
+            .label_method(LabelMethod::KMeans)
+            .input_nodes(10)
+            .labels(2)
+            .build();
+        assert!(res.is_ok());
+    }
 }
