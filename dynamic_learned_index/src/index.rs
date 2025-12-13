@@ -1255,4 +1255,167 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_search_in_buffer() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.distance_fn = DistanceFn::L2;
+        let mut index = IndexBuilder::from_config(config).build()?;
+
+        // Insert items into buffer (buffer size is 10 in create_test_config)
+        let id1 = 1;
+        let vec1 = vec![1.0, 2.0, 3.0];
+        index.insert(vec1.clone(), id1)?;
+
+        let id2 = 2;
+        let vec2 = vec![4.0, 5.0, 6.0];
+        index.insert(vec2.clone(), id2)?;
+
+        // Search for the first item
+        // We use exact match search (k=1)
+        let results = index.search(&vec1, 1)?;
+
+        assert!(!results.is_empty(), "Search should return results");
+        assert_eq!(results[0], id1, "Should find the inserted ID in buffer");
+
+        // Search for the second item
+        let results = index.search(&vec2, 1)?;
+        assert!(!results.is_empty());
+        assert_eq!(results[0], id2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_delete_from_buffer() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.distance_fn = DistanceFn::L2;
+        let mut index = IndexBuilder::from_config(config).build()?;
+
+        // Insert items into buffer
+        let id1 = 1;
+        let vec1 = vec![1.0, 2.0, 3.0];
+        index.insert(vec1.clone(), id1)?;
+
+        let id2 = 2;
+        let vec2 = vec![4.0, 5.0, 6.0];
+        index.insert(vec2.clone(), id2)?;
+
+        assert_eq!(index.occupied(), 2, "Should have 2 items initially");
+
+        // Delete the first item
+        let deleted = index.delete(id1)?;
+        assert!(deleted.is_some(), "Should return deleted item");
+        let (deleted_vec, deleted_id) = deleted.unwrap();
+        assert_eq!(deleted_id, id1);
+        assert_eq!(deleted_vec, vec1);
+
+        // Verify occupancy decreased
+        assert_eq!(index.occupied(), 1, "Should have 1 item after delete");
+
+        // Verify item is gone from search
+        // Searching for vec1 should now return id2 as it is the only remaining item
+        let results = index.search(&vec1, 1)?;
+        assert!(!results.is_empty());
+        assert_ne!(results[0], id1, "Deleted ID should not be found");
+        assert_eq!(results[0], id2, "Should find the other item");
+
+        // Verify the other item is still there and findable
+        let results2 = index.search(&vec2, 1)?;
+        assert!(!results2.is_empty());
+        assert_eq!(results2[0], id2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_compaction_trigger() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.buffer_size = 10;
+        let mut index = IndexBuilder::from_config(config).build()?;
+
+        // Insert 10 items (filling the buffer)
+        for i in 0..10 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        // User expectation: Buffer should have flushed when it became full (at 10 items).
+        // So we expect 1 level and empty buffer.
+        assert_eq!(
+            index.n_levels(),
+            1,
+            "Should have flushed to level after 10 inserts"
+        );
+        assert_eq!(
+            index.buffer.occupied(),
+            0,
+            "Buffer should be empty after flush"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_delete_from_level() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.distance_fn = DistanceFn::L2;
+        config.buffer_size = 10;
+        let mut index = IndexBuilder::from_config(config).build()?;
+
+        // Insert 15 items.
+        // First 10 items (0..10) will fill the buffer.
+        // The 11th item (10) will trigger compaction, moving 0..10 to level 0.
+        // Items 10..15 will end up in the buffer.
+        for i in 0..15 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        // Verify structure: Should have levels now
+        assert!(index.n_levels() > 0, "Should have at least one level after compaction");
+        assert_eq!(index.occupied(), 15, "Total occupancy should be 15");
+
+        // Pick an ID that should be in the level (ID 5 is in the first batch of 10)
+        let id_to_delete = 5;
+        let vec_to_delete = vec![5.0, 5.0, 5.0];
+
+        // Verify it exists before deletion
+        let results = index.search(&vec_to_delete, 1)?;
+        assert!(!results.is_empty());
+        assert_eq!(results[0], id_to_delete);
+
+        // Delete it
+        let deleted = index.delete(id_to_delete)?;
+        assert!(deleted.is_some(), "Should return deleted item");
+        let (deleted_vec, deleted_id) = deleted.unwrap();
+        assert_eq!(deleted_id, id_to_delete);
+        assert_eq!(deleted_vec, vec_to_delete);
+
+        // Verify occupancy decreased
+        assert_eq!(index.occupied(), 14, "Should have 14 items after delete");
+
+        // Verify it is gone
+        // Searching for the deleted vector should return the nearest neighbor (e.g. 4 or 6), but not 5
+        let results = index.search(&vec_to_delete, 1)?;
+        if !results.is_empty() {
+            assert_ne!(results[0], id_to_delete, "Deleted ID should not be found");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_empty_index() -> DliResult<()> {
+        let config = create_test_config();
+        let index = IndexBuilder::from_config(config).build()?;
+
+        // Search for any vector
+        let query = vec![1.0, 2.0, 3.0];
+        let results = index.search(&query, 5)?;
+
+        assert!(results.is_empty(), "Search on empty index should return empty results");
+
+        Ok(())
+    }
 }
