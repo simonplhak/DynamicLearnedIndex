@@ -36,7 +36,6 @@ CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --bin=cli_dynamic_learned_inde
 
 Thi library uses SIMD instructions for performance. It needs to know at a compile time the number of bits in SIMD register that CPU supports. To specify the number of bits go to [`dynamic_learned_index/src/constants.rs`](dynamic_learned_index/src/constants.rs) and change `SIMD_REGISTER_SIZE` constant (do not change any other constants). To find out how many bits in SIMD register your CPU support visit manufacturer webpage (in Linux you can find your CPU model via command `cat /proc/cpuinfo | grep -i 'model name'`). 
 
-
 ### Linking with Python
 
 To link the Rust library with Python, we use `maturin` to build a Python package. This allows us to use the Rust code as a Python module.
@@ -58,6 +57,20 @@ maturin develop --release
 python -c "import py_dynamic_learned_index; print(py_dynamic_learned_index.__version__)"  # test installation
 ```
 
+### Export
+
+To export python bindings use the following command:
+
+```shell
+cd py_dynamic_learned_index
+uv run maturin build --release --zig --compatibility manylinux2014
+```
+
+Then you can install the package via pip:
+
+```shell
+pip install ./target/wheels/py_dynamic_learned_index*.whl
+```
 
 ## Running experiments via CLI
 
@@ -177,7 +190,7 @@ cargo bench -p dynamic_learned_index --features tch
 
 ### Libtorch installation
 
-Crate depends on `tch-rs` dependency that serves as a wrapper for `libtorch` c++ implementation. 
+If you want to run all benchmarks you need to install `tch-rs` dependency that serves as a wrapper for `libtorch` c++ implementation. 
 Follow the installation instructions for `libtorch` from [tch-rs homepage](https://github.com/LaurentMazare/tch-rs).
 
 When using libtorch from pip installation, you need to call cargo build within the environment where the torch package is installed.

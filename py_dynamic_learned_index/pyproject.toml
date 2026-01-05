@@ -17,3 +17,8 @@ dependencies = [
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
+
+[dependency-groups]
+dev = [
+    "ziglang>=0.15.1",
+]
