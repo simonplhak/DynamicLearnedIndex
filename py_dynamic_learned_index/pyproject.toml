@@ -20,5 +20,15 @@ features = ["pyo3/extension-module"]
 
 [dependency-groups]
 dev = [
+    "ruff",
     "ziglang>=0.15.1",
 ]
+
+[tool.ruff]
+line-length = 88
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = []
+
