@@ -300,6 +300,30 @@ impl DynamicLearnedIndex {
         self.index.dump(Path::new(working_dir))?;
         Ok(())
     }
+
+    fn buffer_occupied(&self) -> usize {
+        self.index.buffer_occupied()
+    }
+
+    fn level_occupied(&self, level_idx: usize) -> usize {
+        self.index.level_occupied(level_idx)
+    }
+
+    fn level_n_buckets(&self, level_idx: usize) -> usize {
+        self.index.level_n_buckets(level_idx)
+    }
+
+    fn level_total_size(&self, level_idx: usize) -> usize {
+        self.index.level_total_size(level_idx)
+    }
+
+    fn level_n_empty_buckets(&self, level_idx: usize) -> usize {
+        self.index.level_n_empty_buckets(level_idx)
+    }
+
+    fn bucket_occupied(&self, level_idx: usize, bucket_idx: usize) -> usize {
+        self.index.bucket_occupied(level_idx, bucket_idx)
+    }
 }
 
 fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {

@@ -149,7 +149,37 @@ impl Index {
             .iter()
             .map(|level| level.occupied())
             .sum::<usize>()
-            + self.buffer.occupied()
+            + self.buffer_occupied()
+    }
+
+    pub fn buffer_occupied(&self) -> usize {
+        self.buffer.occupied()
+    }
+
+    pub fn level_occupied(&self, level_idx: usize) -> usize {
+        assert!(level_idx < self.levels.len());
+        self.levels[level_idx].occupied()
+    }
+
+    pub fn level_n_buckets(&self, level_idx: usize) -> usize {
+        assert!(level_idx < self.levels.len());
+        self.levels[level_idx].n_buckets()
+    }
+
+    pub fn level_total_size(&self, level_idx: usize) -> usize {
+        assert!(level_idx < self.levels.len());
+        self.levels[level_idx].size()
+    }
+
+    pub fn level_n_empty_buckets(&self, level_idx: usize) -> usize {
+        assert!(level_idx < self.levels.len());
+        self.levels[level_idx].n_empty_buckets()
+    }
+
+    pub fn bucket_occupied(&self, level_idx: usize, bucket_idx: usize) -> usize {
+        assert!(level_idx < self.levels.len());
+        assert!(bucket_idx < self.levels[level_idx].n_buckets());
+        self.levels[level_idx].bucket(bucket_idx).occupied()
     }
 
     pub fn n_empty_buckets(&self) -> usize {
@@ -1373,7 +1403,10 @@ mod tests {
         }
 
         // Verify structure: Should have levels now
-        assert!(index.n_levels() > 0, "Should have at least one level after compaction");
+        assert!(
+            index.n_levels() > 0,
+            "Should have at least one level after compaction"
+        );
         assert_eq!(index.occupied(), 15, "Total occupancy should be 15");
 
         // Pick an ID that should be in the level (ID 5 is in the first batch of 10)
@@ -1414,7 +1447,10 @@ mod tests {
         let query = vec![1.0, 2.0, 3.0];
         let results = index.search(&query, 5)?;
 
-        assert!(results.is_empty(), "Search on empty index should return empty results");
+        assert!(
+            results.is_empty(),
+            "Search on empty index should return empty results"
+        );
 
         Ok(())
     }
