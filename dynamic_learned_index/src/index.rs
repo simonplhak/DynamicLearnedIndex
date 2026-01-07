@@ -12,7 +12,7 @@ use log::debug;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{create_dir, File},
-    path::Path,
+    path::{absolute, Path},
 };
 
 pub struct Index {
@@ -257,14 +257,15 @@ impl Index {
     }
 
     pub fn dump(&self, working_dir: &Path) -> DliResult<()> {
-        create_dir(working_dir)?;
+        let working_dir = absolute(working_dir)?;
+        create_dir(&working_dir)?;
         let disk_levels = self
             .levels
             .iter()
             .enumerate()
-            .map(|(level_id, level)| level.dump(working_dir, level_id))
+            .map(|(level_id, level)| level.dump(&working_dir, level_id))
             .collect::<DliResult<Vec<_>>>()?;
-        let disk_buffer = self.buffer.dump(working_dir);
+        let disk_buffer = self.buffer.dump(&working_dir);
         let disk_index = DiskIndex {
             levels_config: self.levels_config.clone(),
             compaction_strategy: self.compaction_strategy.clone(),
@@ -505,7 +506,9 @@ impl IndexBuilder {
 
     pub fn from_disk(working_dir: &Path) -> DliResult<Self> {
         let meta_path = working_dir.join("meta.json");
+        println!("Loading index metadata from {:?}", meta_path);
         let meta_file = File::open(meta_path)?;
+        println!("Deserializing index metadata...");
         let disk_index: DiskIndex = serde_json::from_reader(meta_file)?;
         Ok(Self {
             compaction_strategy: Some(disk_index.compaction_strategy),
