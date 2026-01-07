@@ -99,6 +99,9 @@ struct ExperimentConfig {
     /// -v for info, -vv for debug, -vvv for trace
     #[arg(short, long, action = clap::ArgAction::Count)]
     verbose: u8,
+    /// Do not display progress bar
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = false)]
+    skip_progress_bar: bool,
 }
 
 fn experiment(config: &ExperimentConfig) -> Result<()> {
@@ -153,6 +156,7 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         validation_options,
         config.start_from_one,
         search_strategy,
+        config.skip_progress_bar,
     )?;
     for ncandidates in &config.ncandidates {
         let search_strategy = match config.search_strategy {
@@ -206,6 +210,7 @@ fn test() -> Result<()> {
         Some(validation_options),
         true,
         Default::default(),
+        false,
     )?;
     info!(buckets = index.n_buckets(), occupied = index.occupied(); "index:filled");
     Ok(())

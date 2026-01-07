@@ -96,12 +96,16 @@ pub fn insert_all_data(
     validation_options: Option<ValidationOptions>,
     start_from_one: bool,
     search_strategy: SearchStrategy,
+    no_progress_bar: bool,
 ) -> Result<()> {
     let limit = limit.unwrap_or(queries.len());
 
     let mut validation_ids = Vec::new();
     let mut validation_queries = Vec::new();
-    let bar = ProgressBar::new(limit as u64).with_message("Inserting queries");
+    let bar = match no_progress_bar {
+        true => None,
+        false => Some(ProgressBar::new(limit as u64).with_message("Inserting data")),
+    };
     let range = match start_from_one {
         true => 1..=limit,
         false => 0..=limit - 1,
@@ -124,9 +128,13 @@ pub fn insert_all_data(
             }
         }
         index.insert(query, id as Id)?;
-        bar.inc(1);
+        if let Some(bar) = &bar {
+            bar.inc(1);
+        }
     }
-    bar.finish();
+    if let Some(bar) = &bar {
+        bar.finish();
+    }
     assert!(
         index.occupied() == limit,
         "Expected {} occupied entries, got {}",
