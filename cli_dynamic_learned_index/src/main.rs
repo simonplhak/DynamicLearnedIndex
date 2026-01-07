@@ -102,6 +102,9 @@ struct ExperimentConfig {
     /// Do not display progress bar
     #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = false)]
     skip_progress_bar: bool,
+    /// Skip search part completly
+    #[arg(long, action = clap::ArgAction::SetTrue, default_value_t = false)]
+    skip_search: bool,
     /// Optional output directory for serialized index
     #[arg(short, long)]
     output_dir: Option<PathBuf>,
@@ -161,32 +164,25 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         search_strategy,
         config.skip_progress_bar,
     )?;
-    for ncandidates in &config.ncandidates {
-        let search_strategy = match config.search_strategy {
-            CLISearchStrategy::Knn => SearchStrategy::Base(*ncandidates),
-            CLISearchStrategy::Model => SearchStrategy::ModelDriven(*ncandidates),
-        };
-        let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true)?;
-        info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, ncandidates=ncandidates, elapsed_time=metrics.elapsed_time.as_secs_f32(); "metrics");
-    }
     info!(buckets = index.n_buckets();"index:filled");
-    let working_dir = experiment_dir.join("serialized_index");
-    index.dump(&working_dir)?;
-
-    let index = IndexBuilder::from_disk(&working_dir)?.build()?;
-    for ncandidates in &config.ncandidates {
-        let search_strategy = match config.search_strategy {
-            CLISearchStrategy::Knn => SearchStrategy::Base(*ncandidates),
-            CLISearchStrategy::Model => SearchStrategy::ModelDriven(*ncandidates),
-        };
-        let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true)?;
-        info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, ncandidates=ncandidates, elapsed_time=metrics.elapsed_time.as_secs_f32(); "metrics");
-    }
     if let Some(output_dir) = &config.output_dir {
-        fs::create_dir_all(output_dir)?;
+        if output_dir.exists() {
+            fs::remove_dir_all(output_dir)?;
+        }
         index.dump(output_dir)?;
     }
-
+    if config.skip_search {
+        info!("Skipping search as per configuration");
+        return Ok(());
+    }
+    for ncandidates in &config.ncandidates {
+        let search_strategy = match config.search_strategy {
+            CLISearchStrategy::Knn => SearchStrategy::Base(*ncandidates),
+            CLISearchStrategy::Model => SearchStrategy::ModelDriven(*ncandidates),
+        };
+        let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true)?;
+        info!(total = metrics.total, recall_top1=metrics.recall_top1, recall_top5=metrics.recall_top5, recall_top10=metrics.recall_top10, ncandidates=ncandidates, elapsed_time=metrics.elapsed_time.as_secs_f32(); "metrics");
+    }
     Ok(())
 }
 
