@@ -105,7 +105,7 @@ impl Index {
             .n_buckets(n_buckets)
             .input_shape(self.input_shape)
             .model(level_index_config.model.clone())
-            .model_device(self.device.clone())
+            .model_device(self.device)
             .bucket_size(level_index_config.bucket_size)
             .distance_fn(self.distance_fn.clone())
             .build()?;
@@ -654,9 +654,7 @@ impl IndexBuilder {
         let levels = match self.levels {
             Some(levels) => levels
                 .into_iter()
-                .map(|level| {
-                    Self::load_disk_level(level, device.clone(), distance_fn.clone(), input_shape)
-                })
+                .map(|level| Self::load_disk_level(level, device, distance_fn.clone(), input_shape))
                 .collect::<Result<Vec<_>, _>>()?,
             None => Vec::new(),
         };

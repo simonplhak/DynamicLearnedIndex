@@ -91,8 +91,8 @@ impl ModelBuilder {
             .ok_or(DliError::MissingAttribute("input_nodes"))? as usize;
         let labels = self.labels.ok_or(DliError::MissingAttribute("labels"))?;
         assert!(labels > 0, "labels must be greater than 0");
-        let train_params = self.train_params.clone().unwrap_or_default();
-        let retrain_params = self.retrain_params.clone().unwrap_or_default();
+        let train_params = self.train_params.unwrap_or_default();
+        let retrain_params = self.retrain_params.unwrap_or_default();
         let mut i = 0;
         let (mut layers, in_nodes) = self.layers.iter().try_fold(
             (Vec::<CandleModelLayer>::new(), input_nodes),
@@ -285,8 +285,8 @@ impl Model {
                     CandleModelLayer::ReLU => ModelLayer::ReLU,
                 })
                 .collect(),
-            train_params: self.train_params.clone(),
-            retrain_params: self.retrain_params.clone(),
+            train_params: self.train_params,
+            retrain_params: self.retrain_params,
             weights_path: Some(weights_filename),
         })
     }
@@ -350,8 +350,8 @@ mod tests {
             .add_layer(ModelLayer::Linear(128))
             .add_layer(ModelLayer::ReLU)
             .labels(labels)
-            .train_params(train_params.clone())
-            .retrain_params(retrain_params.clone())
+            .train_params(train_params)
+            .retrain_params(retrain_params)
             .label_method(LabelMethod::KMeans)
             .build();
 

@@ -124,10 +124,10 @@ impl LevelIndexBuilder {
             .ok_or(DliError::MissingAttribute("model_config"))?;
         let mut model_builder = ModelBuilder::default();
         model_builder
-            .device(self.model_device.clone())
+            .device(self.model_device)
             .input_nodes(input_shape as i64)
-            .train_params(model_config.train_params.clone())
-            .retrain_params(model_config.retrain_params.clone())
+            .train_params(model_config.train_params)
+            .retrain_params(model_config.retrain_params)
             .labels(n_buckets)
             .label_method(distance_fn.into());
         if let Some(weights_path) = &model_config.weights_path {

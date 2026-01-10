@@ -7,7 +7,7 @@ use std::path::PathBuf;
 pub use candle_model::{Model, ModelBuilder};
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Default, Clone)]
+#[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
 pub enum ModelDevice {
     #[default]
     #[serde(rename = "cpu")]
@@ -16,7 +16,7 @@ pub enum ModelDevice {
     Gpu(usize),
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct TrainParams {
     pub threshold_samples: usize,
     pub batch_size: usize,
@@ -35,12 +35,12 @@ impl Default for TrainParams {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum RetrainStrategy {
     NoRetrain,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub struct RetrainParams {
     pub strategy: RetrainStrategy,
     pub threshold_samples: usize,
