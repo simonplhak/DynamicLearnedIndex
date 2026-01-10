@@ -9,7 +9,7 @@ use rand::rng;
 use rand::seq::SliceRandom;
 
 use crate::errors::{DliError, DliResult};
-use crate::model::{ModelDevice, ModelLayer, TrainParams};
+use crate::model::{ModelDevice, ModelLayer, RetrainParams, RetrainStrategy, TrainParams};
 use crate::structs::LabelMethod;
 use crate::types::ArraySlice;
 use crate::{clustering, sampling, ModelConfig};
@@ -22,7 +22,7 @@ pub struct ModelBuilder {
     labels: Option<usize>,
     train_params: Option<TrainParams>,
     label_method: Option<LabelMethod>,
-    retrain_params: Option<TrainParams>,
+    retrain_params: Option<RetrainParams>,
     weights_path: Option<PathBuf>,
 }
 
@@ -47,7 +47,7 @@ impl ModelBuilder {
         self
     }
 
-    pub fn retrain_params(&mut self, retrain_params: TrainParams) -> &mut Self {
+    pub fn retrain_params(&mut self, retrain_params: RetrainParams) -> &mut Self {
         self.retrain_params = Some(retrain_params);
         self
     }
@@ -136,7 +136,7 @@ pub struct Model {
     device: Device,
     pub input_shape: usize,
     train_params: TrainParams,
-    retrain_params: TrainParams,
+    retrain_params: RetrainParams,
     label_method: LabelMethod,
 }
 
@@ -264,6 +264,11 @@ impl Model {
 
     pub fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
         info!(epochs = self.retrain_params.epochs; "model:retrain");
+        match self.retrain_params.strategy {
+            RetrainStrategy::NoRetrain => {
+                info!("No retraining performed as per strategy.");
+            }
+        };
         Ok(())
     }
 
@@ -313,6 +318,8 @@ impl Module for CandleModel {
 
 #[cfg(test)]
 mod tests {
+    use crate::model::RetrainStrategy;
+
     use super::*;
 
     #[test]
@@ -326,11 +333,12 @@ mod tests {
             epochs: 5,
             max_iters: 20,
         };
-        let retrain_params = TrainParams {
+        let retrain_params = RetrainParams {
             threshold_samples: 1000,
             batch_size: 32,
             epochs: 10,
             max_iters: 15,
+            strategy: RetrainStrategy::NoRetrain,
         };
 
         // Act

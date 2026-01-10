@@ -340,6 +340,7 @@ impl LevelIndex {
 mod tests {
     use super::*;
     use crate::errors::DliResult;
+    use crate::model::{RetrainParams, RetrainStrategy};
     use crate::structs::DistanceFn;
     use crate::{ModelConfig, ModelLayer, TrainParams};
 
@@ -446,7 +447,8 @@ mod tests {
                 threshold_samples: 500,
                 max_iters: 100,
             },
-            retrain_params: TrainParams {
+            retrain_params: RetrainParams {
+                strategy: RetrainStrategy::NoRetrain,
                 epochs: 10,
                 batch_size: 32,
                 threshold_samples: 250,

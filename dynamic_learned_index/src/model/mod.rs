@@ -36,10 +36,36 @@ impl Default for TrainParams {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum RetrainStrategy {
+    NoRetrain,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct RetrainParams {
+    pub strategy: RetrainStrategy,
+    pub threshold_samples: usize,
+    pub batch_size: usize,
+    pub epochs: usize,
+    pub max_iters: usize, // Added for clustering iterations
+}
+
+impl Default for RetrainParams {
+    fn default() -> Self {
+        Self {
+            strategy: RetrainStrategy::NoRetrain,
+            threshold_samples: 1000,
+            batch_size: 8,
+            epochs: 3,
+            max_iters: 10, // Default max iterations for clustering
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelConfig {
     pub layers: Vec<ModelLayer>,
     pub train_params: TrainParams,
-    pub retrain_params: TrainParams,
+    pub retrain_params: RetrainParams,
     pub weights_path: Option<PathBuf>,
 }
 
