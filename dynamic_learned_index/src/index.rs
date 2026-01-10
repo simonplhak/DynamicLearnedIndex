@@ -1,7 +1,7 @@
 use crate::{
     bucket::{Buffer, BufferBuilder},
     level_index::{LevelIndex, LevelIndexBuilder},
-    model::ModelDevice,
+    model::{ModelDevice, RetrainStrategy},
     structs::{
         DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig, LevelIndexConfig, Records2Visit,
     },
@@ -592,6 +592,11 @@ impl IndexBuilder {
 
     pub fn retrain_epochs(mut self, epochs: usize) -> Self {
         self.levels_config.model.retrain_params.epochs = epochs;
+        self
+    }
+
+    pub fn retrain_strategy(mut self, strategy: RetrainStrategy) -> Self {
+        self.levels_config.model.retrain_params.strategy = strategy;
         self
     }
 
