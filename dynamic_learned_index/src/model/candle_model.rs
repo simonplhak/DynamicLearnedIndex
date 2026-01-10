@@ -190,10 +190,14 @@ impl Model {
     }
 
     pub fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
+        self._train(xs, self.train_params)
+    }
+
+    fn _train(&mut self, xs: &ArraySlice, train_params: TrainParams) -> DliResult<()> {
         let sample_size = sampling::select_sample_size(
             self.labels,
             xs.len() / self.input_shape,
-            self.train_params.threshold_samples,
+            train_params.threshold_samples,
         );
         info!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
         let xs = sampling::sample(xs, sample_size, self.input_shape);
@@ -202,7 +206,7 @@ impl Model {
             &self.label_method,
             self.labels,
             self.input_shape,
-            self.train_params.max_iters,
+            train_params.max_iters,
         );
 
         let optim_config = candle_nn::ParamsAdamW {
@@ -212,9 +216,9 @@ impl Model {
         };
         let mut opt = candle_nn::AdamW::new(self.varmap.all_vars(), optim_config)?;
 
-        for _ in 0..self.train_params.epochs {
+        for _ in 0..train_params.epochs {
             // Create shuffled batches
-            let batches = self.create_shuffled_batches(&xs, &ys)?;
+            let batches = self.create_shuffled_batches(&xs, &ys, train_params.batch_size)?;
 
             for (batch_xs, batch_ys) in batches {
                 let logits = self.model.forward(&batch_xs)?;
@@ -226,10 +230,15 @@ impl Model {
         Ok(())
     }
 
-    fn create_shuffled_batches(&self, xs: &[f32], ys: &[i32]) -> DliResult<BatchIter> {
+    fn create_shuffled_batches(
+        &self,
+        xs: &[f32],
+        ys: &[i32],
+        batch_size: usize,
+    ) -> DliResult<BatchIter> {
         let total_samples = ys.len();
-        let batch_size = if self.train_params.batch_size > 0 {
-            self.train_params.batch_size
+        let batch_size = if batch_size > 0 {
+            batch_size
         } else {
             total_samples
         };
