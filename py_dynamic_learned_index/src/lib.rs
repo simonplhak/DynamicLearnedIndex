@@ -1,7 +1,8 @@
 use std::path::Path;
 
 use dynamic_learned_index::{
-    DeleteStatistics, IndexBuilder, ModelDevice, ModelLayer, SearchParams, SearchStatistics,
+    model::RetrainStrategy, DeleteStatistics, IndexBuilder, ModelDevice, ModelLayer, SearchParams,
+    SearchStatistics,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::{prelude::*, types::PyDict, PyErr};
@@ -93,6 +94,39 @@ impl DynamicLearnedIndexBuilder {
     fn train_epochs(&self, epochs: usize) -> PyResult<Self> {
         let mut builder = self.clone();
         builder.builder = builder.builder.train_epochs(epochs);
+        Ok(builder)
+    }
+
+    fn retrain_threshold_samples(&self, samples: usize) -> PyResult<Self> {
+        let mut builder = self.clone();
+        builder.builder = builder.builder.retrain_threshold_samples(samples);
+        Ok(builder)
+    }
+
+    fn retrain_batch_size(&self, size: usize) -> PyResult<Self> {
+        let mut builder = self.clone();
+        builder.builder = builder.builder.retrain_batch_size(size);
+        Ok(builder)
+    }
+
+    fn retrain_epochs(&self, epochs: usize) -> PyResult<Self> {
+        let mut builder = self.clone();
+        builder.builder = builder.builder.retrain_epochs(epochs);
+        Ok(builder)
+    }
+
+    fn retrain_strategy(&self, strategy: &str) -> PyResult<Self> {
+        let mut builder = self.clone();
+        let retrain_strategy = match strategy {
+            "no_retrain" => RetrainStrategy::NoRetrain,
+            "from_scratch" => RetrainStrategy::FromScratch,
+            _ => {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid retrain strategy",
+                ))
+            }
+        };
+        builder.builder = builder.builder.retrain_strategy(retrain_strategy);
         Ok(builder)
     }
 
