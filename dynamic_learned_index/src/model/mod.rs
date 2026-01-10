@@ -22,6 +22,7 @@ pub struct TrainParams {
     pub batch_size: usize,
     pub epochs: usize,
     pub max_iters: usize, // Added for clustering iterations
+    pub retrain_strategy: RetrainStrategy,
 }
 
 impl Default for TrainParams {
@@ -31,6 +32,7 @@ impl Default for TrainParams {
             batch_size: 8,
             epochs: 3,
             max_iters: 10, // Default max iterations for clustering
+            retrain_strategy: RetrainStrategy::NoRetrain,
         }
     }
 }
@@ -43,43 +45,10 @@ pub enum RetrainStrategy {
     FromScratch,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub struct RetrainParams {
-    pub strategy: RetrainStrategy,
-    pub threshold_samples: usize,
-    pub batch_size: usize,
-    pub epochs: usize,
-    pub max_iters: usize, // Added for clustering iterations
-}
-
-impl Default for RetrainParams {
-    fn default() -> Self {
-        Self {
-            strategy: RetrainStrategy::NoRetrain,
-            threshold_samples: 1000,
-            batch_size: 8,
-            epochs: 3,
-            max_iters: 10, // Default max iterations for clustering
-        }
-    }
-}
-
-impl From<RetrainParams> for TrainParams {
-    fn from(val: RetrainParams) -> Self {
-        TrainParams {
-            threshold_samples: val.threshold_samples,
-            batch_size: val.batch_size,
-            epochs: val.epochs,
-            max_iters: val.max_iters,
-        }
-    }
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ModelConfig {
     pub layers: Vec<ModelLayer>,
     pub train_params: TrainParams,
-    pub retrain_params: RetrainParams,
     pub weights_path: Option<PathBuf>,
 }
 
@@ -88,7 +57,6 @@ impl Default for ModelConfig {
         Self {
             layers: vec![ModelLayer::Linear(128), ModelLayer::ReLU],
             train_params: Default::default(),
-            retrain_params: Default::default(),
             weights_path: None,
         }
     }

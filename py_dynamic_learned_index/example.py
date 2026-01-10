@@ -22,9 +22,6 @@ builder = (
     .train_batch_size(8)
     .train_epochs(3)
     .train_threshold_samples(100)
-    .retrain_threshold_samples(100)
-    .retrain_batch_size(8)
-    .retrain_epochs(3)
     .retrain_strategy("from_scratch")  # possible values: no_retrain, from_scratch
 )
 # options for compaction strategy:

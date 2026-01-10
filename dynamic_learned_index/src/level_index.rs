@@ -127,7 +127,6 @@ impl LevelIndexBuilder {
             .device(self.model_device)
             .input_nodes(input_shape as i64)
             .train_params(model_config.train_params)
-            .retrain_params(model_config.retrain_params)
             .labels(n_buckets)
             .label_method(distance_fn.into());
         if let Some(weights_path) = &model_config.weights_path {
@@ -340,7 +339,7 @@ impl LevelIndex {
 mod tests {
     use super::*;
     use crate::errors::DliResult;
-    use crate::model::{RetrainParams, RetrainStrategy};
+    use crate::model::RetrainStrategy;
     use crate::structs::DistanceFn;
     use crate::{ModelConfig, ModelLayer, TrainParams};
 
@@ -446,13 +445,7 @@ mod tests {
                 batch_size: 64,
                 threshold_samples: 500,
                 max_iters: 100,
-            },
-            retrain_params: RetrainParams {
-                strategy: RetrainStrategy::NoRetrain,
-                epochs: 10,
-                batch_size: 32,
-                threshold_samples: 250,
-                max_iters: 50,
+                retrain_strategy: RetrainStrategy::NoRetrain,
             },
             weights_path: None,
         };

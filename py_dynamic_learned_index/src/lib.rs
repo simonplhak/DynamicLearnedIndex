@@ -97,24 +97,6 @@ impl DynamicLearnedIndexBuilder {
         Ok(builder)
     }
 
-    fn retrain_threshold_samples(&self, samples: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.retrain_threshold_samples(samples);
-        Ok(builder)
-    }
-
-    fn retrain_batch_size(&self, size: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.retrain_batch_size(size);
-        Ok(builder)
-    }
-
-    fn retrain_epochs(&self, epochs: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.retrain_epochs(epochs);
-        Ok(builder)
-    }
-
     fn retrain_strategy(&self, strategy: &str) -> PyResult<Self> {
         let mut builder = self.clone();
         let retrain_strategy = match strategy {

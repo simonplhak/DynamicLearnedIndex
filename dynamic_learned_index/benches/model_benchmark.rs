@@ -7,7 +7,7 @@ use dynamic_learned_index::model::candle_model::{
 };
 #[cfg(feature = "tch")]
 use dynamic_learned_index::model::tch_model::{Model, ModelBuilder};
-use dynamic_learned_index::model::{ModelLayer, TrainParams};
+use dynamic_learned_index::model::{ModelLayer, RetrainStrategy, TrainParams};
 use dynamic_learned_index::structs::LabelMethod;
 use dynamic_learned_index::ModelDevice;
 use rand::Rng;
@@ -42,6 +42,7 @@ fn pytorch_model() -> Model {
             batch_size: BATCH_SIZE,
             epochs: EPOCHS,
             max_iters: 10,
+            retrain_strategy: RetrainStrategy::NoRetrain,
         })
         .label_method(LabelMethod::KMeans)
         .build()
@@ -102,6 +103,7 @@ fn candle_model() -> ModelNew {
             batch_size: BATCH_SIZE,
             epochs: EPOCHS,
             max_iters: 10,
+            retrain_strategy: RetrainStrategy::NoRetrain,
         })
         .label_method(LabelMethod::KMeans)
         .build()

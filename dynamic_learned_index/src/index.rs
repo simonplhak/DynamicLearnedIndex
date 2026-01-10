@@ -580,23 +580,8 @@ impl IndexBuilder {
         self
     }
 
-    pub fn retrain_threshold_samples(mut self, samples: usize) -> Self {
-        self.levels_config.model.retrain_params.threshold_samples = samples;
-        self
-    }
-
-    pub fn retrain_batch_size(mut self, batch_size: usize) -> Self {
-        self.levels_config.model.retrain_params.batch_size = batch_size;
-        self
-    }
-
-    pub fn retrain_epochs(mut self, epochs: usize) -> Self {
-        self.levels_config.model.retrain_params.epochs = epochs;
-        self
-    }
-
     pub fn retrain_strategy(mut self, strategy: RetrainStrategy) -> Self {
-        self.levels_config.model.retrain_params.strategy = strategy;
+        self.levels_config.model.train_params.retrain_strategy = strategy;
         self
     }
 
@@ -774,11 +759,7 @@ mod tests {
               max_iters: 5
               batch_size: 4
               epochs: 2
-            retrain_params:
-              threshold_samples: 10
-              max_iters: 4
-              batch_size: 5
-              epochs: 3
+              retrain_strategy: no_retrain
           bucket_size: 100
         buffer_size: 50
         input_shape: 10
@@ -919,8 +900,6 @@ mod tests {
             .distance_fn(DistanceFn::L2)
             .train_epochs(10)
             .train_batch_size(64)
-            .retrain_epochs(5)
-            .retrain_batch_size(32)
             .build()
             .unwrap();
 
@@ -936,8 +915,6 @@ mod tests {
         // Verify training parameters were set
         assert_eq!(index.levels_config.model.train_params.epochs, 10);
         assert_eq!(index.levels_config.model.train_params.batch_size, 64);
-        assert_eq!(index.levels_config.model.retrain_params.epochs, 5);
-        assert_eq!(index.levels_config.model.retrain_params.batch_size, 32);
 
         // Verify index is initially empty
         assert_eq!(index.occupied(), 0);

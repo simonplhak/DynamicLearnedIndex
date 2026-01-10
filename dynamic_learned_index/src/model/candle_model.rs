@@ -9,7 +9,7 @@ use rand::rng;
 use rand::seq::SliceRandom;
 
 use crate::errors::{DliError, DliResult};
-use crate::model::{ModelDevice, ModelLayer, RetrainParams, RetrainStrategy, TrainParams};
+use crate::model::{ModelDevice, ModelLayer, RetrainStrategy, TrainParams};
 use crate::structs::LabelMethod;
 use crate::types::ArraySlice;
 use crate::{clustering, sampling, ModelConfig};
@@ -22,7 +22,6 @@ pub struct ModelBuilder {
     labels: Option<usize>,
     train_params: Option<TrainParams>,
     label_method: Option<LabelMethod>,
-    retrain_params: Option<RetrainParams>,
     weights_path: Option<PathBuf>,
 }
 
@@ -44,11 +43,6 @@ impl ModelBuilder {
 
     pub fn labels(&mut self, labels: usize) -> &mut Self {
         self.labels = Some(labels);
-        self
-    }
-
-    pub fn retrain_params(&mut self, retrain_params: RetrainParams) -> &mut Self {
-        self.retrain_params = Some(retrain_params);
         self
     }
 
@@ -92,7 +86,6 @@ impl ModelBuilder {
         let labels = self.labels.ok_or(DliError::MissingAttribute("labels"))?;
         assert!(labels > 0, "labels must be greater than 0");
         let train_params = self.train_params.unwrap_or_default();
-        let retrain_params = self.retrain_params.unwrap_or_default();
         let mut i = 0;
         let (mut layers, in_nodes) = self.layers.iter().try_fold(
             (Vec::<CandleModelLayer>::new(), input_nodes),
@@ -121,7 +114,6 @@ impl ModelBuilder {
             labels,
             device,
             train_params,
-            retrain_params,
             input_shape: input_nodes,
             label_method,
         };
@@ -136,7 +128,6 @@ pub struct Model {
     device: Device,
     pub input_shape: usize,
     train_params: TrainParams,
-    retrain_params: RetrainParams,
     label_method: LabelMethod,
 }
 
@@ -190,14 +181,10 @@ impl Model {
     }
 
     pub fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
-        self._train(xs, self.train_params)
-    }
-
-    fn _train(&mut self, xs: &ArraySlice, train_params: TrainParams) -> DliResult<()> {
         let sample_size = sampling::select_sample_size(
             self.labels,
             xs.len() / self.input_shape,
-            train_params.threshold_samples,
+            self.train_params.threshold_samples,
         );
         info!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
         let xs = sampling::sample(xs, sample_size, self.input_shape);
@@ -206,7 +193,7 @@ impl Model {
             &self.label_method,
             self.labels,
             self.input_shape,
-            train_params.max_iters,
+            self.train_params.max_iters,
         );
 
         let optim_config = candle_nn::ParamsAdamW {
@@ -216,9 +203,9 @@ impl Model {
         };
         let mut opt = candle_nn::AdamW::new(self.varmap.all_vars(), optim_config)?;
 
-        for _ in 0..train_params.epochs {
+        for _ in 0..self.train_params.epochs {
             // Create shuffled batches
-            let batches = self.create_shuffled_batches(&xs, &ys, train_params.batch_size)?;
+            let batches = self.create_shuffled_batches(&xs, &ys)?;
 
             for (batch_xs, batch_ys) in batches {
                 let logits = self.model.forward(&batch_xs)?;
@@ -230,15 +217,10 @@ impl Model {
         Ok(())
     }
 
-    fn create_shuffled_batches(
-        &self,
-        xs: &[f32],
-        ys: &[i32],
-        batch_size: usize,
-    ) -> DliResult<BatchIter> {
+    fn create_shuffled_batches(&self, xs: &[f32], ys: &[i32]) -> DliResult<BatchIter> {
         let total_samples = ys.len();
-        let batch_size = if batch_size > 0 {
-            batch_size
+        let batch_size = if self.train_params.batch_size > 0 {
+            self.train_params.batch_size
         } else {
             total_samples
         };
@@ -272,14 +254,13 @@ impl Model {
     }
 
     pub fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
-        info!(epochs = self.retrain_params.epochs; "model:retrain");
-        match self.retrain_params.strategy {
+        match self.train_params.retrain_strategy {
             RetrainStrategy::NoRetrain => {
                 info!("No retraining performed as per strategy.");
             }
             RetrainStrategy::FromScratch => {
                 reset_model(&mut self.varmap, &self.device)?;
-                self._train(_xs, self.retrain_params.into())?;
+                self.train(_xs)?;
             }
         };
         Ok(())
@@ -299,7 +280,6 @@ impl Model {
                 })
                 .collect(),
             train_params: self.train_params,
-            retrain_params: self.retrain_params,
             weights_path: Some(weights_filename),
         })
     }
@@ -362,13 +342,7 @@ mod tests {
             batch_size: 16,
             epochs: 5,
             max_iters: 20,
-        };
-        let retrain_params = RetrainParams {
-            threshold_samples: 1000,
-            batch_size: 32,
-            epochs: 10,
-            max_iters: 15,
-            strategy: RetrainStrategy::NoRetrain,
+            retrain_strategy: RetrainStrategy::NoRetrain,
         };
 
         // Act
@@ -381,7 +355,6 @@ mod tests {
             .add_layer(ModelLayer::ReLU)
             .labels(labels)
             .train_params(train_params)
-            .retrain_params(retrain_params)
             .label_method(LabelMethod::KMeans)
             .build();
 
@@ -397,13 +370,6 @@ mod tests {
         assert_eq!(model.train_params.batch_size, train_params.batch_size);
         assert_eq!(model.train_params.epochs, train_params.epochs);
         assert_eq!(model.train_params.max_iters, train_params.max_iters);
-        assert_eq!(
-            model.retrain_params.threshold_samples,
-            retrain_params.threshold_samples
-        );
-        assert_eq!(model.retrain_params.batch_size, retrain_params.batch_size);
-        assert_eq!(model.retrain_params.epochs, retrain_params.epochs);
-        assert_eq!(model.retrain_params.max_iters, retrain_params.max_iters);
 
         // Verify the model has the correct number of layers
         // We added 4 layers + 1 final output layer = 5 total
@@ -428,6 +394,7 @@ mod tests {
                 batch_size: 10,
                 threshold_samples: 50,
                 max_iters: 10,
+                retrain_strategy: RetrainStrategy::NoRetrain,
             })
             .label_method(LabelMethod::KMeans)
             .build()
@@ -510,6 +477,7 @@ mod tests {
                 batch_size: 10,
                 threshold_samples: 50,
                 max_iters: 10,
+                retrain_strategy: RetrainStrategy::NoRetrain,
             })
             .label_method(LabelMethod::KMeans)
             .build()
@@ -576,6 +544,7 @@ mod tests {
                 batch_size: 10,
                 threshold_samples: 200,
                 max_iters: 10,
+                retrain_strategy: RetrainStrategy::NoRetrain,
             })
             .label_method(LabelMethod::KMeans)
             .build()
