@@ -37,7 +37,9 @@ impl Default for TrainParams {
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum RetrainStrategy {
+    #[serde(rename = "no_retrain")]
     NoRetrain,
+    #[serde(rename = "from_scratch")]
     FromScratch,
 }
 
