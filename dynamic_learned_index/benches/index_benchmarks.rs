@@ -1,4 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use rand::{seq::SliceRandom, SeedableRng};
 use std::{hint::black_box, path::PathBuf};
 
 use dynamic_learned_index::{Array, IndexBuilder, SearchStrategy};
@@ -8,6 +9,7 @@ const QUERIES_DATASET_NAME: &str = "emb";
 const INDEX_DUMP_DIR: &str = "index_dump";
 const MAX_K: usize = 10;
 const SEARCH_STRATEGY: SearchStrategy = SearchStrategy::ModelDriven(10_000);
+const SEED: u64 = 42;
 
 fn load_h5(path: &PathBuf, dataset_name: &str) -> Vec<Array> {
     let emb = hdf5::File::open(path)
@@ -41,7 +43,7 @@ fn index_search_parametrized_benchmark(c: &mut Criterion) {
             query_vec,
             |b, query| {
                 b.iter(|| {
-                    let _ = index.search(black_box(query), black_box((MAX_K, SEARCH_STRATEGY)));
+                    let _ = index.search(black_box(query), (MAX_K, SEARCH_STRATEGY));
                 });
             },
         );
@@ -52,7 +54,11 @@ fn index_search_parametrized_benchmark(c: &mut Criterion) {
 fn index_search_throughput_benchmark(c: &mut Criterion) {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     let queries_path = root.join(QUERIES_DATASET_PATH);
-    let queries = load_h5(&queries_path, QUERIES_DATASET_NAME);
+    let mut queries = load_h5(&queries_path, QUERIES_DATASET_NAME);
+
+    let mut rng = rand::rngs::StdRng::seed_from_u64(SEED);
+    queries.shuffle(&mut rng);
+
     let mut group = c.benchmark_group("Index Throughput");
     group.throughput(Throughput::Elements(1));
     let index_path = root.join(INDEX_DUMP_DIR);

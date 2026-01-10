@@ -36,9 +36,11 @@ fn main() {
     println!("Starting profiler...");
     let guard = ProfilerGuard::new(100).unwrap();
 
-    let query = &queries[0];
-    println!("Running search on first query...");
-    let _ = black_box(index.search(black_box(query), black_box((MAX_K, SEARCH_STRATEGY))));
+    println!("Running search on first 100 queries...");
+
+    for query in &queries[0..100] {
+        let _ = index.search(black_box(query), black_box((MAX_K, SEARCH_STRATEGY)));
+    }
 
     println!("Creating flamegraph...");
     if let Ok(report) = guard.report().build() {

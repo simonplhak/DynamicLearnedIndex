@@ -182,10 +182,10 @@ cargo build --release
   --output-dir index_dump
 
 # run benchmark and save as a baseline
-cargo bench -p dynamic_learned_index --bench index_benchmarks -- --profile-time 10 -s base
+cargo bench -p dynamic_learned_index --bench index_benchmarks -- --warm-up-time 5 --measurement-time 15 --save-baseline base
+
 # run benchmark and compare with the baseline
-cargo bench -p dynamic_learned_index --bench index_benchmarks -- --profile-time 10
-cargo bench -p dynamic_learned_index --bench index_benchmarks -- --load-baseline new -b base 
+cargo bench -p dynamic_learned_index --bench index_benchmarks -- --warm-up-time 5 --measurement-time 15 --baseline base 
 ```
 
 Results are in `target/criterion/report/index.html` file.
@@ -212,6 +212,10 @@ cargo build --release
   --output-dir index_dump
 
 # run profiler
+# profiler will load the index from `index_dump` directory
+# starts benchmark
+# searches 100 queries and generate flamegraph
+# ends benchmark
 cargo run -p dynamic_learned_index --example profiler
 ```
 
