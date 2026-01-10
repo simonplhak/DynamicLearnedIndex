@@ -38,6 +38,7 @@ impl Default for TrainParams {
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
 pub enum RetrainStrategy {
     NoRetrain,
+    FromScratch,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy)]
@@ -57,6 +58,17 @@ impl Default for RetrainParams {
             batch_size: 8,
             epochs: 3,
             max_iters: 10, // Default max iterations for clustering
+        }
+    }
+}
+
+impl From<RetrainParams> for TrainParams {
+    fn from(val: RetrainParams) -> Self {
+        TrainParams {
+            threshold_samples: val.threshold_samples,
+            batch_size: val.batch_size,
+            epochs: val.epochs,
+            max_iters: val.max_iters,
         }
     }
 }

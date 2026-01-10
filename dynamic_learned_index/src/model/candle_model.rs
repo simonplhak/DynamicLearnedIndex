@@ -277,6 +277,10 @@ impl Model {
             RetrainStrategy::NoRetrain => {
                 info!("No retraining performed as per strategy.");
             }
+            RetrainStrategy::FromScratch => {
+                reset_model(&mut self.varmap, &self.device)?;
+                self._train(_xs, self.retrain_params.into())?;
+            }
         };
         Ok(())
     }
@@ -323,6 +327,23 @@ impl Module for CandleModel {
         }
         Ok(current)
     }
+}
+
+fn reset_model(var_map: &mut VarMap, device: &Device) -> CandleResult<()> {
+    for var in var_map.all_vars() {
+        let dims = var.dims();
+        if dims.len() == 2 {
+            let fan_in = dims[1];
+            let bound = (6.0 / fan_in as f64).sqrt();
+            let new_values = Tensor::rand(-bound, bound, dims, device)?.to_dtype(var.dtype())?;
+            var.set(&new_values)?;
+        } else {
+            // Initialize biases to zero
+            let new_values = Tensor::zeros(dims, var.dtype(), device)?;
+            var.set(&new_values)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
