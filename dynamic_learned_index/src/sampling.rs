@@ -9,7 +9,7 @@ pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
     // todo possibility to return ArraySlice to avoid cloning??
     info!(n=n ;"sampling");
     assert!(!queries.is_empty(), "Queries cannot be empty");
-    assert!(queries.len() % shape == 0);
+    assert!(queries.len().is_multiple_of(shape));
     assert!(n > 0, "Sample size must be greater than zero");
     let num_queries = queries.len() / shape;
     if n >= num_queries {
