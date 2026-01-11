@@ -6,9 +6,10 @@ use crate::{
         DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig, LevelIndexConfig, Records2Visit,
     },
     Array, ArraySlice, DeleteMethod, DeleteStatistics, DistanceFn, DliError, DliResult, Id,
-    ModelLayer, SearchParamsT, SearchStatistics, SearchStrategy,
+    ModelLayer, SearchParams, SearchParamsT, SearchStatistics, SearchStrategy,
 };
-use log::debug;
+use log::{debug, info};
+use measure_time_macro::log_time;
 use serde::{Deserialize, Serialize};
 use std::{
     fs::{create_dir, File},
@@ -117,6 +118,7 @@ impl Index {
         self.levels_config.clone()
     }
 
+    #[log_time]
     pub fn insert(&mut self, value: Array, id: Id) -> DliResult<()> {
         self.buffer.insert(value, id);
         if self.buffer.has_space(1) {
@@ -189,6 +191,32 @@ impl Index {
             .sum()
     }
 
+    #[log_time]
+    fn bucket_selection(&self, query: &ArraySlice) -> DliResult<Vec<Vec<(usize, f32, usize)>>> {
+        self.levels
+            .iter()
+            .map(|level| level.buckets2visit_predictions(query))
+            .collect::<DliResult<Vec<_>>>()
+    }
+
+    #[log_time]
+    fn merge_results(
+        &self,
+        records2visit: &Vec<&[f32]>,
+        query: &ArraySlice,
+        params: &SearchParams,
+    ) -> Vec<(f32, usize)> {
+        flat_knn::knn(
+            records2visit,
+            query,
+            params.k,
+            match self.distance_fn {
+                DistanceFn::L2 => flat_knn::Metric::L2,
+                DistanceFn::Dot => flat_knn::Metric::Dot,
+            },
+        )
+    }
+
     pub fn verbose_search<S>(
         &self,
         query: &ArraySlice,
@@ -198,21 +226,9 @@ impl Index {
         S: SearchParamsT,
     {
         let params = params.into_search_params();
-        let predictions = self
-            .levels
-            .iter()
-            .map(|level| level.buckets2visit_predictions(query))
-            .collect::<DliResult<Vec<_>>>()?;
+        let predictions = self.bucket_selection(query)?;
         let records2visit = self.records2visit(predictions, params.search_strategy);
-        let rs = flat_knn::knn(
-            records2visit.records,
-            query,
-            params.k,
-            match self.distance_fn {
-                DistanceFn::L2 => flat_knn::Metric::L2,
-                DistanceFn::Dot => flat_knn::Metric::Dot,
-            },
-        );
+        let rs = self.merge_results(&records2visit.records, query, &params);
         let res = rs
             .into_iter()
             .map(|(_, idx)| records2visit.ids[idx])
@@ -226,6 +242,7 @@ impl Index {
         ))
     }
 
+    #[log_time]
     pub fn verbose_delete(&mut self, id: Id) -> DliResult<Option<((Array, Id), DeleteStatistics)>> {
         if let Some(deleted) = self.buffer.delete(&id) {
             return Ok(Some((
@@ -359,6 +376,7 @@ impl CompactionStrategy {
         (data, ids)
     }
 
+    #[log_time]
     pub fn compact(&self, index: &mut Index) -> DliResult<()> {
         let original_occupied = index.occupied();
         match self {
@@ -368,15 +386,27 @@ impl CompactionStrategy {
                         let (data, ids) = self.lower_level_data(index, level_idx);
                         let level = &mut index.levels[level_idx];
                         if level.size() == 0 {
+                            info!("index:retrain");
                             level.retrain(&data)?;
                         }
+                        info!(
+                            level_idx = level_idx,
+                            data_size = ids.len();
+                            "index:compact",
+                        );
                         level.insert_many(data, ids)?;
                     }
                     None => {
+                        info!("index:new_level");
                         let level_idx = index.add_level()?;
                         let (data, ids) = self.lower_level_data(index, level_idx);
                         let level = &mut index.levels[level_idx];
                         level.train(&data)?;
+                        info!(
+                            level_idx = level_idx,
+                            data_size = ids.len();
+                            "index:compact",
+                        );
                         level.insert_many(data, ids)?;
                     }
                 };
@@ -386,6 +416,7 @@ impl CompactionStrategy {
         Ok(())
     }
 
+    #[log_time]
     pub fn rebuild(&self, index: &mut Index, level_idx: usize) -> DliResult<()> {
         assert!(level_idx < index.levels.len());
         match self {
@@ -411,6 +442,7 @@ impl CompactionStrategy {
                             == from_level_occupied + to_level_occupied
                     );
                 };
+                info!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
                 // First level
                 if level_idx == 0 {
                     if let Some(lower_level_idx) = lower_level(index, level_idx, level_occupied) {

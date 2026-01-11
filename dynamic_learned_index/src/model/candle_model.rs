@@ -5,6 +5,7 @@ use candle_core::{Device, Result as CandleResult};
 use candle_nn::{linear, Linear, Module, Optimizer, VarBuilder, VarMap};
 use candle_nn::{loss, ops};
 use log::info;
+use measure_time_macro::log_time;
 use rand::rng;
 use rand::seq::SliceRandom;
 
@@ -173,6 +174,7 @@ impl Model {
         Ok(predictions)
     }
 
+    #[log_time]
     pub fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
         let dim = xs.len() / self.input_shape;
         let dataset = Tensor::from_slice(xs, (dim, self.input_shape), &self.device)?;
@@ -180,6 +182,7 @@ impl Model {
         Ok(rs.into_iter().map(|v| v as usize).collect::<Vec<_>>())
     }
 
+    #[log_time]
     pub fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
         let sample_size = sampling::select_sample_size(
             self.labels,
@@ -188,6 +191,7 @@ impl Model {
         );
         info!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
         let xs = sampling::sample(xs, sample_size, self.input_shape);
+
         let ys = clustering::compute_labels(
             &xs,
             &self.label_method,
@@ -202,10 +206,15 @@ impl Model {
             ..Default::default()
         };
         let mut opt = candle_nn::AdamW::new(self.varmap.all_vars(), optim_config)?;
+        self._train(&xs, &ys, &mut opt)?;
+        Ok(())
+    }
 
+    #[log_time]
+    fn _train(&mut self, xs: &ArraySlice, ys: &[i32], opt: &mut candle_nn::AdamW) -> DliResult<()> {
         for _ in 0..self.train_params.epochs {
             // Create shuffled batches
-            let batches = self.create_shuffled_batches(&xs, &ys)?;
+            let batches = self.create_shuffled_batches(xs, ys)?;
 
             for (batch_xs, batch_ys) in batches {
                 let logits = self.model.forward(&batch_xs)?;

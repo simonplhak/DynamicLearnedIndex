@@ -224,6 +224,8 @@ impl LevelIndex {
         self.model.retrain(xs)?;
         Ok(())
     }
+
+    #[log_time]
     pub(crate) fn insert_many(&mut self, records: Array, ids: Vec<Id>) -> DliResult<()> {
         let input_shape = self.model.input_shape;
         assert!(records.len() / input_shape == ids.len());

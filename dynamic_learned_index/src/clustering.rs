@@ -1,8 +1,10 @@
-use log::debug;
+use log::{debug, info};
+use measure_time_macro::log_time;
 use ndarray::Array2;
 
 use crate::{constants, structs::LabelMethod};
 
+#[log_time]
 pub(crate) fn compute_labels(
     data: &Vec<f32>,
     label_method: &LabelMethod,

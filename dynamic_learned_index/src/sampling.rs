@@ -1,8 +1,10 @@
 use crate::types::{Array, ArraySlice};
 use log::info;
+use measure_time_macro::log_time;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
 
+#[log_time]
 pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
     // todo possibility to return ArraySlice to avoid cloning??
     info!(n=n ;"sampling");
