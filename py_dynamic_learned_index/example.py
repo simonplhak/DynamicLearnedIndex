@@ -1,8 +1,18 @@
+import io
+import json
 import shutil
 from pathlib import Path
 
 import numpy as np
-from py_dynamic_learned_index import DynamicLearnedIndex, DynamicLearnedIndexBuilder
+from py_dynamic_learned_index import (
+    DynamicLearnedIndex,
+    DynamicLearnedIndexBuilder,
+    log_init,
+)
+
+# Initialize Rust logger to write to a buffer
+log_buffer = io.StringIO()
+log_init(log_buffer, "debug")
 
 builder = DynamicLearnedIndexBuilder()
 input_shape = 768
@@ -176,3 +186,9 @@ for i in range(0, len(queries) - 1, 50):
     )
     assert (res == loaded_res).all()
     print(f'For query "{i}" loaded index found: {loaded_res}')
+print()
+
+print("CAPTURED LOGS")
+for log in log_buffer.getvalue().split("\n")[:-1]:
+    print(json.loads(log))
+log_buffer.close()

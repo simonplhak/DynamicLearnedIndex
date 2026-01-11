@@ -1,3 +1,4 @@
+use std::io::Write;
 use std::path::Path;
 
 use dynamic_learned_index::{
@@ -5,7 +6,46 @@ use dynamic_learned_index::{
     SearchStatistics,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
-use pyo3::{prelude::*, types::PyDict, PyErr};
+use pyo3::{
+    prelude::*,
+    types::{PyBytes, PyDict},
+    PyErr,
+};
+use structured_logger::json::new_writer;
+
+struct PyFileLike {
+    inner: Py<PyAny>,
+}
+
+impl Write for PyFileLike {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        Python::with_gil(|py| {
+            let obj = self.inner.bind(py);
+            if let Ok(s) = std::str::from_utf8(buf) {
+                // Try writing as string first
+                if obj.call_method1("write", (s,)).is_ok() {
+                    return Ok(buf.len());
+                }
+            }
+            // Fallback to bytes
+            let bytes = PyBytes::new_bound(py, buf);
+            obj.call_method1("write", (bytes,))
+                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            Ok(buf.len())
+        })
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Python::with_gil(|py| {
+            let obj = self.inner.bind(py);
+            let _ = obj.call_method0("flush");
+            Ok(())
+        })
+    }
+}
+
+// Py<PyAny> is Send. Access is guarded by GIL so it is Sync.
+unsafe impl Sync for PyFileLike {}
 
 #[pyclass]
 #[derive(Clone)]
@@ -346,10 +386,31 @@ fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {
     x.as_array().iter().copied().collect()
 }
 
+#[pyfunction]
+fn log_init(target: &Bound<'_, PyAny>, level: &str) -> PyResult<()> {
+    if let Ok(file_path) = target.extract::<String>() {
+        let file = std::fs::File::create(file_path)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
+        structured_logger::Builder::with_level(level)
+            .with_target_writer("*", new_writer(file))
+            .init();
+    } else {
+        // Assume it's a file-like object
+        let writer = PyFileLike {
+            inner: target.clone().unbind(),
+        };
+        structured_logger::Builder::with_level(level)
+            .with_target_writer("*", new_writer(writer))
+            .init();
+    }
+    Ok(())
+}
+
 #[pymodule(crate = "pyo3")]
 fn py_dynamic_learned_index(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     m.add_class::<DynamicLearnedIndex>()?;
     m.add_class::<DynamicLearnedIndexBuilder>()?;
+    m.add_function(wrap_pyfunction!(log_init, m)?)?;
     Ok(())
 }

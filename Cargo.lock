@@ -1891,8 +1891,10 @@ name = "py_dynamic_learned_index"
 version = "0.1.0"
 dependencies = [
  "dynamic_learned_index",
+ "log",
  "numpy",
  "pyo3",
+ "structured-logger",
 ]
 
 [[package]]
@@ -2660,11 +2662,10 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.44.2"
+version = "1.49.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6b88822cbe49de4185e3a4cbf8321dd487cf5fe0c5c65695fef6346371e9c48"
+checksum = "72a2903cd7736441aac9df9d7688bd0ce48edccaadf181c3b90be801e81d3d86"
 dependencies = [
- "backtrace",
  "bytes",
  "parking_lot",
  "pin-project-lite",
