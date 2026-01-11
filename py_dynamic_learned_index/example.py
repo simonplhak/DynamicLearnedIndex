@@ -1,5 +1,4 @@
 import io
-import json
 import shutil
 from pathlib import Path
 
@@ -188,7 +187,8 @@ for i in range(0, len(queries) - 1, 50):
     print(f'For query "{i}" loaded index found: {loaded_res}')
 print()
 
-print("CAPTURED LOGS")
-for log in log_buffer.getvalue().split("\n")[:-1]:
-    print(json.loads(log))
-log_buffer.close()
+# uncomment if needed
+# print("CAPTURED LOGS")
+# for log in log_buffer.getvalue().split("\n")[:-1]:
+#     print(json.loads(log))
+# log_buffer.close()
