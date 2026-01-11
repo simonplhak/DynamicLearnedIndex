@@ -758,7 +758,7 @@ dependencies = [
 [[package]]
 name = "flat-knn"
 version = "0.1.0"
-source = "git+https://github.com/simonplhak/flat-knn#5e2b5bed2076def36f26c8e5087fd25122374dcf"
+source = "git+https://github.com/simonplhak/flat-knn#dc9f487d864a00dfb45786afc91c48a4cb9f4982"
 dependencies = [
  "faiss",
  "linfa",
