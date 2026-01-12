@@ -419,81 +419,86 @@ impl CompactionStrategy {
     #[log_time]
     pub fn rebuild(&self, index: &mut Index, level_idx: usize) -> DliResult<()> {
         assert!(level_idx < index.levels.len());
-        let move_data = |index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize| {
-            assert!(from_level_idxs
-                .iter()
-                .all(|&idx| idx < index.levels.len() && idx != to_level_idx));
-            let from_levels_occupied = from_level_idxs
-                .iter()
-                .map(|&idx| index.levels[idx].occupied())
-                .sum::<usize>();
-            assert!(from_levels_occupied <= index.levels[to_level_idx].free_space());
-            let to_level_occupied = index.levels[to_level_idx].occupied();
-            for idx in from_level_idxs {
-                let (data, ids) = index.levels[*idx].get_data();
-                index.levels[to_level_idx]
-                    .insert_many(data, ids)
-                    .expect("insert_many failed inside rebuild move_data closure");
-            }
-            assert!(from_level_idxs
-                .iter()
-                .all(|&idx| index.levels[idx].occupied() == 0));
-            assert!(
-                index.levels[to_level_idx].occupied() == from_levels_occupied + to_level_occupied
-            );
-        };
 
-        let source_target_level = |level_occupied| {
-            // First level
-            if level_idx == 0 {
-                if let Some(lower_level_idx) = lower_level(index, level_idx, level_occupied) {
-                    assert!(lower_level_idx > level_idx);
-                    return Some((level_idx, lower_level_idx));
-                };
-                return None;
-            }
-            // Middle level
-            if level_idx < index.levels.len() - 1 {
-                if let Some(lower_level_idx) = lower_level(index, level_idx, level_occupied) {
-                    assert!(lower_level_idx > level_idx);
-                    return Some((level_idx, lower_level_idx));
-                };
-            }
-            // Last level or no lower level found for middle level
-            // Try to move data to the upper level
-            let upper_level_idx = level_idx - 1;
-            if index.levels[upper_level_idx].free_space() >= level_occupied {
-                return Some((level_idx, upper_level_idx));
-            }
-            // Top up current level from upper level
-            Some((level_idx - 1, level_idx))
-        };
-
-        let flush_buffer = |index: &mut Index, level_occupied: usize| -> DliResult<()> {
-            let buffer_occupied = index.buffer.occupied();
-            let (data, ids) = index.buffer.get_data();
-            index.levels[level_idx].insert_many(data, ids)?;
-            assert!(index.buffer.occupied() == 0);
-            assert!(index.levels[level_idx].occupied() == level_occupied + buffer_occupied);
-            Ok(())
-        };
         match self {
             CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild) => {}
             CompactionStrategy::BentleySaxe(RebuildStrategy::BasicRebuild) => {
                 let level_occupied = index.levels[level_idx].occupied();
                 info!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
-                match source_target_level(level_occupied) {
+                match Self::find_source_target_levels(index, level_idx, level_occupied) {
                     Some((from_level_idx, to_level_idx)) => {
                         move_data(index, &[from_level_idx], to_level_idx);
                     }
                     None => {
-                        flush_buffer(index, level_occupied)?;
+                        flush_buffer(index, level_idx, level_occupied)?;
                     }
                 }
             }
+            
         }
         Ok(())
     }
+
+    fn find_source_target_levels(
+        index: &mut Index,
+        level_idx: usize,
+        level_occupied: usize,
+    ) -> Option<(usize, usize)> {
+        // First level
+        if level_idx == 0 {
+            if let Some(lower_level_idx) = lower_level(index, level_idx, level_occupied) {
+                assert!(lower_level_idx > level_idx);
+                return Some((level_idx, lower_level_idx));
+            };
+            return None;
+        }
+        // Middle level
+        if level_idx < index.levels.len() - 1 {
+            if let Some(lower_level_idx) = lower_level(index, level_idx, level_occupied) {
+                assert!(lower_level_idx > level_idx);
+                return Some((level_idx, lower_level_idx));
+            };
+        }
+        // Last level or no lower level found for middle level
+        // Try to move data to the upper level
+        let upper_level_idx = level_idx - 1;
+        if index.levels[upper_level_idx].free_space() >= level_occupied {
+            return Some((level_idx, upper_level_idx));
+        }
+        // Top up current level from upper level
+        Some((level_idx - 1, level_idx))
+    }
+}
+
+fn flush_buffer(index: &mut Index, level_idx: usize, level_occupied: usize) -> DliResult<()> {
+    let buffer_occupied = index.buffer.occupied();
+    let (data, ids) = index.buffer.get_data();
+    index.levels[level_idx].insert_many(data, ids)?;
+    assert!(index.buffer.occupied() == 0);
+    assert!(index.levels[level_idx].occupied() == level_occupied + buffer_occupied);
+    Ok(())
+}
+
+fn move_data(index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize) {
+    assert!(from_level_idxs
+        .iter()
+        .all(|&idx| idx < index.levels.len() && idx != to_level_idx));
+    let from_levels_occupied = from_level_idxs
+        .iter()
+        .map(|&idx| index.levels[idx].occupied())
+        .sum::<usize>();
+    assert!(from_levels_occupied <= index.levels[to_level_idx].free_space());
+    let to_level_occupied = index.levels[to_level_idx].occupied();
+    for idx in from_level_idxs {
+        let (data, ids) = index.levels[*idx].get_data();
+        index.levels[to_level_idx]
+            .insert_many(data, ids)
+            .expect("insert_many failed inside rebuild move_data closure");
+    }
+    assert!(from_level_idxs
+        .iter()
+        .all(|&idx| index.levels[idx].occupied() == 0));
+    assert!(index.levels[to_level_idx].occupied() == from_levels_occupied + to_level_occupied);
 }
 
 fn lower_level(index: &Index, level_idx: usize, size: usize) -> Option<usize> {
