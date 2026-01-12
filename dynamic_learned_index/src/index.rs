@@ -468,6 +468,15 @@ impl CompactionStrategy {
             // Top up current level from upper level
             Some((level_idx - 1, level_idx))
         };
+
+        let flush_buffer = |index: &mut Index, level_occupied: usize| -> DliResult<()> {
+            let buffer_occupied = index.buffer.occupied();
+            let (data, ids) = index.buffer.get_data();
+            index.levels[level_idx].insert_many(data, ids)?;
+            assert!(index.buffer.occupied() == 0);
+            assert!(index.levels[level_idx].occupied() == level_occupied + buffer_occupied);
+            Ok(())
+        };
         match self {
             CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild) => {}
             CompactionStrategy::BentleySaxe(RebuildStrategy::BasicRebuild) => {
@@ -478,14 +487,7 @@ impl CompactionStrategy {
                         move_data(index, &[from_level_idx], to_level_idx);
                     }
                     None => {
-                        // flush buffer
-                        let buffer_occupied = index.buffer.occupied();
-                        let (data, ids) = index.buffer.get_data();
-                        index.levels[level_idx].insert_many(data, ids)?;
-                        assert!(index.buffer.occupied() == 0);
-                        assert!(
-                            index.levels[level_idx].occupied() == level_occupied + buffer_occupied
-                        );
+                        flush_buffer(index, level_occupied)?;
                     }
                 }
             }
