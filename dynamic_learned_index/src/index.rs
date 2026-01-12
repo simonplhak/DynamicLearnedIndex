@@ -308,6 +308,8 @@ pub enum RebuildStrategy {
     NoRebuild,
     #[serde(rename = "basic_rebuild")]
     BasicRebuild,
+    #[serde(rename = "greedy_rebuild")]
+    GreedyRebuild,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -331,6 +333,9 @@ impl From<&str> for CompactionStrategy {
             }
             "bentley_saxe:basic_rebuild" => {
                 CompactionStrategy::BentleySaxe(RebuildStrategy::BasicRebuild)
+            }
+            "bentley_saxe:greedy_rebuild" => {
+                CompactionStrategy::BentleySaxe(RebuildStrategy::GreedyRebuild)
             }
             _ => panic!("Unknown compaction strategy: {val}"),
         }
@@ -434,7 +439,29 @@ impl CompactionStrategy {
                     }
                 }
             }
-            
+            CompactionStrategy::BentleySaxe(RebuildStrategy::GreedyRebuild) => {
+                let level_occupied = index.levels[level_idx].occupied();
+                match Self::find_source_target_levels(index, level_idx, level_occupied) {
+                    Some((_, to_level_idx)) => {
+                        let mut available_space = index.levels[to_level_idx].free_space();
+                        let mut source_levels = vec![];
+                        for level_idx in (to_level_idx..=0).rev() {
+                            let level_occupied = index.levels[level_idx].occupied();
+                            if level_occupied > 0 {
+                                if level_occupied > available_space {
+                                    break;
+                                }
+                                available_space -= level_occupied;
+                                source_levels.push(level_idx);
+                            }
+                        }
+                        move_data(index, &source_levels, to_level_idx);
+                    }
+                    None => {
+                        flush_buffer(index, level_idx, level_occupied)?;
+                    }
+                }
+            }
         }
         Ok(())
     }
