@@ -419,21 +419,27 @@ impl CompactionStrategy {
     #[log_time]
     pub fn rebuild(&self, index: &mut Index, level_idx: usize) -> DliResult<()> {
         assert!(level_idx < index.levels.len());
-        let move_data = |index: &mut Index, from_level_idx: usize, to_level_idx: usize| {
-            assert!(from_level_idx != to_level_idx);
-            assert!(index.levels[from_level_idx].occupied() > 0);
-            assert!(
-                index.levels[from_level_idx].occupied() <= index.levels[to_level_idx].free_space()
-            );
-            let from_level_occupied = index.levels[from_level_idx].occupied();
+        let move_data = |index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize| {
+            assert!(from_level_idxs
+                .iter()
+                .all(|&idx| idx < index.levels.len() && idx != to_level_idx));
+            let from_levels_occupied = from_level_idxs
+                .iter()
+                .map(|&idx| index.levels[idx].occupied())
+                .sum::<usize>();
+            assert!(from_levels_occupied <= index.levels[to_level_idx].free_space());
             let to_level_occupied = index.levels[to_level_idx].occupied();
-            let (data, ids) = index.levels[from_level_idx].get_data();
-            index.levels[to_level_idx]
-                .insert_many(data, ids)
-                .expect("insert_many failed inside rebuild move_data closure");
-            assert!(index.levels[from_level_idx].occupied() == 0);
+            for idx in from_level_idxs {
+                let (data, ids) = index.levels[*idx].get_data();
+                index.levels[to_level_idx]
+                    .insert_many(data, ids)
+                    .expect("insert_many failed inside rebuild move_data closure");
+            }
+            assert!(from_level_idxs
+                .iter()
+                .all(|&idx| index.levels[idx].occupied() == 0));
             assert!(
-                index.levels[to_level_idx].occupied() == from_level_occupied + to_level_occupied
+                index.levels[to_level_idx].occupied() == from_levels_occupied + to_level_occupied
             );
         };
 
@@ -469,7 +475,7 @@ impl CompactionStrategy {
                 info!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
                 match source_target_level(level_occupied) {
                     Some((from_level_idx, to_level_idx)) => {
-                        move_data(index, from_level_idx, to_level_idx);
+                        move_data(index, &[from_level_idx], to_level_idx);
                     }
                     None => {
                         // flush buffer
