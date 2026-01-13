@@ -432,7 +432,7 @@ impl CompactionStrategy {
                 info!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
                 match Self::find_source_target_levels(index, level_idx, level_occupied) {
                     Some((from_level_idx, to_level_idx)) => {
-                        move_data(index, &[from_level_idx], to_level_idx);
+                        move_data(index, &[from_level_idx], to_level_idx)?;
                     }
                     None => {
                         flush_buffer(index, level_idx, level_occupied)?;
@@ -455,7 +455,7 @@ impl CompactionStrategy {
                                 source_levels.push(level_idx);
                             }
                         }
-                        move_data(index, &source_levels, to_level_idx);
+                        move_data(index, &source_levels, to_level_idx)?;
                     }
                     None => {
                         flush_buffer(index, level_idx, level_occupied)?;
@@ -506,7 +506,7 @@ fn flush_buffer(index: &mut Index, level_idx: usize, level_occupied: usize) -> D
     Ok(())
 }
 
-fn move_data(index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize) {
+fn move_data(index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize) -> DliResult<()> {
     assert!(from_level_idxs
         .iter()
         .all(|&idx| idx < index.levels.len() && idx != to_level_idx));
@@ -516,16 +516,19 @@ fn move_data(index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize) 
         .sum::<usize>();
     assert!(from_levels_occupied <= index.levels[to_level_idx].free_space());
     let to_level_occupied = index.levels[to_level_idx].occupied();
+    let mut data = Vec::with_capacity(from_levels_occupied * index.input_shape);
+    let mut ids = Vec::with_capacity(from_levels_occupied);
     for idx in from_level_idxs {
-        let (data, ids) = index.levels[*idx].get_data();
-        index.levels[to_level_idx]
-            .insert_many(data, ids)
-            .expect("insert_many failed inside rebuild move_data closure");
+        let (level_data, level_ids) = index.levels[*idx].get_data();
+        data.extend(level_data);
+        ids.extend(level_ids);
     }
+    index.levels[to_level_idx].insert_many(data, ids)?;
     assert!(from_level_idxs
         .iter()
         .all(|&idx| index.levels[idx].occupied() == 0));
     assert!(index.levels[to_level_idx].occupied() == from_levels_occupied + to_level_occupied);
+    Ok(())
 }
 
 fn lower_level(index: &Index, level_idx: usize, size: usize) -> Option<usize> {
