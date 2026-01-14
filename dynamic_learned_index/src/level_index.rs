@@ -279,25 +279,15 @@ impl LevelIndex {
         )
     }
 
-    pub(crate) fn delete(
-        &mut self,
-        id: &Id,
-        delete_method: &DeleteMethod,
-    ) -> DliResult<Option<(Array, Id)>> {
+    pub(crate) fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> Option<(Array, Id)> {
         let deleted = self.ids_map.get(id).cloned();
         if let Some((bucket_idx, record_idx)) = deleted {
             assert!(bucket_idx < self.buckets.len());
             assert!(record_idx < self.buckets[bucket_idx].occupied());
             let bucket = &mut self.buckets[bucket_idx];
             let (deleted, (swapped_new_idx, swapped_id)) =
-                match bucket.delete(record_idx, delete_method) {
-                    Some(v) => v,
-                    None => return Ok(None),
-                };
-            let (deleted_bucket_idx, deleted_record_idx) = match self.ids_map.remove(id) {
-                Some(v) => v,
-                None => return Ok(None),
-            }; // we are sure it exists
+                bucket.delete(record_idx, delete_method)?;
+            let (deleted_bucket_idx, deleted_record_idx) = self.ids_map.remove(id)?; // we are sure it exists
             assert_eq!(deleted_bucket_idx, bucket_idx);
             assert_eq!(deleted_record_idx, record_idx);
             // Only insert the swapped id mapping if a different record was moved into the deleted slot.
@@ -306,9 +296,9 @@ impl LevelIndex {
                 self.ids_map
                     .insert(swapped_id, (bucket_idx, swapped_new_idx));
             }
-            return Ok(Some(deleted));
+            return Some(deleted);
         }
-        Ok(None)
+        None
     }
 
     pub(crate) fn dump(&self, working_dir: &Path, level_id: usize) -> DliResult<DiskLevelIndex> {
@@ -608,7 +598,7 @@ mod tests {
             make_level_with_records(vec![rec0.clone(), rec1.clone(), rec2.clone()], ids.clone());
 
         // delete middle id (2)
-        let res = level.delete(&2u32, &DeleteMethod::OidToBucket)?;
+        let res = level.delete(&2u32, &DeleteMethod::OidToBucket);
         let (deleted_vec, deleted_id) = res.expect("expected middle deletion");
         assert_eq!(deleted_id, 2u32);
         assert_eq!(deleted_vec, rec1);
@@ -628,7 +618,7 @@ mod tests {
         let rec = vec![1.0f32, 2.0, 3.0];
         let id = 42u32;
         let mut level = make_level_with_records(vec![rec.clone()], vec![id]);
-        let res = level.delete(&id, &DeleteMethod::OidToBucket)?;
+        let res = level.delete(&id, &DeleteMethod::OidToBucket);
         let (deleted_vec, deleted_id) = res.expect("expected deletion");
         assert_eq!(deleted_id, id);
         assert_eq!(deleted_vec, rec);
@@ -643,7 +633,7 @@ mod tests {
     #[test]
     fn test_level_index_delete_missing_id_returns_none() -> DliResult<()> {
         let mut level = make_level_with_records(vec![], vec![]);
-        let res = level.delete(&999u32, &DeleteMethod::OidToBucket)?;
+        let res = level.delete(&999u32, &DeleteMethod::OidToBucket);
         assert!(res.is_none());
         Ok(())
     }
@@ -806,7 +796,7 @@ mod tests {
 
         // 4. Delete A
         // Since we have [A, B], deleting A (idx 0) should swap B (last) to idx 0.
-        level.delete(&id_a, &DeleteMethod::OidToBucket)?;
+        level.delete(&id_a, &DeleteMethod::OidToBucket);
 
         assert!(!level.ids_map.contains_key(&id_a));
         assert_eq!(
@@ -914,7 +904,7 @@ mod tests {
         assert_eq!(level.n_empty_buckets(), 0);
 
         // 5. Deletion from bucket 1 (making it empty)
-        level.delete(&id2, &DeleteMethod::OidToBucket)?;
+        level.delete(&id2, &DeleteMethod::OidToBucket);
 
         assert_eq!(level.occupied(), 2);
         assert_eq!(level.free_space(), 18);
