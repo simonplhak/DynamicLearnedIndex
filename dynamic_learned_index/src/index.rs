@@ -29,6 +29,7 @@ pub struct Index {
 }
 
 impl Index {
+    #[log_time]
     pub fn search<S>(&self, query: &ArraySlice, params: S) -> DliResult<Vec<Id>>
     where
         S: SearchParamsT,
@@ -44,6 +45,7 @@ impl Index {
         Ok(res)
     }
 
+    #[log_time]
     fn records2visit(
         &'_ self,
         predictions: Vec<Vec<(usize, f32, usize)>>,
@@ -70,10 +72,10 @@ impl Index {
                 // add buffer as a special "bucket"
                 buckets2visit.push((levels, self.n_buckets(), 1.0, self.buffer.occupied()));
                 buckets2visit.sort_by(|a, b| b.2.total_cmp(&a.2));
-                let total_visited_buckets = buckets2visit.len();
                 let mut records = Vec::new();
                 let mut ids = Vec::new();
                 let mut total_occupied = 0;
+                let mut visited_buckets = 0;
                 for (level_idx, bucket_id, _prob, occupied) in buckets2visit {
                     if occupied > 0 && total_occupied < ncandidates {
                         if level_idx == levels {
@@ -92,16 +94,18 @@ impl Index {
                             }
                         }
                         total_occupied += occupied;
+                        visited_buckets += 1;
                     }
                     if total_occupied >= ncandidates {
                         break;
                     }
                 }
-                Records2Visit {
-                    records,
-                    ids,
-                    total_visited_buckets,
-                }
+                debug!(
+                    visited_buckets = visited_buckets,
+                    visited_records = ids.len();
+                    "index:records2visit"
+                );
+                Records2Visit { records, ids }
             }
         }
     }
@@ -138,6 +142,7 @@ impl Index {
         Ok(())
     }
 
+    #[log_time]
     pub fn delete(&mut self, id: Id) -> DliResult<Option<(Array, Id)>> {
         if let Some(deleted) = self.buffer.delete(&id) {
             return Ok(Some(deleted));
@@ -401,12 +406,14 @@ impl CompactionStrategy {
     #[log_time]
     pub fn rebuild(&self, index: &mut Index, level_idx: usize) -> DliResult<()> {
         assert!(level_idx < index.levels.len());
-
+        let level_occupied = index.levels[level_idx].occupied();
+        info!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
         match self {
-            CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild) => {}
+            CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild) => {
+                info!("index:no_rebuild");
+            }
             CompactionStrategy::BentleySaxe(RebuildStrategy::BasicRebuild) => {
-                let level_occupied = index.levels[level_idx].occupied();
-                info!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
+                info!("index:basic_rebuild");
                 match Self::find_source_target_levels(index, level_idx, level_occupied) {
                     Some((from_level_idx, to_level_idx)) => {
                         move_data(index, &[from_level_idx], to_level_idx)?;
@@ -417,7 +424,7 @@ impl CompactionStrategy {
                 }
             }
             CompactionStrategy::BentleySaxe(RebuildStrategy::GreedyRebuild) => {
-                let level_occupied = index.levels[level_idx].occupied();
+                info!("index:greedy_rebuild");
                 match Self::find_source_target_levels(index, level_idx, level_occupied) {
                     Some((_, to_level_idx)) => {
                         let mut available_space = index.levels[to_level_idx].free_space();
@@ -484,6 +491,11 @@ fn flush_buffer(index: &mut Index, level_idx: usize, level_occupied: usize) -> D
 }
 
 fn move_data(index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize) -> DliResult<()> {
+    info!(
+        source_levels = from_level_idxs.iter().map(|idx| idx.to_string()).collect::<Vec<_>>().join(","),
+        to_level = to_level_idx;
+        "index:move_data"
+    );
     assert!(from_level_idxs
         .iter()
         .all(|&idx| idx < index.levels.len() && idx != to_level_idx));
