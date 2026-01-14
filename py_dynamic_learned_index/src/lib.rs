@@ -391,17 +391,23 @@ fn log_init(target: &Bound<'_, PyAny>, level: &str) -> PyResult<()> {
     if let Ok(file_path) = target.extract::<String>() {
         let file = std::fs::File::create(file_path)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyIOError, _>(e.to_string()))?;
-        structured_logger::Builder::with_level(level)
+        if let Err(e) = structured_logger::Builder::with_level(level)
             .with_target_writer("*", new_writer(file))
-            .init();
+            .try_init()
+        {
+            eprintln!("Warning: Logger already initialized: {}", e);
+        }
     } else {
         // Assume it's a file-like object
         let writer = PyFileLike {
             inner: target.clone().unbind(),
         };
-        structured_logger::Builder::with_level(level)
+        if let Err(e) = structured_logger::Builder::with_level(level)
             .with_target_writer("*", new_writer(writer))
-            .init();
+            .try_init()
+        {
+            eprintln!("Warning: Logger already initialized: {}", e);
+        }
     }
     Ok(())
 }
