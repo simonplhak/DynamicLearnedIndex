@@ -159,16 +159,6 @@ impl Default for SearchStrategy {
 pub struct Records2Visit<'a> {
     pub records: Vec<&'a [ArrayNumType]>,
     pub ids: Vec<Id>,
-    pub total_visited_buckets: usize,
-}
-
-pub struct SearchStatistics {
-    pub total_visited_buckets: usize,
-    pub total_visited_records: usize,
-}
-
-pub struct DeleteStatistics {
-    pub affected_level: Option<usize>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

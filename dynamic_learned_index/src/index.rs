@@ -5,8 +5,8 @@ use crate::{
     structs::{
         DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig, LevelIndexConfig, Records2Visit,
     },
-    Array, ArraySlice, DeleteMethod, DeleteStatistics, DistanceFn, DliError, DliResult, Id,
-    ModelLayer, SearchParams, SearchParamsT, SearchStatistics, SearchStrategy,
+    Array, ArraySlice, DeleteMethod, DistanceFn, DliError, DliResult, Id, ModelLayer, SearchParams,
+    SearchParamsT, SearchStrategy,
 };
 use log::{debug, info};
 use measure_time_macro::log_time;
@@ -33,7 +33,15 @@ impl Index {
     where
         S: SearchParamsT,
     {
-        self.verbose_search(query, params).map(|(res, _)| res)
+        let params = params.into_search_params();
+        let predictions = self.bucket_selection(query)?;
+        let records2visit = self.records2visit(predictions, params.search_strategy);
+        let rs = self.merge_results(&records2visit.records, query, &params);
+        let res = rs
+            .into_iter()
+            .map(|(_, idx)| records2visit.ids[idx])
+            .collect();
+        Ok(res)
     }
 
     fn records2visit(
@@ -131,7 +139,27 @@ impl Index {
     }
 
     pub fn delete(&mut self, id: Id) -> DliResult<Option<(Array, Id)>> {
-        Ok(self.verbose_delete(id)?.map(|(deleted, _)| deleted))
+        if let Some(deleted) = self.buffer.delete(&id) {
+            return Ok(Some(deleted));
+        }
+        if let Some((level_idx, deleted)) = self.delete_from_level(id) {
+            debug!(level_idx = level_idx, id = id; "index:level_delete_with_rebuild");
+            if self.is_level_underutilized(level_idx) {
+                self.compaction_strategy.clone().rebuild(self, level_idx)?;
+            }
+            return Ok(Some(deleted));
+        }
+        Ok(None)
+    }
+
+    #[log_time]
+    fn delete_from_level(&mut self, id: Id) -> Option<(usize, (Array, Id))> {
+        for (level_idx, level) in &mut self.levels.iter_mut().enumerate() {
+            if let Some(deleted) = level.delete(&id, &self.delete_method) {
+                return Some((level_idx, deleted));
+            }
+        }
+        None
     }
 
     pub fn size(&self) -> usize {
@@ -215,57 +243,6 @@ impl Index {
                 DistanceFn::Dot => flat_knn::Metric::Dot,
             },
         )
-    }
-
-    pub fn verbose_search<S>(
-        &self,
-        query: &ArraySlice,
-        params: S,
-    ) -> DliResult<(Vec<Id>, SearchStatistics)>
-    where
-        S: SearchParamsT,
-    {
-        let params = params.into_search_params();
-        let predictions = self.bucket_selection(query)?;
-        let records2visit = self.records2visit(predictions, params.search_strategy);
-        let rs = self.merge_results(&records2visit.records, query, &params);
-        let res = rs
-            .into_iter()
-            .map(|(_, idx)| records2visit.ids[idx])
-            .collect();
-        Ok((
-            res,
-            SearchStatistics {
-                total_visited_buckets: records2visit.total_visited_buckets,
-                total_visited_records: records2visit.ids.len(),
-            },
-        ))
-    }
-
-    #[log_time]
-    pub fn verbose_delete(&mut self, id: Id) -> DliResult<Option<((Array, Id), DeleteStatistics)>> {
-        if let Some(deleted) = self.buffer.delete(&id) {
-            return Ok(Some((
-                deleted,
-                DeleteStatistics {
-                    affected_level: None,
-                },
-            )));
-        }
-        for (level_idx, level) in &mut self.levels.iter_mut().enumerate() {
-            if let Some(deleted) = level.delete(&id, &self.delete_method)? {
-                if self.is_level_underutilized(level_idx) {
-                    self.compaction_strategy.clone().rebuild(self, level_idx)?;
-                }
-                return Ok(Some((
-                    deleted,
-                    DeleteStatistics {
-                        affected_level: Some(level_idx),
-                    },
-                )));
-            }
-        }
-        Ok(None)
     }
 
     fn is_level_underutilized(&self, level_idx: usize) -> bool {
@@ -1060,7 +1037,7 @@ mod tests {
         // Also get verbose search statistics
         let original_stats = test_queries
             .iter()
-            .map(|query| index.verbose_search(query.as_slice(), 10))
+            .map(|query| index.search(query.as_slice(), 10))
             .collect::<DliResult<Vec<_>>>()?;
 
         // Save index to temporary directory
@@ -1099,7 +1076,7 @@ mod tests {
 
         let loaded_stats = test_queries
             .iter()
-            .map(|query| loaded_index.verbose_search(query.as_slice(), 10))
+            .map(|query| loaded_index.search(query.as_slice(), 10))
             .collect::<DliResult<Vec<_>>>()?;
 
         // Verify search results match
@@ -1116,18 +1093,10 @@ mod tests {
         }
 
         // Verify search statistics match
-        for (i, ((orig_ids, orig_stats), (loaded_ids, loaded_stats))) in
+        for (i, (orig_ids, loaded_ids)) in
             original_stats.iter().zip(loaded_stats.iter()).enumerate()
         {
             assert_eq!(orig_ids, loaded_ids, "Query {i} IDs should match");
-            assert_eq!(
-                orig_stats.total_visited_buckets, loaded_stats.total_visited_buckets,
-                "Query {i} should visit same number of buckets"
-            );
-            assert_eq!(
-                orig_stats.total_visited_records, loaded_stats.total_visited_records,
-                "Query {i} should visit same number of records"
-            );
         }
 
         // Verify buffer contents match
@@ -1329,10 +1298,6 @@ mod tests {
                 "Invalid id: {id}"
             );
         }
-
-        // 4. total_visited_buckets should count all buckets + buffer
-        // In this case: 2 data buckets + 1 buffer = 3
-        assert_eq!(result.total_visited_buckets, 3);
 
         // Test 2: with larger ncandidates to verify all records collected
         let ncandidates_large = 20;

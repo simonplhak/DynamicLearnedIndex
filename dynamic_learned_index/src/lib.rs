@@ -14,7 +14,6 @@ pub use errors::{DliError, DliResult};
 pub use index::{CompactionStrategy, Index, IndexBuilder, RebuildStrategy};
 pub use model::{ModelConfig, ModelDevice, ModelLayer, TrainParams};
 pub use structs::{
-    DeleteMethod, DeleteStatistics, DistanceFn, IndexConfig, SearchParams, SearchParamsT,
-    SearchStatistics, SearchStrategy,
+    DeleteMethod, DistanceFn, IndexConfig, SearchParams, SearchParamsT, SearchStrategy,
 };
 pub use types::{Array, ArrayNumType, ArraySlice, Id};

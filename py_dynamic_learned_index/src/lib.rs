@@ -2,8 +2,7 @@ use std::io::Write;
 use std::path::Path;
 
 use dynamic_learned_index::{
-    model::RetrainStrategy, DeleteStatistics, IndexBuilder, ModelDevice, ModelLayer, SearchParams,
-    SearchStatistics,
+    model::RetrainStrategy, IndexBuilder, ModelDevice, ModelLayer, SearchParams,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::{
@@ -247,58 +246,12 @@ fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyRes
     }
 }
 
-#[pyclass]
-struct PySearchStatistics {
-    #[pyo3(get)]
-    total_visited_buckets: usize,
-    #[pyo3(get)]
-    total_visited_records: usize,
-}
-
-impl From<SearchStatistics> for PySearchStatistics {
-    fn from(stats: SearchStatistics) -> Self {
-        PySearchStatistics {
-            total_visited_buckets: stats.total_visited_buckets,
-            total_visited_records: stats.total_visited_records,
-        }
-    }
-}
-
-#[pyclass]
-struct PyDeleteStatistics {
-    #[pyo3(get)]
-    affected_level: Option<usize>,
-}
-
-impl From<DeleteStatistics> for PyDeleteStatistics {
-    fn from(stats: DeleteStatistics) -> Self {
-        PyDeleteStatistics {
-            affected_level: stats.affected_level,
-        }
-    }
-}
-
 #[pymethods]
 impl DynamicLearnedIndex {
     #[new]
     fn new() -> PyResult<Self> {
         let index = IndexBuilder::default().build()?;
         Ok(DynamicLearnedIndex { index })
-    }
-
-    #[pyo3(signature = (query, k, **py_kwargs))]
-    fn verbose_search<'py>(
-        &self,
-        py: Python<'py>,
-        query: PyReadonlyArray1<'py, f32>,
-        k: usize,
-        py_kwargs: Option<&Bound<'_, PyDict>>,
-    ) -> PyResult<(Bound<'py, PyArray1<u32>>, PySearchStatistics)> {
-        let query = array2vec(query);
-        let search_params = parse_search_kwargs(py_kwargs, k)?;
-        let (r, stats) = self.index.verbose_search(&query, search_params)?;
-        let x = r.into_pyarray_bound(py);
-        Ok((x, stats.into()))
     }
 
     #[pyo3(signature = (query, k, **py_kwargs))]
@@ -320,16 +273,6 @@ impl DynamicLearnedIndex {
         let record = array2vec(record);
         self.index.insert(record, id)?;
         Ok(())
-    }
-
-    fn verbose_delete(
-        &mut self,
-        id: u32,
-    ) -> PyResult<Option<((Vec<f32>, u32), PyDeleteStatistics)>> {
-        Ok(self
-            .index
-            .verbose_delete(id)?
-            .map(|(data, stats)| (data, stats.into())))
     }
 
     fn delete(&mut self, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
