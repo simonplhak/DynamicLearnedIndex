@@ -109,29 +109,6 @@ res = index.delete(id_to_delete)
 print(f"deleting non-existing id results in: {res}")
 print()
 
-# verbose search that returns additional statistics
-res, statistics = index.verbose_search(
-    queries[0], k, n_candidates=n_candidates, search_strategy=search_strategy
-)
-print(f"""Verbose search: 
-      {res=}, 
-      {statistics=}, 
-      {statistics.total_visited_buckets=}, 
-      {statistics.total_visited_records=}""")
-print()
-
-# verbose delete
-id_to_delete = 2
-(deleted_query, deleted_id), deleted_stats = index.verbose_delete(id_to_delete)
-print(f"""delete: 
-      deleted_query is same as inserted query: 
-      {(deleted_query == queries[id_to_delete]).all()}, 
-      {id_to_delete=}, 
-      {deleted_id=}, 
-      {deleted_stats=}, 
-      {deleted_stats.affected_level=}""")
-print()
-
 # serialize index to disk
 
 working_dir = Path("index_dump")
@@ -185,10 +162,12 @@ for i in range(0, len(queries) - 1, 50):
     )
     assert (res == loaded_res).all()
     print(f'For query "{i}" loaded index found: {loaded_res}')
-print()
 
 # uncomment if needed
 # print("CAPTURED LOGS")
+# import json
+
 # for log in log_buffer.getvalue().split("\n")[:-1]:
-#     print(json.loads(log))
+#     log = json.loads(log)
+#     print(log)
 # log_buffer.close()
