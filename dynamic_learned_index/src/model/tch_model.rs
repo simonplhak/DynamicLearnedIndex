@@ -107,8 +107,8 @@ impl ModelBuilder {
             labels as i64,
             Default::default(),
         ));
-        let train_params = self.train_params.clone().unwrap_or_default();
-        let retrain_params = self.retrain_params.clone().unwrap_or_default();
+        let train_params = self.train_params.unwrap_or_default();
+        let retrain_params = self.retrain_params.unwrap_or_default();
         let model = Model {
             model: Box::new(model),
             vs,
