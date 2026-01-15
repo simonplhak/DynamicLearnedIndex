@@ -148,7 +148,7 @@ impl Index {
             return Ok(Some(deleted));
         }
         if let Some((level_idx, deleted)) = self.delete_from_level(id) {
-            debug!(level_idx = level_idx, id = id; "index:level_delete_with_rebuild");
+            debug!(level_idx = level_idx, id = id; "index:delete");
             if self.is_level_underutilized(level_idx) {
                 self.compaction_strategy.clone().rebuild(self, level_idx)?;
             }
