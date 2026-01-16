@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 dotenvy = "0.15.7"
 log = { version = "0.4.27", features = ["kv"] }
-measure_time_macro = { path = "../measure_time_macro" }
+measure_time_macro = { path = "../measure_time_macro", default-features = false }
 once_cell = "1.21.3"
 rand = "0.9.0"
 serde = "1.0.219"
@@ -27,6 +27,7 @@ pyo3 = { version = "0.22", optional = true }
 
 [features]
 default = []
+measure_time = ["measure_time_macro/enabled"]
 pyo3 = ["dep:pyo3"]
 tch = ["dep:tch"]
 

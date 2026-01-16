@@ -49,6 +49,9 @@ To export python bindings use the following command:
 ```shell
 cd py_dynamic_learned_index
 uv run maturin build --release --zig --compatibility manylinux2014
+
+# you can also use feature "measure_time" to enable time measuring macro - mostly for dev purposes
+uv run maturin build --release --zig --compatibility manylinux2014 --features measure_time
 ```
 
 Then you can install the package via pip:
