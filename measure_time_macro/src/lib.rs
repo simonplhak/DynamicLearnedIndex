@@ -15,7 +15,7 @@ pub fn log_time(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let start = std::time::Instant::now();
             let result = (|| #block)();
             let duration = start.elapsed();
-            info!(time:?=duration, function=stringify!(#fn_name); "time");
+            debug!(time:?=duration, function=stringify!(#fn_name); "time");
             result
         }
     };

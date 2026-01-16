@@ -4,7 +4,7 @@ use crate::{
     structs::{DiskBucket, DiskLevelIndex, LevelIndexConfig},
     Array, ArraySlice, DeleteMethod, DistanceFn, DliError, DliResult, Id,
 };
-use log::info;
+use log::debug;
 use measure_time_macro::log_time;
 use std::{
     collections::HashMap,

@@ -4,7 +4,7 @@ use candle_core::{DType, Tensor, D};
 use candle_core::{Device, Result as CandleResult};
 use candle_nn::{linear, Linear, Module, Optimizer, VarBuilder, VarMap};
 use candle_nn::{loss, ops};
-use log::info;
+use log::debug;
 use measure_time_macro::log_time;
 use rand::rng;
 use rand::seq::SliceRandom;
@@ -189,7 +189,7 @@ impl Model {
             xs.len() / self.input_shape,
             self.train_params.threshold_samples,
         );
-        info!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
+        debug!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
         let xs = sampling::sample(xs, sample_size, self.input_shape);
 
         let ys = clustering::compute_labels(
@@ -265,7 +265,7 @@ impl Model {
     pub fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
         match self.train_params.retrain_strategy {
             RetrainStrategy::NoRetrain => {
-                info!("No retraining performed as per strategy.");
+                debug!("No retraining performed as per strategy.");
             }
             RetrainStrategy::FromScratch => {
                 reset_model(&mut self.varmap, &self.device)?;

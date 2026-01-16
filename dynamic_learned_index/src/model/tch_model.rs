@@ -1,4 +1,4 @@
-use log::info;
+use log::debug;
 use tch::{
     nn::{self, OptimizerConfig},
     vision::dataset::Dataset,
@@ -168,7 +168,7 @@ impl Model {
             xs.len() / self.input_shape,
             self.train_params.threshold_samples,
         );
-        info!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
+        debug!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
         let xs = sampling::sample(xs, sample_size, self.input_shape);
         let ys = clustering::compute_labels(
             &xs,
@@ -192,7 +192,7 @@ impl Model {
     }
 
     pub fn retrain(&mut self, _xs: &ArraySlice) {
-        info!(epochs = self.retrain_params.epochs; "model:retrain");
+        debug!(epochs = self.retrain_params.epochs; "model:retrain");
     }
 
     fn dataset(&self, xs: &[f32], ys: &[i32]) -> Dataset {

@@ -2,7 +2,7 @@ use anyhow::{Ok, Result};
 use dynamic_learned_index::types::{Array, Id};
 use dynamic_learned_index::{DliResult, Index, SearchStrategy};
 use indicatif::ProgressBar;
-use log::info;
+use log::{debug, info};
 use measure_time_macro::log_time;
 use serde::Deserialize;
 

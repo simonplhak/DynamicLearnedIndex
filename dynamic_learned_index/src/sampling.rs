@@ -1,5 +1,5 @@
 use crate::types::{Array, ArraySlice};
-use log::info;
+use log::debug;
 use measure_time_macro::log_time;
 use rand::rngs::SmallRng;
 use rand::SeedableRng;
@@ -7,7 +7,7 @@ use rand::SeedableRng;
 #[log_time]
 pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
     // todo possibility to return ArraySlice to avoid cloning??
-    info!(n=n ;"sampling");
+    debug!(n=n ;"sampling");
     assert!(!queries.is_empty(), "Queries cannot be empty");
     assert!(queries.len().is_multiple_of(shape));
     assert!(n > 0, "Sample size must be greater than zero");

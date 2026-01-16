@@ -8,7 +8,7 @@ use crate::{
     Array, ArraySlice, DeleteMethod, DistanceFn, DliError, DliResult, Id, ModelLayer, SearchParams,
     SearchParamsT, SearchStrategy,
 };
-use log::{debug, info};
+use log::debug;
 use measure_time_macro::log_time;
 use serde::{Deserialize, Serialize};
 use std::{
@@ -373,10 +373,10 @@ impl CompactionStrategy {
                         let (data, ids) = self.lower_level_data(index, level_idx);
                         let level = &mut index.levels[level_idx];
                         if level.size() == 0 {
-                            info!("index:retrain");
+                            debug!("index:retrain");
                             level.retrain(&data)?;
                         }
-                        info!(
+                        debug!(
                             level_idx = level_idx,
                             data_size = ids.len();
                             "index:compact",
@@ -384,12 +384,12 @@ impl CompactionStrategy {
                         level.insert_many(data, ids)?;
                     }
                     None => {
-                        info!("index:new_level");
+                        debug!("index:new_level");
                         let level_idx = index.add_level()?;
                         let (data, ids) = self.lower_level_data(index, level_idx);
                         let level = &mut index.levels[level_idx];
                         level.train(&data)?;
-                        info!(
+                        debug!(
                             level_idx = level_idx,
                             data_size = ids.len();
                             "index:compact",
@@ -407,13 +407,13 @@ impl CompactionStrategy {
     pub fn rebuild(&self, index: &mut Index, level_idx: usize) -> DliResult<()> {
         assert!(level_idx < index.levels.len());
         let level_occupied = index.levels[level_idx].occupied();
-        info!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
+        debug!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
         match self {
             CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild) => {
-                info!("index:no_rebuild");
+                debug!("index:no_rebuild");
             }
             CompactionStrategy::BentleySaxe(RebuildStrategy::BasicRebuild) => {
-                info!("index:basic_rebuild");
+                debug!("index:basic_rebuild");
                 match Self::find_source_target_levels(index, level_idx, level_occupied) {
                     Some((from_level_idx, to_level_idx)) => {
                         move_data(index, &[from_level_idx], to_level_idx)?;
@@ -424,7 +424,7 @@ impl CompactionStrategy {
                 }
             }
             CompactionStrategy::BentleySaxe(RebuildStrategy::GreedyRebuild) => {
-                info!("index:greedy_rebuild");
+                debug!("index:greedy_rebuild");
                 match Self::find_source_target_levels(index, level_idx, level_occupied) {
                     Some((_, to_level_idx)) => {
                         let mut available_space = index.levels[to_level_idx].free_space();
@@ -491,7 +491,7 @@ fn flush_buffer(index: &mut Index, level_idx: usize, level_occupied: usize) -> D
 }
 
 fn move_data(index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize) -> DliResult<()> {
-    info!(
+    debug!(
         source_levels = from_level_idxs.iter().map(|idx| idx.to_string()).collect::<Vec<_>>().join(","),
         to_level = to_level_idx;
         "index:move_data"
