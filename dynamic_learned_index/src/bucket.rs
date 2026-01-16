@@ -319,10 +319,7 @@ impl<'a> BucketBuilder<'a> {
 
                 (records, ids)
             }
-            None => (
-                Vec::with_capacity(size * input_shape),
-                Vec::with_capacity(size),
-            ),
+            None => (Vec::new(), Vec::new()),
         };
         Ok(Bucket {
             records,
