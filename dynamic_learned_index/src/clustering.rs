@@ -1,4 +1,4 @@
-use log::{debug, info};
+use log::debug;
 use measure_time_macro::log_time;
 use ndarray::Array2;
 
