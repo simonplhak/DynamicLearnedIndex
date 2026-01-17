@@ -12,16 +12,15 @@ classifiers = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "maturin[patchelf]>=1.11.5",
     "numpy>=2.0.2",
 ]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
-python_source = "python"
 
 [dependency-groups]
 dev = [
+    "maturin[patchelf]>=1.11.5",
     "ruff",
     "ziglang>=0.15.1",
 ]
