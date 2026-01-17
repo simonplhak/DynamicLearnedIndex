@@ -193,6 +193,16 @@ impl LevelIndex {
         &self.buckets[bucket_idx]
     }
 
+    pub fn memory_usage(&self) -> usize {
+        let buckets_size: usize = self.buckets.iter().map(|b| b.memory_usage()).sum();
+        let map_capacity = self.ids_map.capacity();
+        // size of Key + Value + 1 byte control (SwissTable)
+        let entry_size = std::mem::size_of::<Id>() + std::mem::size_of::<(usize, usize)>() + 1;
+        let map_size = map_capacity * entry_size;
+
+        std::mem::size_of::<Self>() + self.model.memory_usage() + buckets_size + map_size
+    }
+
     pub(crate) fn buckets2visit_predictions(
         &self,
         query: &ArraySlice,

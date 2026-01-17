@@ -61,6 +61,12 @@ impl Buffer {
         self.ids.len()
     }
 
+    pub fn memory_usage(&self) -> usize {
+        let records_size = self.records.capacity() * std::mem::size_of::<ArrayNumType>();
+        let ids_size = self.ids.capacity() * std::mem::size_of::<Id>();
+        std::mem::size_of::<Self>() + records_size + ids_size
+    }
+
     pub fn dump(&self, working_dir: &Path) -> DiskBuffer {
         let records_path = working_dir.join("buffer_records.bin");
         let mut records_file = File::create(records_path.clone()).unwrap();
@@ -171,6 +177,12 @@ impl Bucket {
 
     pub fn occupied(&self) -> usize {
         self.ids.len()
+    }
+
+    pub fn memory_usage(&self) -> usize {
+        let records_size = self.records.capacity() * std::mem::size_of::<ArrayNumType>();
+        let ids_size = self.ids.capacity() * std::mem::size_of::<Id>();
+        std::mem::size_of::<Self>() + records_size + ids_size
     }
 
     pub fn size(&self) -> usize {

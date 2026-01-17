@@ -323,6 +323,10 @@ impl DynamicLearnedIndex {
     fn bucket_occupied(&self, level_idx: usize, bucket_idx: usize) -> usize {
         self.index.bucket_occupied(level_idx, bucket_idx)
     }
+
+    fn memory_usage(&self) -> usize {
+        self.index.memory_usage()
+    }
 }
 
 fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {

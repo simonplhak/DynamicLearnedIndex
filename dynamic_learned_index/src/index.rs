@@ -171,6 +171,12 @@ impl Index {
         self.levels.iter().map(|level| level.size()).sum::<usize>() + self.buffer.size
     }
 
+    pub fn memory_usage(&self) -> usize {
+        let levels_size: usize = self.levels.iter().map(|l| l.memory_usage()).sum();
+        let buffer_heap = self.buffer.memory_usage() - std::mem::size_of::<Buffer>();
+        std::mem::size_of::<Self>() + levels_size + buffer_heap
+    }
+
     pub fn n_buckets(&self) -> usize {
         self.levels.iter().map(|level| level.n_buckets()).sum()
     }

@@ -174,6 +174,34 @@ impl Model {
         Ok(predictions)
     }
 
+    pub fn memory_usage(&self) -> usize {
+        let mut total = std::mem::size_of::<Self>();
+
+        let varmap_size: usize = self
+            .varmap
+            .all_vars()
+            .iter()
+            .map(|var| var.elem_count() * var.dtype().size_in_bytes())
+            .sum();
+
+        if varmap_size > 0 {
+            total += varmap_size;
+        } else {
+            for layer in &self.model.layers {
+                match layer {
+                    CandleModelLayer::Linear(lin) => {
+                        total += lin.weight().elem_count() * lin.weight().dtype().size_in_bytes();
+                        if let Some(bias) = lin.bias() {
+                            total += bias.elem_count() * bias.dtype().size_in_bytes();
+                        }
+                    }
+                    CandleModelLayer::ReLU => {}
+                }
+            }
+        }
+        total
+    }
+
     #[log_time]
     pub fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
         let dim = xs.len() / self.input_shape;
