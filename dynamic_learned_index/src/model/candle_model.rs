@@ -13,7 +13,7 @@ use crate::errors::{DliError, DliResult};
 use crate::model::{ModelDevice, ModelLayer, RetrainStrategy, TrainParams};
 use crate::structs::LabelMethod;
 use crate::types::ArraySlice;
-use crate::{clustering, sampling, ModelConfig};
+use crate::{clustering, sampling, ArrayNumType, ModelConfig};
 
 #[derive(Debug, Default)]
 pub struct ModelBuilder {
@@ -133,15 +133,18 @@ pub struct Model {
 }
 
 // Iterator for streaming batches without allocating a Vec of batches.
-struct BatchIter {
-    dataset: Tensor,
-    labels: Tensor,
+struct BatchIter<'a> {
+    xs: &'a [ArrayNumType],
+    ys: &'a [i32],
+    indices: Vec<usize>,
     batch_size: usize,
     total_samples: usize,
     start_sample: usize,
+    input_shape: usize,
+    device: &'a Device,
 }
 
-impl Iterator for BatchIter {
+impl Iterator for BatchIter<'_> {
     type Item = (Tensor, Tensor);
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -149,14 +152,25 @@ impl Iterator for BatchIter {
             return None;
         }
         let end_sample = std::cmp::min(self.start_sample + self.batch_size, self.total_samples);
-        let len = end_sample - self.start_sample;
+        let batch_size = end_sample - self.start_sample;
 
-        // Create zero-copy views for the batch
-        let batch_xs = self.dataset.narrow(0, self.start_sample, len).unwrap();
-        let batch_ys = self.labels.narrow(0, self.start_sample, len).unwrap();
+        let mut xs: Vec<f32> = Vec::with_capacity(batch_size * self.input_shape);
+        let mut ys: Vec<i64> = Vec::with_capacity(batch_size);
+
+        for &idx in &self.indices[self.start_sample..end_sample] {
+            let start = idx * self.input_shape;
+            let end = start + self.input_shape;
+            xs.extend_from_slice(&self.xs[start..end]);
+            ys.push(self.ys[idx] as i64);
+        }
+        let xs = Tensor::from_vec(xs, (batch_size, self.input_shape), self.device)
+            .unwrap()
+            .to_dtype(DType::F32)
+            .unwrap();
+        let ys = Tensor::from_vec(ys, (batch_size,), self.device).unwrap();
 
         self.start_sample = end_sample;
-        Some((batch_xs, batch_ys))
+        Some((xs, ys))
     }
 }
 
@@ -254,39 +268,25 @@ impl Model {
         Ok(())
     }
 
-    fn create_shuffled_batches(&self, xs: &[f32], ys: &[i32]) -> DliResult<BatchIter> {
+    fn create_shuffled_batches<'a>(
+        &'a self,
+        xs: &'a [f32],
+        ys: &'a [i32],
+    ) -> DliResult<BatchIter<'a>> {
         let total_samples = ys.len();
-        let batch_size = if self.train_params.batch_size > 0 {
-            self.train_params.batch_size
-        } else {
-            total_samples
-        };
 
         let mut indices: Vec<usize> = (0..total_samples).collect();
         indices.shuffle(&mut rng());
 
-        let mut permuted_xs: Vec<f32> = Vec::with_capacity(xs.len());
-        let mut permuted_ys: Vec<i64> = Vec::with_capacity(total_samples);
-
-        for &idx in &indices {
-            let start = idx * self.input_shape;
-            let end = start + self.input_shape;
-            permuted_xs.extend_from_slice(&xs[start..end]);
-            permuted_ys.push(ys[idx] as i64);
-        }
-
-        let dataset =
-            Tensor::from_vec(permuted_xs, (total_samples, self.input_shape), &self.device)?
-                .to_dtype(DType::F32)?;
-
-        let labels_tensor = Tensor::from_vec(permuted_ys, (total_samples,), &self.device)?;
-
         Ok(BatchIter {
-            dataset,
-            labels: labels_tensor,
-            batch_size,
+            xs,
+            ys,
+            indices,
+            batch_size: self.train_params.batch_size,
             total_samples,
             start_sample: 0,
+            input_shape: self.input_shape,
+            device: &self.device,
         })
     }
 
