@@ -219,9 +219,17 @@ impl Model {
     #[log_time]
     pub fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
         let dim = xs.len() / self.input_shape;
-        let dataset = Tensor::from_slice(xs, (dim, self.input_shape), &self.device)?;
-        let rs = self.model.forward(&dataset)?.argmax(1)?.to_vec1::<u32>()?;
-        Ok(rs.into_iter().map(|v| v as usize).collect::<Vec<_>>())
+        let batch_size = 4096;
+
+        let mut predictions = Vec::with_capacity(dim);
+
+        for chunk in xs.chunks(batch_size * self.input_shape) {
+            let chunk_dim = chunk.len() / self.input_shape;
+            let dataset = Tensor::from_slice(chunk, (chunk_dim, self.input_shape), &self.device)?;
+            let rs = self.model.forward(&dataset)?.argmax(1)?.to_vec1::<u32>()?;
+            predictions.extend(rs.into_iter().map(|v| v as usize));
+        }
+        Ok(predictions)
     }
 
     #[log_time]
