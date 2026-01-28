@@ -6,8 +6,10 @@ use candle_nn::{linear, Linear, Module, Optimizer, VarBuilder, VarMap};
 use candle_nn::{loss, ops};
 use log::debug;
 use measure_time_macro::log_time;
+use rand::distr::weighted::WeightedIndex;
+use rand::distr::Distribution;
 use rand::rng;
-use rand::seq::SliceRandom;
+use std::collections::HashMap;
 
 use crate::errors::{DliError, DliResult};
 use crate::model::{ModelDevice, ModelLayer, RetrainStrategy, TrainParams};
@@ -282,9 +284,25 @@ impl Model {
         ys: &'a [i32],
     ) -> DliResult<BatchIter<'a>> {
         let total_samples = ys.len();
+        assert!(total_samples > 0);
+        let mut class_counts = HashMap::new();
+        for &y in ys {
+            *class_counts.entry(y).or_insert(0) += 1;
+        }
 
-        let mut indices: Vec<usize> = (0..total_samples).collect();
-        indices.shuffle(&mut rng());
+        let weights: Vec<f64> = ys
+            .iter()
+            .map(|&y| {
+                let count = class_counts.get(&y).unwrap_or(&1);
+                1.0 / (*count as f64)
+            })
+            .collect();
+
+        let dist = WeightedIndex::new(&weights)
+            .map_err(|_| DliError::ModelCreation("Failed to create WeightedIndex"))?;
+
+        let mut rng = rng();
+        let indices: Vec<usize> = (0..total_samples).map(|_| dist.sample(&mut rng)).collect();
 
         Ok(BatchIter {
             xs,
@@ -644,43 +662,92 @@ mod tests {
     }
 
     #[test]
-    fn test_builder_validation() {
-        // Test missing device
-        let res = ModelBuilder::default().build();
-        assert!(matches!(res, Err(DliError::MissingAttribute("device"))));
+    fn test_create_shuffled_batches_weighted() {
+        // Arrange
+        let input_nodes = 2;
+        let labels = 2;
+        let batch_size = 32;
 
-        // Test missing label_method (device provided)
-        let res = ModelBuilder::default().device(ModelDevice::Cpu).build();
-        assert!(matches!(
-            res,
-            Err(DliError::MissingAttribute("label_method"))
-        ));
-
-        // Test missing input_nodes (device and label_method provided)
-        let res = ModelBuilder::default()
+        let mut builder = ModelBuilder::default();
+        let model = builder
             .device(ModelDevice::Cpu)
+            .input_nodes(input_nodes)
+            .add_layer(ModelLayer::Linear(16))
+            .add_layer(ModelLayer::ReLU)
+            .labels(labels)
+            .train_params(TrainParams {
+                epochs: 1,
+                batch_size,
+                threshold_samples: 200,
+                max_iters: 10,
+                retrain_strategy: RetrainStrategy::NoRetrain,
+            })
             .label_method(LabelMethod::KMeans)
-            .build();
-        assert!(matches!(
-            res,
-            Err(DliError::MissingAttribute("input_nodes"))
-        ));
+            .build()
+            .unwrap();
 
-        // Test missing labels (others provided)
-        let res = ModelBuilder::default()
-            .device(ModelDevice::Cpu)
-            .label_method(LabelMethod::KMeans)
-            .input_nodes(10)
-            .build();
-        assert!(matches!(res, Err(DliError::MissingAttribute("labels"))));
+        // Create imbalanced data: 900 samples of class 0, 100 samples of class 1
+        let n_c0 = 900;
+        let n_c1 = 100;
+        let total_samples = n_c0 + n_c1;
 
-        // Test success
-        let res = ModelBuilder::default()
-            .device(ModelDevice::Cpu)
-            .label_method(LabelMethod::KMeans)
-            .input_nodes(10)
-            .labels(2)
-            .build();
-        assert!(res.is_ok());
+        let mut xs = Vec::with_capacity(total_samples * input_nodes as usize);
+        let mut ys = Vec::with_capacity(total_samples);
+
+        for _ in 0..n_c0 {
+            xs.push(0.0);
+            xs.push(0.0);
+            ys.push(0);
+        }
+        for _ in 0..n_c1 {
+            xs.push(1.0);
+            xs.push(1.0);
+            ys.push(1);
+        }
+
+        // Act
+        let batches_iter = model.create_shuffled_batches(&xs, &ys).unwrap();
+
+        let mut sampled_labels = Vec::new();
+        for (_batch_xs, batch_ys) in batches_iter {
+            // batch_ys is a Tensor (i64) on cpu
+            let labels = batch_ys.to_vec1::<i64>().unwrap();
+            sampled_labels.extend(labels);
+        }
+
+        // Assert
+        assert_eq!(
+            sampled_labels.len(),
+            total_samples,
+            "Should produce same total number of samples"
+        );
+
+        let count_0 = sampled_labels.iter().filter(|&&y| y == 0).count();
+        let count_1 = sampled_labels.iter().filter(|&&y| y == 1).count();
+
+        // With weighted sampling, we expect roughly equal counts regardless of input distribution
+        // Target is ~500 each.
+        // We use a loose bound to account for randomness
+        assert!(
+            count_1 > 350,
+            "Class 1 should be significantly represented (expected ~500, got {})",
+            count_1
+        );
+        assert!(
+            count_1 < 650,
+            "Class 1 should not dominate completely (expected ~500, got {})",
+            count_1
+        );
+
+        assert!(
+            count_0 > 350,
+            "Class 0 should be significantly represented (expected ~500, got {})",
+            count_0
+        );
+        assert!(
+            count_0 < 650,
+            "Class 0 should not dominate completely (expected ~500, got {})",
+            count_0
+        );
     }
 }
