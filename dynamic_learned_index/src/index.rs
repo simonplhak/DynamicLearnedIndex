@@ -498,7 +498,7 @@ fn flush_buffer(index: &mut Index, level_idx: usize, level_occupied: usize) -> D
 
 fn move_data(index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize) -> DliResult<()> {
     debug!(
-        source_levels = from_level_idxs.iter().map(|idx| idx.to_string()).collect::<Vec<_>>().join(","),
+        source_levels = from_level_idxs.iter().map(|idx| idx.to_string()).collect::<Vec<_>>().join(",").as_str(),
         to_level = to_level_idx;
         "index:move_data"
     );
