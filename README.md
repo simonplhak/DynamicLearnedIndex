@@ -7,6 +7,7 @@
 You can find some useful commands in vscode tasks.
 
 The whole project is written in Rust and uses `cargo` as a build system. The project is divided into several crates:
+
 - `dynamic_learned_index`: main library crate that implements the dynamic learned index
 - `cli_dynamic_learned_index`: CLI crate that provides a command line interface to run experiments and build the index
 - `py_dynamic_learned_index`: Python crate that provides a Python interface to the dynamic learned index
@@ -19,7 +20,9 @@ cargo run -p cli_dynamic_learned_index
 
 ## Build
 
-Thi library uses SIMD instructions for performance. It needs to know at a compile time the number of bits in SIMD register that CPU supports. To specify the number of bits go to [`dynamic_learned_index/src/constants.rs`](dynamic_learned_index/src/constants.rs) and change `SIMD_REGISTER_SIZE` constant (do not change any other constants). To find out how many bits in SIMD register your CPU support visit manufacturer webpage (in Linux you can find your CPU model via command `cat /proc/cpuinfo | grep -i 'model name'`). 
+Thi library uses SIMD instructions for performance. It needs to know at a compile time the number of bits in SIMD register that CPU supports. To specify the number of bits go to [`dynamic_learned_index/src/constants.rs`](dynamic_learned_index/src/constants.rs) and change `SIMD_REGISTER_SIZE` constant (do not change any other constants). To find out how many bits in SIMD register your CPU support visit manufacturer webpage (in Linux you can find your CPU model via command `cat /proc/cpuinfo | grep -i 'model name'`).
+
+You also need to install hdf5 version 1.10.
 
 ### Linking with Python
 
@@ -146,11 +149,9 @@ To run experiments via CLI, you can use the `cli_dynamic_learned_index` binary. 
 ./target/release/cli_dynamic_learned_index experiment test_build data/k300 --force
 ```
 
-
 ## Python API
 
 Example can be found in [`py_dynamic_learned_index/example.py`](py_dynamic_learned_index/example.py) directory.
-
 
 ## Docker
 
@@ -168,6 +169,7 @@ Recommended approach to optimize code is to go through cycle of measuring, analy
 ### Measurment
 
 The measurment focuses on measuring search time. There are two measurements:
+
 - for 3 individual queries (good for debugging)
 - for the whole query set (good for overall performance measurment)
 
@@ -198,7 +200,7 @@ Results are in `target/criterion/report/index.html` file.
 open target/criterion/report/index.html
 ```
 
-### Analyzing 
+### Analyzing
 
 ```shell
 # ensure that you have built the latest release version
@@ -245,7 +247,7 @@ cargo bench -p dynamic_learned_index --features tch
 
 ### Libtorch installation
 
-If you want to run all benchmarks you need to install `tch-rs` dependency that serves as a wrapper for `libtorch` c++ implementation. 
+If you want to run all benchmarks you need to install `tch-rs` dependency that serves as a wrapper for `libtorch` c++ implementation.
 Follow the installation instructions for `libtorch` from [tch-rs homepage](https://github.com/LaurentMazare/tch-rs).
 
 When using libtorch from pip installation, you need to call cargo build within the environment where the torch package is installed.

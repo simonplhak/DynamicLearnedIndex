@@ -18,7 +18,7 @@ struct PyFileLike {
 
 impl Write for PyFileLike {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let obj = self.inner.bind(py);
             if let Ok(s) = std::str::from_utf8(buf) {
                 // Try writing as string first
@@ -27,7 +27,7 @@ impl Write for PyFileLike {
                 }
             }
             // Fallback to bytes
-            let bytes = PyBytes::new_bound(py, buf);
+            let bytes = PyBytes::new(py, buf);
             obj.call_method1("write", (bytes,))
                 .map_err(|e| std::io::Error::other(e.to_string()))?;
             Ok(buf.len())
@@ -35,7 +35,7 @@ impl Write for PyFileLike {
     }
 
     fn flush(&mut self) -> std::io::Result<()> {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let obj = self.inner.bind(py);
             let _ = obj.call_method0("flush");
             Ok(())
@@ -265,7 +265,7 @@ impl DynamicLearnedIndex {
         let query = array2vec(query);
         let search_params = parse_search_kwargs(py_kwargs, k)?;
         let r = self.index.search(&query, search_params)?;
-        let x = r.into_pyarray_bound(py);
+        let x = r.into_pyarray(py);
         Ok(x)
     }
 

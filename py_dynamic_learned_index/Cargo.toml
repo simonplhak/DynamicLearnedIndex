@@ -10,8 +10,8 @@ crate-type = ["cdylib"]
 
 [dependencies]
 dynamic_learned_index = { path = "../dynamic_learned_index", features = ["pyo3"] }
-numpy = { version = "0.22.0" }
-pyo3 = { version = "0.22.0", features = ["extension-module"]  }
+numpy = { version = "0.27.0" }
+pyo3 = { version = "0.27.0", features = ["extension-module"]  }
 structured-logger = { version = "1.0.3", default-features = false }
 log = { version = "0.4.27", features = ["kv"] }
 
