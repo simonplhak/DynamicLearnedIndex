@@ -9,14 +9,16 @@ levels:
     - type: relu
     train_params:
       threshold_samples: 1000
-      batch_size: 8
+      batch_size: 256
       epochs: 3
       max_iters: 10
+      retrain_strategy: no_retrain
     retrain_params:
       threshold_samples: 1000
-      batch_size: 8
+      batch_size: 256
       epochs: 3
       max_iters: 10
+      retrain_strategy: no_retrain
   bucket_size: 200
 buffer_size: 200
 input_shape: 768
