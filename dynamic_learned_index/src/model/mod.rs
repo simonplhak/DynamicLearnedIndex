@@ -29,7 +29,7 @@ impl Default for TrainParams {
     fn default() -> Self {
         Self {
             threshold_samples: 1000,
-            batch_size: 8,
+            batch_size: 256,
             epochs: 3,
             max_iters: 10, // Default max iterations for clustering
             retrain_strategy: RetrainStrategy::NoRetrain,
