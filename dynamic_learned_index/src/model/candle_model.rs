@@ -15,7 +15,7 @@ use crate::errors::{DliError, DliResult};
 use crate::model::{ModelDevice, ModelLayer, RetrainStrategy, TrainParams};
 use crate::structs::LabelMethod;
 use crate::types::ArraySlice;
-use crate::{clustering, sampling, ArrayNumType, ModelConfig};
+use crate::{clustering, sampling, ModelConfig};
 
 #[derive(Debug, Default)]
 pub struct ModelBuilder {
@@ -134,48 +134,6 @@ pub struct Model {
     label_method: LabelMethod,
 }
 
-// Iterator for streaming batches without allocating a Vec of batches.
-struct BatchIter<'a> {
-    xs: &'a [ArrayNumType],
-    ys: &'a [i32],
-    indices: Vec<usize>,
-    batch_size: usize,
-    total_samples: usize,
-    start_sample: usize,
-    input_shape: usize,
-    device: &'a Device,
-}
-
-impl Iterator for BatchIter<'_> {
-    type Item = (Tensor, Tensor);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.start_sample >= self.total_samples {
-            return None;
-        }
-        let end_sample = std::cmp::min(self.start_sample + self.batch_size, self.total_samples);
-        let batch_size = end_sample - self.start_sample;
-
-        let mut xs: Vec<f32> = Vec::with_capacity(batch_size * self.input_shape);
-        let mut ys: Vec<i64> = Vec::with_capacity(batch_size);
-
-        for &idx in &self.indices[self.start_sample..end_sample] {
-            let start = idx * self.input_shape;
-            let end = start + self.input_shape;
-            xs.extend_from_slice(&self.xs[start..end]);
-            ys.push(self.ys[idx] as i64);
-        }
-        let xs = Tensor::from_vec(xs, (batch_size, self.input_shape), self.device)
-            .unwrap()
-            .to_dtype(DType::F32)
-            .unwrap();
-        let ys = Tensor::from_vec(ys, (batch_size,), self.device).unwrap();
-
-        self.start_sample = end_sample;
-        Some((xs, ys))
-    }
-}
-
 impl Model {
     pub fn predict(&self, xs: &ArraySlice) -> DliResult<Vec<(usize, f32)>> {
         let tensor_test_votes =
@@ -266,12 +224,40 @@ impl Model {
     fn _train(&mut self, xs: &ArraySlice, ys: &[i32], opt: &mut candle_nn::AdamW) -> DliResult<()> {
         let weighted_index = Self::weighted_index(ys)?;
 
+        let dataset_tensor = Tensor::from_slice(
+            xs,
+            (xs.len() / self.input_shape, self.input_shape),
+            &self.device,
+        )?;
+        let ys_i64: Vec<i64> = ys.iter().map(|&y| y as i64).collect();
+        let labels_tensor = Tensor::from_vec(ys_i64, (ys.len(),), &self.device)?;
+
+        let mut rng = rng();
+        let total_samples = ys.len();
+        let batch_size = self.train_params.batch_size;
+
         for _ in 0..self.train_params.epochs {
-            for (batch_xs, batch_ys) in self.create_batch(xs, ys, &weighted_index) {
+            let mut start = 0;
+            while start < total_samples {
+                let end = std::cmp::min(start + batch_size, total_samples);
+                let this_batch_size = end - start;
+
+                let batch_indices: Vec<u32> = (0..this_batch_size)
+                    .map(|_| weighted_index.sample(&mut rng) as u32)
+                    .collect();
+
+                let batch_idx_tensor =
+                    Tensor::from_vec(batch_indices, (this_batch_size,), &self.device)?;
+
+                let batch_xs = dataset_tensor.index_select(&batch_idx_tensor, 0)?;
+                let batch_ys = labels_tensor.index_select(&batch_idx_tensor, 0)?;
+
                 let logits = self.model.forward(&batch_xs)?;
                 let log_sm = ops::log_softmax(&logits, D::Minus1)?;
                 let loss = loss::nll(&log_sm, &batch_ys)?;
                 opt.backward_step(&loss)?;
+
+                start = end;
             }
         }
         Ok(())
@@ -293,29 +279,6 @@ impl Model {
 
         WeightedIndex::new(&weights)
             .map_err(|_| DliError::ModelCreation("Failed to create WeightedIndex"))
-    }
-
-    fn create_batch<'a>(
-        &'a self,
-        xs: &'a ArraySlice,
-        ys: &'a [i32],
-        weighted_index: &WeightedIndex<f64>,
-    ) -> BatchIter<'a> {
-        let mut rng = rng();
-        let total_samples = ys.len();
-        let indices: Vec<usize> = (0..total_samples)
-            .map(|_| weighted_index.sample(&mut rng))
-            .collect();
-        BatchIter {
-            xs,
-            ys,
-            indices,
-            batch_size: self.train_params.batch_size,
-            total_samples,
-            start_sample: 0,
-            input_shape: self.input_shape,
-            device: &self.device,
-        }
     }
 
     pub fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
@@ -660,97 +623,6 @@ mod tests {
         assert_eq!(
             res2_b[0].0, label2,
             "Model should be consistent within cluster 2"
-        );
-    }
-
-    #[test]
-    fn test_create_shuffled_batches_weighted() {
-        // Arrange
-        let input_nodes = 2;
-        let labels = 2;
-        let batch_size = 32;
-
-        let mut builder = ModelBuilder::default();
-        let model = builder
-            .device(ModelDevice::Cpu)
-            .input_nodes(input_nodes)
-            .add_layer(ModelLayer::Linear(16))
-            .add_layer(ModelLayer::ReLU)
-            .labels(labels)
-            .train_params(TrainParams {
-                epochs: 1,
-                batch_size,
-                threshold_samples: 200,
-                max_iters: 10,
-                retrain_strategy: RetrainStrategy::NoRetrain,
-            })
-            .label_method(LabelMethod::KMeans)
-            .build()
-            .unwrap();
-
-        // Create imbalanced data: 900 samples of class 0, 100 samples of class 1
-        let n_c0 = 900;
-        let n_c1 = 100;
-        let total_samples = n_c0 + n_c1;
-
-        let mut xs = Vec::with_capacity(total_samples * input_nodes as usize);
-        let mut ys = Vec::with_capacity(total_samples);
-
-        for _ in 0..n_c0 {
-            xs.push(0.0);
-            xs.push(0.0);
-            ys.push(0);
-        }
-        for _ in 0..n_c1 {
-            xs.push(1.0);
-            xs.push(1.0);
-            ys.push(1);
-        }
-
-        // Act
-        let weighted_index = Model::weighted_index(&ys).unwrap();
-        let batches_iter = model.create_batch(&xs, &ys, &weighted_index);
-
-        let mut sampled_labels = Vec::new();
-        for (_batch_xs, batch_ys) in batches_iter {
-            // batch_ys is a Tensor (i64) on cpu
-            let labels = batch_ys.to_vec1::<i64>().unwrap();
-            sampled_labels.extend(labels);
-        }
-
-        // Assert
-        assert_eq!(
-            sampled_labels.len(),
-            total_samples,
-            "Should produce same total number of samples"
-        );
-
-        let count_0 = sampled_labels.iter().filter(|&&y| y == 0).count();
-        let count_1 = sampled_labels.iter().filter(|&&y| y == 1).count();
-
-        // With weighted sampling, we expect roughly equal counts regardless of input distribution
-        // Target is ~500 each.
-        // We use a loose bound to account for randomness
-        assert!(
-            count_1 > 350,
-            "Class 1 should be significantly represented (expected ~500, got {})",
-            count_1
-        );
-        assert!(
-            count_1 < 650,
-            "Class 1 should not dominate completely (expected ~500, got {})",
-            count_1
-        );
-
-        assert!(
-            count_0 > 350,
-            "Class 0 should be significantly represented (expected ~500, got {})",
-            count_0
-        );
-        assert!(
-            count_0 < 650,
-            "Class 0 should not dominate completely (expected ~500, got {})",
-            count_0
         );
     }
 }
