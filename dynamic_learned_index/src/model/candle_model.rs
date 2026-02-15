@@ -264,11 +264,10 @@ impl Model {
 
     #[log_time]
     fn _train(&mut self, xs: &ArraySlice, ys: &[i32], opt: &mut candle_nn::AdamW) -> DliResult<()> {
-        for _ in 0..self.train_params.epochs {
-            // Create shuffled batches
-            let batches = self.create_shuffled_batches(xs, ys)?;
+        let weighted_index = Self::weighted_index(ys)?;
 
-            for (batch_xs, batch_ys) in batches {
+        for _ in 0..self.train_params.epochs {
+            for (batch_xs, batch_ys) in self.create_batch(xs, ys, &weighted_index) {
                 let logits = self.model.forward(&batch_xs)?;
                 let log_sm = ops::log_softmax(&logits, D::Minus1)?;
                 let loss = loss::nll(&log_sm, &batch_ys)?;
@@ -278,13 +277,7 @@ impl Model {
         Ok(())
     }
 
-    fn create_shuffled_batches<'a>(
-        &'a self,
-        xs: &'a [f32],
-        ys: &'a [i32],
-    ) -> DliResult<BatchIter<'a>> {
-        let total_samples = ys.len();
-        assert!(total_samples > 0);
+    fn weighted_index(ys: &[i32]) -> DliResult<WeightedIndex<f64>> {
         let mut class_counts = HashMap::new();
         for &y in ys {
             *class_counts.entry(y).or_insert(0) += 1;
@@ -298,13 +291,22 @@ impl Model {
             })
             .collect();
 
-        let dist = WeightedIndex::new(&weights)
-            .map_err(|_| DliError::ModelCreation("Failed to create WeightedIndex"))?;
+        WeightedIndex::new(&weights)
+            .map_err(|_| DliError::ModelCreation("Failed to create WeightedIndex"))
+    }
 
+    fn create_batch<'a>(
+        &'a self,
+        xs: &'a ArraySlice,
+        ys: &'a [i32],
+        weighted_index: &WeightedIndex<f64>,
+    ) -> BatchIter<'a> {
         let mut rng = rng();
-        let indices: Vec<usize> = (0..total_samples).map(|_| dist.sample(&mut rng)).collect();
-
-        Ok(BatchIter {
+        let total_samples = ys.len();
+        let indices: Vec<usize> = (0..total_samples)
+            .map(|_| weighted_index.sample(&mut rng))
+            .collect();
+        BatchIter {
             xs,
             ys,
             indices,
@@ -313,7 +315,7 @@ impl Model {
             start_sample: 0,
             input_shape: self.input_shape,
             device: &self.device,
-        })
+        }
     }
 
     pub fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
@@ -706,7 +708,8 @@ mod tests {
         }
 
         // Act
-        let batches_iter = model.create_shuffled_batches(&xs, &ys).unwrap();
+        let weighted_index = Model::weighted_index(&ys).unwrap();
+        let batches_iter = model.create_batch(&xs, &ys, &weighted_index);
 
         let mut sampled_labels = Vec::new();
         for (_batch_xs, batch_ys) in batches_iter {
