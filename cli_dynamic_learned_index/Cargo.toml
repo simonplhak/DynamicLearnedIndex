@@ -15,3 +15,7 @@ serde_yaml = "0.9.34"
 structured-logger = { version = "1.0.3", default-features = false }
 log = { version = "0.4.27", features = ["kv"] }
 indicatif = { version = "0.17.11" }
+
+[features]
+default = []
+measure_time = ["dynamic_learned_index/measure_time", "measure_time_macro/enabled"]
