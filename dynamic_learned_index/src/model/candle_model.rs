@@ -135,11 +135,18 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn predict(&self, xs: &ArraySlice) -> DliResult<Vec<(usize, f32)>> {
-        let tensor_test_votes =
-            Tensor::from_slice(xs, (1, self.input_shape), &self.device)?.to_dtype(DType::F32)?;
+    pub fn vec2tensor(&self, xs: &[f32]) -> DliResult<Tensor> {
+        Tensor::from_slice(
+            xs,
+            (xs.len() / self.input_shape, self.input_shape),
+            &self.device,
+        )?
+        .to_dtype(DType::F32)
+        .map_err(|e| e.into())
+    }
 
-        let logits = self.model.forward(&tensor_test_votes)?;
+    pub fn predict(&self, xs: &Tensor) -> DliResult<Vec<(usize, f32)>> {
+        let logits = self.model.forward(xs)?;
         let final_result = ops::softmax(&logits, D::Minus1)?;
         let predictions = final_result.squeeze(0)?.to_vec1::<f32>()?;
         let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
@@ -444,7 +451,7 @@ mod tests {
         // Get predictions from original model
         let original_predictions: Vec<Vec<(usize, f32)>> = test_queries
             .iter()
-            .map(|query| model.predict(query).unwrap())
+            .map(|query| model.predict(&model.vec2tensor(query).unwrap()).unwrap())
             .collect::<Vec<_>>();
 
         // Save model to temporary file
@@ -469,7 +476,11 @@ mod tests {
         // Get predictions from loaded model
         let loaded_predictions: Vec<Vec<(usize, f32)>> = test_queries
             .iter()
-            .map(|query| loaded_model.predict(query).unwrap())
+            .map(|query| {
+                loaded_model
+                    .predict(&loaded_model.vec2tensor(query).unwrap())
+                    .unwrap()
+            })
             .collect::<Vec<_>>();
 
         // Verify predictions match
@@ -527,7 +538,7 @@ mod tests {
             let start = i * input_nodes as usize;
             let end = start + input_nodes as usize;
             let query = &test_data[start..end];
-            let result = model.predict(query).unwrap();
+            let result = model.predict(&model.vec2tensor(query).unwrap()).unwrap();
             // predict returns sorted (label, prob), so first one is top-1
             individual_predictions.push(result[0].0);
         }
@@ -596,8 +607,8 @@ mod tests {
 
         // Assert
         // Check predictions for representative points
-        let p1 = vec![0.2, 0.2];
-        let p2 = vec![0.8, 0.8];
+        let p1 = model.vec2tensor(&[0.2, 0.2]).unwrap();
+        let p2 = model.vec2tensor(&[0.8, 0.8]).unwrap();
 
         let res1 = model.predict(&p1).unwrap();
         let res2 = model.predict(&p2).unwrap();
@@ -611,14 +622,14 @@ mod tests {
         );
 
         // Verify consistency within clusters
-        let p1_b = vec![0.21, 0.19];
+        let p1_b = model.vec2tensor(&[0.21, 0.19]).unwrap();
         let res1_b = model.predict(&p1_b).unwrap();
         assert_eq!(
             res1_b[0].0, label1,
             "Model should be consistent within cluster 1"
         );
 
-        let p2_b = vec![0.79, 0.81];
+        let p2_b = model.vec2tensor(&[0.79, 0.81]).unwrap();
         let res2_b = model.predict(&p2_b).unwrap();
         assert_eq!(
             res2_b[0].0, label2,

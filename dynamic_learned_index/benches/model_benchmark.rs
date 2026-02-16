@@ -123,9 +123,10 @@ fn bench_candle_model_train(b: &mut Bencher) {
 #[bench]
 fn bench_candle_model_predict_single(b: &mut Bencher) {
     let train_data = generate_random_data(1000, VECTOR_DIM);
-    let test_vector = generate_random_data(1, VECTOR_DIM);
-
     let mut model = candle_model();
+    let test_vector = model
+        .vec2tensor(&generate_random_data(1, VECTOR_DIM))
+        .unwrap();
 
     model.train(&train_data).unwrap();
 

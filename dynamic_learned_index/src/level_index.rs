@@ -215,9 +215,10 @@ impl LevelIndex {
                 .map(|(bucket_id, _)| (bucket_id, 0.0, 0))
                 .collect());
         }
+        let query = self.model.vec2tensor(query)?;
         let preds = self
             .model
-            .predict(query)?
+            .predict(&query)?
             .into_iter()
             .map(|(bucket_id, prob)| (bucket_id, prob, self.buckets[bucket_id].occupied()))
             .collect();
