@@ -228,7 +228,7 @@ impl Model {
     }
 
     #[log_time]
-    fn _train(&mut self, xs: &ArraySlice, ys: &[i32], opt: &mut candle_nn::AdamW) -> DliResult<()> {
+    fn _train(&mut self, xs: &ArraySlice, ys: &[i64], opt: &mut candle_nn::AdamW) -> DliResult<()> {
         let weighted_index = Self::weighted_index(ys)?;
 
         let dataset_tensor = Tensor::from_slice(
@@ -236,8 +236,7 @@ impl Model {
             (xs.len() / self.input_shape, self.input_shape),
             &self.device,
         )?;
-        let ys_i64: Vec<i64> = ys.iter().map(|&y| y as i64).collect();
-        let labels_tensor = Tensor::from_vec(ys_i64, (ys.len(),), &self.device)?;
+        let labels_tensor = Tensor::from_slice(ys, (ys.len(),), &self.device)?;
 
         let mut rng = rng();
         let total_samples = ys.len();
@@ -270,7 +269,7 @@ impl Model {
         Ok(())
     }
 
-    fn weighted_index(ys: &[i32]) -> DliResult<WeightedIndex<f64>> {
+    fn weighted_index(ys: &[i64]) -> DliResult<WeightedIndex<f64>> {
         let mut class_counts = HashMap::new();
         for &y in ys {
             *class_counts.entry(y).or_insert(0) += 1;

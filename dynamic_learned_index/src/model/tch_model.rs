@@ -195,7 +195,7 @@ impl Model {
         debug!(epochs = self.retrain_params.epochs; "model:retrain");
     }
 
-    fn dataset(&self, xs: &[f32], ys: &[i32]) -> Dataset {
+    fn dataset(&self, xs: &[f32], ys: &[i64]) -> Dataset {
         let total_queries = ys.len();
         assert!(xs.len().is_multiple_of(self.input_shape));
         assert!(xs.len() / self.input_shape == ys.len());

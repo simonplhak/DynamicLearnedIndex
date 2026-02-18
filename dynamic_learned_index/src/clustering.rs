@@ -11,7 +11,7 @@ pub(crate) fn compute_labels(
     k: usize,
     input_shape: usize,
     max_iters: usize,
-) -> Vec<i32> {
+) -> Vec<i64> {
     debug_assert!(!data.is_empty());
     let data_len = data.len() / input_shape;
     assert!(data_len * input_shape == data.len());
@@ -24,7 +24,7 @@ pub(crate) fn compute_labels(
     }
 }
 
-fn k_means_clustering(data: &Vec<f32>, input_shape: usize, k: usize, max_iters: usize) -> Vec<i32> {
+fn k_means_clustering(data: &Vec<f32>, input_shape: usize, k: usize, max_iters: usize) -> Vec<i64> {
     let count = data.len() / input_shape;
     assert!(count * input_shape == data.len());
     assert!(k > 0);
@@ -40,7 +40,7 @@ fn k_means_clustering(data: &Vec<f32>, input_shape: usize, k: usize, max_iters: 
     );
     debug!(error = result.distsum ;"kmeans:metrics");
     assert!(result.assignments.len() == count);
-    result.assignments.into_iter().map(|x| x as i32).collect()
+    result.assignments.into_iter().map(|x| x as i64).collect()
 }
 
 fn k_means_clustering_spherical(
@@ -48,7 +48,7 @@ fn k_means_clustering_spherical(
     input_shape: usize,
     k: usize,
     max_iters: usize,
-) -> Vec<i32> {
+) -> Vec<i64> {
     let count = data.len() / input_shape;
     assert!(count * input_shape == data.len());
     assert!(k > 0);
@@ -67,7 +67,7 @@ fn k_means_clustering_spherical(
         .for_each(|(cluster, query_ids)| {
             query_ids.into_iter().for_each(|query_id| {
                 assert!(query_id < count);
-                result[query_id] = cluster as i32;
+                result[query_id] = cluster as i64;
             });
         });
     // debug!(error = result.distsum ;"kmeans:metrics");
