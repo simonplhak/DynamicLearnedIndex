@@ -4,6 +4,7 @@ use crate::{
     structs::{DiskBucket, DiskLevelIndex, LevelIndexConfig},
     Array, ArraySlice, DeleteMethod, DistanceFn, DliError, DliResult, Id,
 };
+#[cfg(feature = "measure_time")]
 use log::debug;
 use measure_time_macro::log_time;
 use std::{

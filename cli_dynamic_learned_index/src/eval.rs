@@ -2,7 +2,9 @@ use anyhow::{Ok, Result};
 use dynamic_learned_index::types::{Array, Id};
 use dynamic_learned_index::{DliResult, Index, SearchStrategy};
 use indicatif::ProgressBar;
-use log::{debug, info};
+#[cfg(feature = "measure_time")]
+use log::debug;
+use log::info;
 use measure_time_macro::log_time;
 use serde::Deserialize;
 
