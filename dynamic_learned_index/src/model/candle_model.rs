@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use candle_core::{DType, Tensor, D};
+use candle_core::{DType, IndexOp as _, Tensor, D};
 use candle_core::{Device, Result as CandleResult};
 use candle_nn::{linear, Linear, Module, Optimizer, VarBuilder, VarMap};
 use candle_nn::{loss, ops};
@@ -241,19 +241,18 @@ impl Model {
         let mut rng = rng();
         let total_samples = ys.len();
         let batch_size = self.train_params.batch_size;
-
-        for _ in 0..self.train_params.epochs {
+        let generate_indices = |rng: &mut _| {
+            Tensor::from_iter(
+                (0..total_samples).map(|_| weighted_index.sample(rng) as u32),
+                &self.device,
+            )
+        };
+        let mut indices = generate_indices(&mut rng)?;
+        for epoch in 0..self.train_params.epochs {
             let mut start = 0;
             while start < total_samples {
                 let end = std::cmp::min(start + batch_size, total_samples);
-                let this_batch_size = end - start;
-
-                let batch_indices: Vec<u32> = (0..this_batch_size)
-                    .map(|_| weighted_index.sample(&mut rng) as u32)
-                    .collect();
-
-                let batch_idx_tensor =
-                    Tensor::from_vec(batch_indices, (this_batch_size,), &self.device)?;
+                let batch_idx_tensor = indices.i(start..end)?;
 
                 let batch_xs = dataset_tensor.index_select(&batch_idx_tensor, 0)?;
                 let batch_ys = labels_tensor.index_select(&batch_idx_tensor, 0)?;
@@ -264,6 +263,9 @@ impl Model {
                 opt.backward_step(&loss)?;
 
                 start = end;
+            }
+            if epoch < self.train_params.epochs - 1 {
+                indices = generate_indices(&mut rng)?;
             }
         }
         Ok(())
