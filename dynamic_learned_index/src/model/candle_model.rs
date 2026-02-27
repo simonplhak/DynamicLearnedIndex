@@ -39,6 +39,11 @@ impl ModelBuilder {
         self
     }
 
+    pub fn layers(&mut self, layers: Vec<ModelLayer>) -> &mut Self {
+        self.layers = layers;
+        self
+    }
+
     pub fn add_layer(&mut self, layer: ModelLayer) -> &mut Self {
         self.layers.push(layer);
         self
