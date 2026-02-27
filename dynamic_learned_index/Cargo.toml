@@ -30,6 +30,7 @@ default = []
 measure_time = ["measure_time_macro/enabled"]
 pyo3 = ["dep:pyo3"]
 tch = ["dep:tch"]
+mkl = ["candle-core/mkl", "candle-nn/mkl"]
 
 [dev-dependencies]
 tempfile = "3.14.0"

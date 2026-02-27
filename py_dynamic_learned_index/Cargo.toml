@@ -18,3 +18,4 @@ log = { version = "0.4.27", features = ["kv"] }
 [features]
 default = []
 measure_time = ["dynamic_learned_index/measure_time"]
+mkl = ["dynamic_learned_index/mkl"]
