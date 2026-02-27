@@ -22,6 +22,7 @@ features = ["pyo3/extension-module"]
 dev = [
     "maturin[patchelf]>=1.11.5",
     "ruff",
+    "torch==2.6.0",
     "ziglang>=0.15.1",
 ]
 
