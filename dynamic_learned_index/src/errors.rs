@@ -23,6 +23,14 @@ pub enum DliError {
 
 pub type DliResult<T> = Result<T, DliError>;
 
+// tch-rs integration: automatic error conversion
+#[cfg(feature = "tch")]
+impl From<tch::TchError> for DliError {
+    fn from(err: tch::TchError) -> Self {
+        DliError::ModelCreation(Box::leak(err.to_string().into_boxed_str()))
+    }
+}
+
 // PyO3 integration: automatic error conversion
 #[cfg(feature = "pyo3")]
 impl From<DliError> for pyo3::PyErr {
