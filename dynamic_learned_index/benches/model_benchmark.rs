@@ -99,7 +99,7 @@ fn candle_model() -> ModelNew {
         .add_layer(ModelLayer::Linear(HIDDEN_NEURONS))
         .labels(NUM_CLUSTERS)
         .train_params(TrainParams {
-            threshold_samples: 1000,
+            threshold_samples: SAMPLE_SIZE,
             batch_size: BATCH_SIZE,
             epochs: EPOCHS,
             max_iters: 10,
