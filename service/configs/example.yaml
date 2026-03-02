@@ -1,0 +1,50 @@
+# Example index configuration file
+# This file defines all the parameters for the Dynamic Learned Index
+
+# Compaction strategy: determines how levels are managed during insertions
+# Options: bentley_saxe:no_rebuild, bentley_saxe:basic_rebuild, bentley_saxe:greedy_rebuild
+compaction_strategy: bentley_saxe:no_rebuild
+
+# Level index configuration
+levels:
+  # Configuration for the model used in each level
+  model:
+    # Number of layers in the neural network model
+    layers:
+      # Each layer has a size
+      - size: 128
+      - size: 64
+    # Training parameters
+    train_params:
+      # Number of samples required before retraining the model
+      threshold_samples: 1000
+      # Batch size for training
+      batch_size: 256
+      # Number of epochs to train
+      epochs: 3
+      # Maximum iterations for clustering
+      max_iters: 10
+      # When to retrain the model: no_retrain or from_scratch
+      retrain_strategy: no_retrain
+  
+  # Size of each bucket in the hierarchical structure
+  bucket_size: 1000
+
+# Size of the buffer that accumulates new insertions before level creation
+buffer_size: 2000
+
+# Dimension of input vectors (must match the vectors you insert)
+input_shape: 128
+
+# Tree arity - how many children each node has
+arity: 2
+
+# Device to use for model training and inference: cpu or gpu
+device:
+  cpu
+
+# Distance metric: l2 or dot (dot product)
+distance_fn: l2
+
+# Delete method: oid_to_bucket
+delete_method: oid_to_bucket
