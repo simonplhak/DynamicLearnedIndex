@@ -151,6 +151,7 @@ fn bench_candle_model_predict_many(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "tch")]
 fn mix_model() -> MixModel {
     MixModelBuilder::default()
         .device(ModelDevice::Cpu)
@@ -171,6 +172,7 @@ fn mix_model() -> MixModel {
         .unwrap()
 }
 
+#[cfg(feature = "tch")]
 #[bench]
 fn bench_mix_model_train(b: &mut Bencher) {
     let data = generate_random_data(SAMPLE_SIZE, VECTOR_DIM);
@@ -181,6 +183,7 @@ fn bench_mix_model_train(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "tch")]
 #[bench]
 fn bench_mix_model_predict_single(b: &mut Bencher) {
     let train_data = generate_random_data(1000, VECTOR_DIM);
@@ -196,6 +199,7 @@ fn bench_mix_model_predict_single(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "tch")]
 #[bench]
 fn bench_mix_model_predict_many(b: &mut Bencher) {
     let train_data = generate_random_data(1000, VECTOR_DIM);
