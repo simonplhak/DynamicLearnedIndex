@@ -6,7 +6,6 @@ use rand::SeedableRng;
 
 #[log_time]
 pub(crate) fn sample(queries: &ArraySlice, n: usize, shape: usize) -> Array {
-    // todo possibility to return ArraySlice to avoid cloning??
     debug!(n=n ;"sampling");
     assert!(!queries.is_empty(), "Queries cannot be empty");
     assert!(queries.len().is_multiple_of(shape));
