@@ -599,13 +599,13 @@ mod tests {
         let mut training_data = Vec::new();
         // Cluster 1: around 0.2
         for _ in 0..50 {
-            training_data.push(0.2);
-            training_data.push(0.2);
+            training_data.push(0.2 + rand::random::<f32>() * 0.0001);
+            training_data.push(0.2 + rand::random::<f32>() * 0.0001);
         }
         // Cluster 2: around 0.8
         for _ in 0..50 {
-            training_data.push(0.8);
-            training_data.push(0.8);
+            training_data.push(0.8 + rand::random::<f32>() * 0.0001);
+            training_data.push(0.8 + rand::random::<f32>() * 0.0001);
         }
 
         // Act
