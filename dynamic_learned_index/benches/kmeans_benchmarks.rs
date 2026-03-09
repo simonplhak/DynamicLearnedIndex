@@ -1,6 +1,8 @@
+#![feature(portable_simd)]
 #![feature(test)]
 
 extern crate test;
+use kmeans::*;
 use ndarray::Array2;
 use rand::Rng;
 use test::Bencher;
@@ -20,13 +22,12 @@ fn generate_random_data(size: usize, dim: usize) -> Vec<f32> {
 
 fn kmeans(data: &Vec<f32>, input_shape: usize, k: usize, max_iters: usize) -> Vec<i64> {
     let count = data.len() / input_shape;
-    let kmean: kmeans::KMeans<_, { LANES }, _> =
-        kmeans::KMeans::new(data, count, input_shape, kmeans::EuclideanDistance);
+    let kmean: KMeans<_, { LANES }, _> = KMeans::new(data, count, input_shape, EuclideanDistance);
     let result = kmean.kmeans_lloyd(
         k,
         max_iters,
-        kmeans::KMeans::init_kmeanplusplus,
-        &kmeans::KMeansConfig::default(),
+        KMeans::init_kmeanplusplus,
+        &KMeansConfig::default(),
     );
     result.assignments.into_iter().map(|x| x as i64).collect()
 }
