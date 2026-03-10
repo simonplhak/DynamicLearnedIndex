@@ -283,22 +283,28 @@ impl DynamicLearnedIndex {
     ) -> PyResult<Bound<'py, PyArray1<u32>>> {
         let query = array2vec(query);
         let search_params = parse_search_kwargs(py_kwargs, k)?;
-        let index = self.index.lock().unwrap();
-        let r = index.search(&query, search_params)?;
-        let x = r.into_pyarray(py);
+        let result = py.allow_threads(|| {
+            let index = self.index.lock().unwrap();
+            index.search(&query, search_params)
+        })?;
+        let x = result.into_pyarray(py);
         Ok(x)
     }
 
-    fn insert<'py>(&self, record: PyReadonlyArray1<'py, f32>, id: u32) -> PyResult<()> {
+    fn insert<'py>(&self, py: Python<'py>, record: PyReadonlyArray1<'py, f32>, id: u32) -> PyResult<()> {
         let record = array2vec(record);
-        let mut index = self.index.lock().unwrap();
-        index.insert(record, id)?;
-        Ok(())
+        py.allow_threads(|| {
+            let mut index = self.index.lock().unwrap();
+            index.insert(record, id)?;
+            Ok(())
+        })
     }
 
-    fn delete(&self, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
-        let mut index = self.index.lock().unwrap();
-        Ok(index.delete(id)?)
+    fn delete(&self, py: Python<'_>, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
+        py.allow_threads(|| {
+            let mut index = self.index.lock().unwrap();
+            Ok(index.delete(id)?)
+        })
     }
 
     fn n_buckets(&self) -> usize {
