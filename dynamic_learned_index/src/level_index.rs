@@ -225,6 +225,41 @@ impl LevelIndex {
             .collect();
         Ok(preds)
     }
+
+    pub(crate) fn buckets2visit_predictions_many(
+        &self,
+        queries: &[&[f32]],
+    ) -> DliResult<Vec<Vec<(usize, f32, usize)>>> {
+        if self.occupied() == 0 {
+            let empty_predictions = self
+                .buckets
+                .iter()
+                .enumerate()
+                .map(|(bucket_id, _)| (bucket_id, 0.0, 0))
+                .collect::<Vec<_>>();
+            return Ok(vec![empty_predictions; queries.len()]);
+        }
+
+        let mut flat_queries = Vec::new();
+        for query in queries {
+            flat_queries.extend_from_slice(query);
+        }
+
+        // Get batch predictions (bucket assignments) using predict_many
+        let assignments = self.model.predict_many(&flat_queries)?;
+
+        // Group assignments by query and convert to the required format
+        let mut results = vec![Vec::new(); queries.len()];
+        for (assignment_idx, &bucket_idx) in assignments.iter().enumerate() {
+            let query_idx = assignment_idx;
+            let bucket = &self.buckets[bucket_idx];
+            // (bucket_idx, probability=0.0, occupied_count)
+            results[query_idx].push((bucket_idx, 0.0, bucket.occupied()));
+        }
+
+        Ok(results)
+    }
+
     #[log_time]
     pub(crate) fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
         self.model.train(xs)?;
