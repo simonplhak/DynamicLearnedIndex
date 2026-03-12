@@ -283,27 +283,26 @@ impl DynamicLearnedIndex {
     ) -> PyResult<Bound<'py, PyArray1<u32>>> {
         let query = array2vec(query);
         let search_params = parse_search_kwargs(py_kwargs, k)?;
-        let result = py.allow_threads(|| {
+        let result = py.detach(|| {
             let index = self.index.lock().unwrap();
             index.search(&query, search_params)
-        })?;
-        let x = result.into_pyarray(py);
+        });
+        let x = result?.into_pyarray(py);
         Ok(x)
     }
 
     fn insert<'py>(&self, py: Python<'py>, record: PyReadonlyArray1<'py, f32>, id: u32) -> PyResult<()> {
         let record = array2vec(record);
-        py.allow_threads(|| {
+        py.detach(|| {
             let mut index = self.index.lock().unwrap();
-            index.insert(record, id)?;
-            Ok(())
+            index.insert(record, id).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
         })
     }
 
     fn delete(&self, py: Python<'_>, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
-        py.allow_threads(|| {
+        py.detach(|| {
             let mut index = self.index.lock().unwrap();
-            Ok(index.delete(id)?)
+            index.delete(id).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
         })
     }
 
