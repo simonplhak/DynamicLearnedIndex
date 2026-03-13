@@ -7,8 +7,8 @@ on:
     branches: ["*"]
 
 jobs:
-  build:
-    name: Build and Test
+  test:
+    name: Clippy and Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -41,3 +41,82 @@ jobs:
 
       - name: Run tests
         run: cargo test --verbose
+
+  build-wheel:
+    name: Build Python Wheel
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install UV
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build Python wheel
+        run: cd py_dynamic_learned_index && uv run maturin build --release --features measure_time,tch --skip-auditwheel
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels
+          path: target/wheels/
+          retention-days: 1
+
+  build-docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    needs: build-wheel
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wheels
+          path: target/wheels/
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile.rust
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/dli-rust-python:latest
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
