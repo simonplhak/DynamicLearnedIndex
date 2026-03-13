@@ -77,7 +77,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build Python wheel
-        run: cd py_dynamic_learned_index && uv run maturin build --release --features measure_time,tch --skip-auditwheel
+        run: cd py_dynamic_learned_index && LIBTORCH_USE_PYTORCH=1 uv run maturin build --release --features measure_time,tch --skip-auditwheel
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
