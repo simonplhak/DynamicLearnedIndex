@@ -24,6 +24,7 @@ bytemuck = "1.24.0"
 thiserror = "2.0.17"
 pyo3 = { version = "0.27.0", optional = true }
 kmeans = { version = "=2.0.0", optional = true }
+hdf5 = { package = "hdf5-metno", version = "0.9.0", optional = true }
 
 [features]
 default = []
@@ -32,6 +33,7 @@ pyo3 = ["dep:pyo3"]
 tch = ["dep:tch"]
 mkl = ["candle-core/mkl", "candle-nn/mkl"]
 kmeans_clustering = ["dep:kmeans"]
+hdf5 = ["dep:hdf5"]
 
 [dev-dependencies]
 tempfile = "3.14.0"
