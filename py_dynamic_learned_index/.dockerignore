@@ -1,0 +1,4 @@
+.ruff_cache/
+target/
+index_dump/
+.venv/

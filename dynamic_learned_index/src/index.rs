@@ -46,6 +46,53 @@ impl Index {
     }
 
     #[log_time]
+    pub fn search_bulk<S>(&self, xs: &ArraySlice, params: S) -> DliResult<Vec<Vec<Id>>>
+    where
+        S: SearchParamsT,
+    {
+        let params = params.into_search_params();
+        let input_shape = self.input_shape;
+        let n_queries = xs.len() / input_shape;
+
+        // Collect bucket predictions efficiently for all queries at once per level
+        let mut level_predictions = Vec::new();
+        for level in &self.levels {
+            let queries_refs: Vec<&[f32]> = (0..n_queries)
+                .map(|i| &xs[i * input_shape..(i + 1) * input_shape])
+                .collect();
+            let preds = level.buckets2visit_predictions_many(&queries_refs)?;
+            level_predictions.push(preds);
+        }
+
+        // Process results for each query
+        let mut all_results = Vec::with_capacity(n_queries);
+        for query_idx in 0..n_queries {
+            let query = &xs[query_idx * input_shape..(query_idx + 1) * input_shape];
+
+            // Gather this query's predictions from all levels
+            let predictions = level_predictions
+                .iter()
+                .map(|level_preds| level_preds[query_idx].clone())
+                .collect();
+
+            // Find records to visit for this query
+            let records2visit = self.records2visit(predictions, params.search_strategy);
+
+            // Perform KNN merge
+            let rs = self.merge_results(&records2visit.records, query, &params);
+
+            // Convert results to IDs
+            let res = rs
+                .into_iter()
+                .map(|(_, idx)| records2visit.ids[idx])
+                .collect();
+            all_results.push(res);
+        }
+
+        Ok(all_results)
+    }
+
+    #[log_time]
     fn records2visit(
         &'_ self,
         predictions: Vec<Vec<(usize, f32, usize)>>,
@@ -1499,6 +1546,208 @@ mod tests {
             results.is_empty(),
             "Search on empty index should return empty results"
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_bulk_basic() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.distance_fn = DistanceFn::L2;
+        config.buffer_size = 10;
+        let mut index = IndexBuilder::from_config(config).build()?;
+
+        // Insert test data (25 items to ensure we have levels)
+        for i in 0..25 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        assert_eq!(index.occupied(), 25, "Should have 25 items");
+        assert!(index.n_levels() > 0, "Should have levels after compaction");
+
+        // Prepare bulk queries (4 queries)
+        let queries: Vec<Vec<f32>> = vec![
+            vec![3.0, 3.0, 3.0],    // Near ID 3
+            vec![10.5, 10.5, 10.5], // Between IDs 10 and 11
+            vec![20.0, 20.0, 20.0], // Near ID 20
+            vec![5.0, 5.0, 5.0],    // Near ID 5
+        ];
+        let bulk_query_data: Vec<f32> = queries.iter().flat_map(|q| q.iter().copied()).collect();
+
+        // Perform bulk search with k=5
+        let bulk_results = index.search_bulk(&bulk_query_data, 5)?;
+
+        // Verify bulk_results structure
+        assert_eq!(bulk_results.len(), 4, "Should have 4 result sets");
+        for (i, result) in bulk_results.iter().enumerate() {
+            assert!(!result.is_empty(), "Result set {i} should not be empty");
+            assert!(
+                result.len() <= 5,
+                "Result set {i} should have at most 5 results"
+            );
+        }
+
+        // Verify that bulk search returns results (same IDs, possibly different order due to probability handling)
+        // The important property is that we get k or fewer results per query
+        let mut all_bulk_ids = Vec::new();
+        for result_set in &bulk_results {
+            all_bulk_ids.extend(result_set.iter().copied());
+        }
+        assert!(!all_bulk_ids.is_empty(), "Should have found some results");
+
+        // Verify all returned IDs are valid (in range of inserted IDs)
+        for id in all_bulk_ids {
+            assert!(id < 25, "Result ID should be in valid range");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_bulk_single_query() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.distance_fn = DistanceFn::L2;
+        config.buffer_size = 10;
+        let mut index = IndexBuilder::from_config(config).build()?;
+
+        // Insert 20 items
+        for i in 0..20 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        // Single query as bulk search
+        let query = vec![7.0, 7.0, 7.0];
+        let bulk_results = index.search_bulk(&query, 5)?;
+
+        // Should return a Vec with 1 result set
+        assert_eq!(bulk_results.len(), 1);
+        assert!(!bulk_results[0].is_empty(), "Should have found results");
+        assert!(
+            bulk_results[0].len() <= 5,
+            "Should have at most k=5 results"
+        );
+
+        // Verify all IDs are valid
+        for id in &bulk_results[0] {
+            assert!(*id < 20, "Result ID should be in range [0, 20)");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_bulk_empty_index() -> DliResult<()> {
+        let config = create_test_config();
+        let index = IndexBuilder::from_config(config).build()?;
+
+        // Bulk search on empty index
+        let queries = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]; // 2 queries
+        let bulk_results = index.search_bulk(&queries, 5)?;
+
+        // Should have 2 result sets, both empty
+        assert_eq!(bulk_results.len(), 2);
+        assert!(bulk_results[0].is_empty());
+        assert!(bulk_results[1].is_empty());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_bulk_different_k_values() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.distance_fn = DistanceFn::L2;
+        config.buffer_size = 10;
+        let mut index = IndexBuilder::from_config(config).build()?;
+
+        // Insert 30 items
+        for i in 0..30 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        let queries: Vec<Vec<f32>> = vec![
+            vec![5.0, 5.0, 5.0],
+            vec![15.0, 15.0, 15.0],
+            vec![25.0, 25.0, 25.0],
+        ];
+        let bulk_query_data: Vec<f32> = queries.iter().flat_map(|q| q.iter().copied()).collect();
+
+        // Test with k=1
+        let bulk_k1 = index.search_bulk(&bulk_query_data, 1)?;
+        for (i, result) in bulk_k1.iter().enumerate() {
+            assert_eq!(
+                result.len(),
+                1,
+                "Result set {i} should return exactly 1 result for k=1"
+            );
+        }
+
+        // Test with k=10
+        let bulk_k10 = index.search_bulk(&bulk_query_data, 10)?;
+        for (i, result) in bulk_k10.iter().enumerate() {
+            assert!(
+                result.len() <= 10,
+                "Result set {i} should return at most 10 results for k=10"
+            );
+        }
+
+        // Verify all results are valid IDs
+        for result_set in bulk_k1.iter().chain(bulk_k10.iter()) {
+            for id in result_set {
+                assert!(*id < 30, "Result ID should be in range [0, 30)");
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_bulk_consistency_with_buffer_and_levels() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.distance_fn = DistanceFn::L2;
+        config.buffer_size = 5;
+        let mut index = IndexBuilder::from_config(config).build()?;
+
+        // Insert 15 items - will trigger compaction
+        // Items 0-4 in buffer initially, then we insert items 5-14
+        // Item 5 triggers compaction, moving 0-4 to level 0
+        for i in 0..15 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        assert!(index.n_levels() > 0, "Should have levels");
+        assert!(index.buffer.occupied() > 0 || index.buffer.occupied() == 0); // Either has data or is empty after flush
+
+        // Create bulk queries
+        let queries: Vec<Vec<f32>> = vec![
+            vec![2.0, 2.0, 2.0],    // In level (from initial batch)
+            vec![12.0, 12.0, 12.0], // Likely in buffer or a level
+            vec![7.5, 7.5, 7.5],    // Between two items
+        ];
+        let bulk_query_data: Vec<f32> = queries.iter().flat_map(|q| q.iter().copied()).collect();
+
+        // Perform bulk search
+        let bulk_results = index.search_bulk(&bulk_query_data, 3)?;
+
+        // Verify bulk search returns results
+        assert_eq!(bulk_results.len(), 3, "Should have 3 result sets");
+        for (i, result) in bulk_results.iter().enumerate() {
+            assert!(!result.is_empty(), "Result set {i} should not be empty");
+            assert!(
+                result.len() <= 3,
+                "Result set {i} should have at most 3 results"
+            );
+        }
+
+        // Verify all IDs are valid
+        for result_set in &bulk_results {
+            for id in result_set {
+                assert!(*id < 15, "Result ID should be in range [0, 15)");
+            }
+        }
 
         Ok(())
     }

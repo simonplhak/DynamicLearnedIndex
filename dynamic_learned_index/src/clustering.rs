@@ -1,12 +1,12 @@
 use log::debug;
 use measure_time_macro::log_time;
-use ndarray::Array2;
+use ndarray::{Array2, ArrayView};
 
-use crate::{constants, structs::LabelMethod};
+use crate::structs::LabelMethod;
 
 #[log_time]
 pub(crate) fn compute_labels(
-    data: &Vec<f32>,
+    data: &[f32],
     label_method: &LabelMethod,
     k: usize,
     input_shape: usize,
@@ -24,23 +24,38 @@ pub(crate) fn compute_labels(
     }
 }
 
-fn k_means_clustering(data: &Vec<f32>, input_shape: usize, k: usize, max_iters: usize) -> Vec<i64> {
+fn k_means_clustering(data: &[f32], input_shape: usize, k: usize, max_iters: usize) -> Vec<i64> {
     let count = data.len() / input_shape;
     assert!(count * input_shape == data.len());
     assert!(k > 0);
     assert!(k <= count);
     assert!(max_iters > 0);
-    let kmean: kmeans::KMeans<_, { constants::LANES }, _> =
-        kmeans::KMeans::new(data, count, input_shape, kmeans::EuclideanDistance);
-    let result = kmean.kmeans_lloyd(
-        k,
-        max_iters,
-        kmeans::KMeans::init_kmeanplusplus,
-        &kmeans::KMeansConfig::default(),
+    let mut kmeans = kentro::KMeans::new(k)
+        .with_iterations(max_iters)
+        .with_euclidean(true);
+    println!(
+        "data={:?}, input_shape={}, k={}, max_iters={}",
+        data, input_shape, k, max_iters
     );
-    debug!(error = result.distsum ;"kmeans:metrics");
-    assert!(result.assignments.len() == count);
-    result.assignments.into_iter().map(|x| x as i64).collect()
+
+    // Convert the Vec<f32> to Array2 with shape (count, input_shape)
+    let data = ArrayView::from_shape((count, input_shape), data)
+        .expect("Failed to reshape data into Array2");
+    let clusters = kmeans.train(data.view(), None).unwrap();
+    println!("clusters={:?}", clusters);
+    let mut result = vec![0; count];
+    clusters
+        .into_iter()
+        .enumerate()
+        .for_each(|(cluster, query_ids)| {
+            query_ids.into_iter().for_each(|query_id| {
+                assert!(query_id < count);
+                result[query_id] = cluster as i64;
+            });
+        });
+    // debug!(error = result.distsum ;"kmeans:metrics");
+    assert!(result.len() == count);
+    result
 }
 
 fn k_means_clustering_spherical(

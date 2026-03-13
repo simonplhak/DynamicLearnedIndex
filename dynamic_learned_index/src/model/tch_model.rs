@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use log::debug;
 use tch::{
     nn::{self, OptimizerConfig},
@@ -12,6 +14,7 @@ use crate::{
     sampling,
     structs::LabelMethod,
     types::ArraySlice,
+    ModelConfig,
 };
 
 fn to_tch_device(device: ModelDevice) -> Device {
@@ -30,6 +33,7 @@ pub struct ModelBuilder {
     train_params: Option<TrainParams>,
     label_method: Option<LabelMethod>,
     retrain_params: Option<TrainParams>,
+    weights_path: Option<PathBuf>,
 }
 
 impl ModelBuilder {
@@ -40,6 +44,11 @@ impl ModelBuilder {
 
     pub fn input_nodes(&mut self, input_nodes: i64) -> &mut Self {
         self.input_nodes = Some(input_nodes);
+        self
+    }
+
+    pub fn layers(&mut self, layers: Vec<ModelLayer>) -> &mut Self {
+        self.layers = layers;
         self
     }
 
@@ -68,45 +77,56 @@ impl ModelBuilder {
         self
     }
 
+    pub fn weights_path(&mut self, weights_path: PathBuf) -> &mut Self {
+        self.weights_path = Some(weights_path);
+        self
+    }
+
     pub fn build(&self) -> DliResult<Model> {
         let device = self.device.ok_or(DliError::MissingAttribute("device"))?;
         let label_method = self
             .label_method
             .ok_or(DliError::MissingAttribute("label_method"))?;
-        let vs = nn::VarStore::new(device);
+        let mut vs = nn::VarStore::new(device);
         let vs_root = vs.root();
         let input_nodes = self
             .input_nodes
             .ok_or(DliError::MissingAttribute("input_nodes"))?;
         let labels = self.labels.ok_or(DliError::MissingAttribute("labels"))?;
         assert!(labels > 0, "labels must be greater than 0");
-        let (mut model, output_nodes) = self.layers.iter().enumerate().fold(
-            (nn::seq(), input_nodes),
-            |(model, input_nodes), (i, layer)| {
-                let (model, output_nodes) = match layer {
-                    ModelLayer::Linear(nodes) => {
-                        let nodes = *nodes as i64;
-                        (
-                            model.add(nn::linear(
-                                &vs_root / format!("layer_{i}"),
-                                input_nodes,
+        let mut i = 0;
+        let (mut model, output_nodes) =
+            self.layers
+                .iter()
+                .fold((nn::seq(), input_nodes), |(model, input_nodes), layer| {
+                    let (model, output_nodes) = match layer {
+                        ModelLayer::Linear(nodes) => {
+                            let nodes = *nodes as i64;
+                            let r = (
+                                model.add(nn::linear(
+                                    &vs_root / format!("{i}", i = 2 * i),
+                                    input_nodes,
+                                    nodes,
+                                    Default::default(),
+                                )),
                                 nodes,
-                                Default::default(),
-                            )),
-                            nodes,
-                        )
-                    }
-                    ModelLayer::ReLU => (model.add_fn(|xs| xs.relu()), input_nodes),
-                };
-                (model, output_nodes)
-            },
-        );
+                            );
+                            i += 1;
+                            r
+                        }
+                        ModelLayer::ReLU => (model.add_fn(|xs| xs.relu()), input_nodes),
+                    };
+                    (model, output_nodes)
+                });
         model = model.add(nn::linear(
-            &vs_root / "output",
+            &vs_root / format!("{i}", i = 2 * i),
             output_nodes,
             labels as i64,
             Default::default(),
         ));
+        if let Some(path) = &self.weights_path {
+            vs.load(path)?;
+        }
         let train_params = self.train_params.unwrap_or_default();
         let retrain_params = self.retrain_params.unwrap_or_default();
         let model = Model {
@@ -118,6 +138,7 @@ impl ModelBuilder {
             retrain_params,
             input_shape: input_nodes as usize,
             label_method,
+            layers: self.layers.clone(),
         };
         Ok(model)
     }
@@ -134,6 +155,7 @@ pub struct Model {
     train_params: TrainParams,
     retrain_params: TrainParams,
     label_method: LabelMethod,
+    layers: Vec<ModelLayer>,
 }
 
 impl Model {
@@ -152,14 +174,14 @@ impl Model {
         predictions
     }
 
-    pub fn predict_many(&self, xs: &ArraySlice) -> Vec<usize> {
+    pub fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
         let xs_tensor = Tensor::from_slice(xs);
         let xs_tensor = xs_tensor.view((
             (xs.len() / self.input_shape) as i64,
             self.input_shape as i64,
         ));
         let labels = self.model.forward(&xs_tensor).argmax(1, false);
-        tensor2vec_usize(&labels)
+        Ok(tensor2vec_usize(&labels))
     }
 
     pub fn train(&mut self, xs: &ArraySlice) {
@@ -230,6 +252,35 @@ impl Model {
             test_labels: Tensor::empty(0, options),
             labels: self.labels as i64,
         }
+    }
+
+    pub fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig> {
+        self.vs.save(&weights_filename)?;
+        Ok(ModelConfig {
+            train_params: self.train_params,
+            weights_path: Some(weights_filename),
+            layers: self.layers.clone(),
+        })
+    }
+
+    pub fn memory_usage(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + (self
+                .vs
+                .variables()
+                .into_values()
+                .map(|tensor| {
+                    let numel = tensor.size().iter().product::<i64>() as u64;
+                    let element_size = match tensor.kind() {
+                        tch::Kind::Float => 4,
+                        tch::Kind::Double => 8,
+                        tch::Kind::Int64 => 8,
+                        tch::Kind::Int => 4,
+                        _ => 4, // default to 4 bytes
+                    };
+                    numel * element_size
+                })
+                .sum::<u64>() as usize)
     }
 }
 

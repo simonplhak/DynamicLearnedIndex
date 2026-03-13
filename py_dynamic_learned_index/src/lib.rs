@@ -1,5 +1,6 @@
 use std::io::Write;
 use std::path::Path;
+use std::sync::Mutex;
 
 use dynamic_learned_index::{
     model::RetrainStrategy, IndexBuilder, ModelDevice, ModelLayer, SearchParams,
@@ -47,9 +48,8 @@ impl Write for PyFileLike {
 unsafe impl Sync for PyFileLike {}
 
 #[pyclass]
-#[derive(Clone)]
 struct DynamicLearnedIndexBuilder {
-    builder: IndexBuilder,
+    builder: Mutex<IndexBuilder>,
 }
 
 #[pymethods]
@@ -57,87 +57,96 @@ impl DynamicLearnedIndexBuilder {
     #[new]
     fn new() -> PyResult<Self> {
         let builder = IndexBuilder::default();
-        Ok(DynamicLearnedIndexBuilder { builder })
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder),
+        })
     }
 
     #[staticmethod]
     fn from_yaml(file: &str) -> PyResult<Self> {
         Ok(DynamicLearnedIndexBuilder {
-            builder: IndexBuilder::from_yaml(Path::new(file))?,
+            builder: Mutex::new(IndexBuilder::from_yaml(Path::new(file))?),
         })
     }
 
     #[staticmethod]
     fn from_disk(working_dir: &str) -> PyResult<Self> {
         Ok(DynamicLearnedIndexBuilder {
-            builder: IndexBuilder::from_disk(Path::new(working_dir))?,
+            builder: Mutex::new(IndexBuilder::from_disk(Path::new(working_dir))?),
         })
     }
 
     fn buffer_size(&self, size: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.buffer_size(size);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.buffer_size(size)),
+        })
     }
 
     fn bucket_size(&self, size: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.bucket_size(size);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.bucket_size(size)),
+        })
     }
 
     fn arity(&self, arity: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.arity(arity);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.arity(arity)),
+        })
     }
 
     fn compaction_strategy(&self, compaction: &str) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.compaction_strategy(compaction.into());
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.compaction_strategy(compaction.into())),
+        })
     }
 
     fn distance_fn(&self, distance_fn: &str) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.distance_fn(distance_fn.into());
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.distance_fn(distance_fn.into())),
+        })
     }
 
     fn train_threshold_samples(&self, samples: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.train_threshold_samples(samples);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.train_threshold_samples(samples)),
+        })
     }
 
     fn linear_model_layer(&self, hidden_neurons: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder
-            .builder
-            .add_layer(ModelLayer::Linear(hidden_neurons));
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.add_layer(ModelLayer::Linear(hidden_neurons))),
+        })
     }
 
     fn relu_layer(&self) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.add_layer(ModelLayer::ReLU);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.add_layer(ModelLayer::ReLU)),
+        })
     }
 
     fn train_batch_size(&self, size: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.train_batch_size(size);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.train_batch_size(size)),
+        })
     }
 
     fn train_epochs(&self, epochs: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.train_epochs(epochs);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.train_epochs(epochs)),
+        })
     }
 
     fn retrain_strategy(&self, strategy: &str) -> PyResult<Self> {
-        let mut builder = self.clone();
         let retrain_strategy = match strategy {
             "no_retrain" => RetrainStrategy::NoRetrain,
             "from_scratch" => RetrainStrategy::FromScratch,
@@ -147,18 +156,20 @@ impl DynamicLearnedIndexBuilder {
                 ))
             }
         };
-        builder.builder = builder.builder.retrain_strategy(retrain_strategy);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.retrain_strategy(retrain_strategy)),
+        })
     }
 
     fn input_shape(&self, shape: usize) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.input_shape(shape);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.input_shape(shape)),
+        })
     }
 
     fn device(&self, device: &str) -> PyResult<Self> {
-        let mut builder = self.clone();
         let device = if device == "cpu" {
             ModelDevice::Cpu
         } else if device.starts_with("gpu:") {
@@ -183,25 +194,31 @@ impl DynamicLearnedIndexBuilder {
                 "Invalid device type",
             ));
         };
-        builder.builder = builder.builder.device(device);
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.device(device)),
+        })
     }
 
     fn delete_method(&self, delete_method: &str) -> PyResult<Self> {
-        let mut builder = self.clone();
-        builder.builder = builder.builder.delete_method(delete_method.into());
-        Ok(builder)
+        let builder = self.builder.lock().unwrap().clone();
+        Ok(DynamicLearnedIndexBuilder {
+            builder: Mutex::new(builder.delete_method(delete_method.into())),
+        })
     }
 
     fn build(&self) -> PyResult<DynamicLearnedIndex> {
-        let index = self.builder.clone().build()?;
-        Ok(DynamicLearnedIndex { index })
+        let builder = self.builder.lock().unwrap().clone();
+        let index = builder.build()?;
+        Ok(DynamicLearnedIndex {
+            index: Mutex::new(index),
+        })
     }
 }
 
 #[pyclass]
 struct DynamicLearnedIndex {
-    index: dynamic_learned_index::Index,
+    index: Mutex<dynamic_learned_index::Index>,
 }
 
 fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyResult<SearchParams> {
@@ -251,7 +268,9 @@ impl DynamicLearnedIndex {
     #[new]
     fn new() -> PyResult<Self> {
         let index = IndexBuilder::default().build()?;
-        Ok(DynamicLearnedIndex { index })
+        Ok(DynamicLearnedIndex {
+            index: Mutex::new(index),
+        })
     }
 
     #[pyo3(signature = (query, k, **py_kwargs))]
@@ -264,68 +283,80 @@ impl DynamicLearnedIndex {
     ) -> PyResult<Bound<'py, PyArray1<u32>>> {
         let query = array2vec(query);
         let search_params = parse_search_kwargs(py_kwargs, k)?;
-        let r = self.index.search(&query, search_params)?;
-        let x = r.into_pyarray(py);
+        let result = py.detach(|| {
+            let index = self.index.lock().unwrap();
+            index.search(&query, search_params)
+        });
+        let x = result?.into_pyarray(py);
         Ok(x)
     }
 
-    fn insert<'py>(&mut self, record: PyReadonlyArray1<'py, f32>, id: u32) -> PyResult<()> {
+    fn insert<'py>(&self, py: Python<'py>, record: PyReadonlyArray1<'py, f32>, id: u32) -> PyResult<()> {
         let record = array2vec(record);
-        self.index.insert(record, id)?;
-        Ok(())
+        py.detach(|| {
+            let mut index = self.index.lock().unwrap();
+            index.insert(record, id).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+        })
     }
 
-    fn delete(&mut self, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
-        Ok(self.index.delete(id)?)
+    fn delete(&self, py: Python<'_>, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
+        py.detach(|| {
+            let mut index = self.index.lock().unwrap();
+            index.delete(id).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+        })
     }
 
     fn n_buckets(&self) -> usize {
-        self.index.n_buckets()
+        self.index.lock().unwrap().n_buckets()
     }
 
     fn n_levels(&self) -> usize {
-        self.index.n_levels()
+        self.index.lock().unwrap().n_levels()
     }
 
     fn occupied(&self) -> usize {
-        self.index.occupied()
+        self.index.lock().unwrap().occupied()
     }
 
     fn n_empty_buckets(&self) -> usize {
-        self.index.n_empty_buckets()
+        self.index.lock().unwrap().n_empty_buckets()
     }
 
     fn dump(&self, working_dir: &str) -> PyResult<()> {
-        self.index.dump(Path::new(working_dir))?;
+        let index = self.index.lock().unwrap();
+        index.dump(Path::new(working_dir))?;
         Ok(())
     }
 
     fn buffer_occupied(&self) -> usize {
-        self.index.buffer_occupied()
+        self.index.lock().unwrap().buffer_occupied()
     }
 
     fn level_occupied(&self, level_idx: usize) -> usize {
-        self.index.level_occupied(level_idx)
+        self.index.lock().unwrap().level_occupied(level_idx)
     }
 
     fn level_n_buckets(&self, level_idx: usize) -> usize {
-        self.index.level_n_buckets(level_idx)
+        self.index.lock().unwrap().level_n_buckets(level_idx)
     }
 
     fn level_total_size(&self, level_idx: usize) -> usize {
-        self.index.level_total_size(level_idx)
+        self.index.lock().unwrap().level_total_size(level_idx)
     }
 
     fn level_n_empty_buckets(&self, level_idx: usize) -> usize {
-        self.index.level_n_empty_buckets(level_idx)
+        self.index.lock().unwrap().level_n_empty_buckets(level_idx)
     }
 
     fn bucket_occupied(&self, level_idx: usize, bucket_idx: usize) -> usize {
-        self.index.bucket_occupied(level_idx, bucket_idx)
+        self.index
+            .lock()
+            .unwrap()
+            .bucket_occupied(level_idx, bucket_idx)
     }
 
     fn memory_usage(&self) -> usize {
-        self.index.memory_usage()
+        self.index.lock().unwrap().memory_usage()
     }
 }
 
