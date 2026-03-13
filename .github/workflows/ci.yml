@@ -37,10 +37,10 @@ jobs:
         run: cargo fmt -- --check
 
       - name: Run Clippy
-        run: cargo clippy -- -D warnings
+        run: cargo clippy --workspace --exclude cli_dynamic_learned_index -- -D warnings
 
       - name: Run tests
-        run: cargo test --verbose
+        run: cargo test --workspace --exclude cli_dynamic_learned_index --verbose
 
   build-wheel:
     name: Build Python Wheel
