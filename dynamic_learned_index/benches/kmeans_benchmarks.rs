@@ -2,6 +2,7 @@
 #![feature(test)]
 
 extern crate test;
+#[cfg(feature = "kmeans_clustering")]
 use kmeans::*;
 use ndarray::Array2;
 use rand::Rng;
@@ -20,6 +21,7 @@ fn generate_random_data(size: usize, dim: usize) -> Vec<f32> {
         .collect()
 }
 
+#[cfg(feature = "kmeans_clustering")]
 fn kmeans(data: &Vec<f32>, input_shape: usize, k: usize, max_iters: usize) -> Vec<i64> {
     let count = data.len() / input_shape;
     let kmean: KMeans<_, { LANES }, _> = KMeans::new(data, count, input_shape, EuclideanDistance);
@@ -32,6 +34,7 @@ fn kmeans(data: &Vec<f32>, input_shape: usize, k: usize, max_iters: usize) -> Ve
     result.assignments.into_iter().map(|x| x as i64).collect()
 }
 
+#[cfg(feature = "kmeans_clustering")]
 #[bench]
 fn bench_kmeans(b: &mut Bencher) {
     let data = generate_random_data(SAMPLE_SIZE, VECTOR_DIM);
