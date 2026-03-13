@@ -1,0 +1,57 @@
+[project]
+name = "dli"
+version = "0.1.0"
+description = "Dynamic Learned Index implementation"
+readme = "README.md"
+authors = [{ name = "David Procházka", email = "david@prochazka.dev" }]
+requires-python = "==3.12.*"
+dependencies = [
+    # Core dependencies
+    "faiss-cpu",
+    "torch",
+    "numpy",
+    # Logging
+    "loguru",
+    # Profiling
+    "psutil",
+    # Dataset loading
+    "h5py",
+    # BLISS
+    "scikit-learn",
+    # Evaluation
+    "tqdm",
+    # Visualization
+    "seaborn",
+    "pandas",
+    # Other indexes
+    "hnswlib",
+    # Statistics
+    "scipy",
+    # Configs
+    "jsonschema",
+    "pyyaml",
+    # Additional dependencies
+    "fastbloom-rs",
+    "plotly>=6.5.0",
+    "safetensors>=0.7.0",
+    "dash (>=3.3.0,<4.0.0)",
+]
+
+[project.optional-dependencies]
+dev = ["ruff", "pre-commit"]
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dli", "experiments", "external_indexes"]
