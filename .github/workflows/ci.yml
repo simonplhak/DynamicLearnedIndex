@@ -36,6 +36,9 @@ jobs:
       - name: Check formatting
         run: cargo fmt -- --check
 
+      - name: Remove cli_dynamic_learned_index from workspace
+        run: sed -i 's/"cli_dynamic_learned_index",/#"cli_dynamic_learned_index",/' Cargo.toml
+
       - name: Run Clippy
         run: cargo clippy --workspace --exclude cli_dynamic_learned_index -- -D warnings
 
