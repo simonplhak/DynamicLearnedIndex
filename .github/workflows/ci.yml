@@ -115,7 +115,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
-          file: ./Dockerfile.rust
+          file: ./Dockerfile.python-experiments
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/dli-rust-python:latest
           labels: |
