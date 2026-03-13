@@ -11,6 +11,7 @@ const INDEX_DUMP_DIR: &str = "index_dump";
 const MAX_K: usize = 10;
 const SEARCH_STRATEGY: SearchStrategy = SearchStrategy::ModelDriven(100);
 
+#[cfg(feature = "hdf5")]
 fn load_h5(path: &PathBuf, dataset_name: &str) -> Vec<Array> {
     let emb = hdf5::File::open(path)
         .expect("Failed to open HDF5 file")
@@ -18,6 +19,12 @@ fn load_h5(path: &PathBuf, dataset_name: &str) -> Vec<Array> {
         .expect("Failed to open dataset");
     let data = emb.read_2d::<f32>().expect("Failed to read dataset");
     data.outer_iter().map(|row| row.to_vec()).collect()
+}
+
+#[cfg(not(feature = "hdf5"))]
+fn load_h5(path: &PathBuf, dataset_name: &str) -> Vec<Array> {
+    println!("Run with --feature hdf5");
+    vec![]
 }
 
 fn main() {
