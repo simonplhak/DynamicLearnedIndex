@@ -1,4 +1,3 @@
-#![feature(portable_simd)]
 mod bucket;
 mod clustering;
 // mod compaction_strategy;
