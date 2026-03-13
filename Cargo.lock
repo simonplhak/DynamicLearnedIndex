@@ -843,7 +843,6 @@ dependencies = [
  "dotenvy",
  "env_logger",
  "flat-knn",
- "hdf5-metno",
  "kentro",
  "kmeans",
  "log",
