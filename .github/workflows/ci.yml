@@ -120,3 +120,5 @@ jobs:
           tags: ghcr.io/${{ github.repository_owner }}/dli-rust-python:latest
           labels: |
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          build-contexts: |
+            artifact=target/wheels/

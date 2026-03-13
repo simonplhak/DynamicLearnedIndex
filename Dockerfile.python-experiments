@@ -21,7 +21,9 @@ COPY python-experiments-uv/pyproject.toml python-experiments-uv/uv.lock README.m
 
 RUN uv sync
 
-COPY target/wheels/py_dynamic_learned_index-0.1.0-cp312-cp312-linux_x86_64.whl /tmp/
+COPY --from=artifact *.whl /tmp/
+# to build the image locally uncomment this line and comment out the line above
+# COPY target/wheels/py_dynamic_learned_index-0.1.0-cp312-cp312-linux_x86_64.whl /tmp/
 
 # Install rust wheel if compatible (note: wheel is linux_x86_64, may fail on aarch64)
 # To build for aarch64: pip wheel or build from rust source
