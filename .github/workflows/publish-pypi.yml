@@ -35,20 +35,20 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install PyTorch
-        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - name: Install maturin
+        run: pip install maturin
 
-      - name: Build Wheels
-        uses: PyO3/maturin-action@v1
-        env:
-          LIBTORCH_USE_PYTORCH: "1"
-        with:
-          target: ${{ matrix.target }}
-          # For Linux, this automatically uses a manylinux container
-          # For macOS, it builds for the specific architecture
-          args: --release --features ${{ github.event.inputs.features }} --manifest-path ./py_dynamic_learned_index/Cargo.toml
-          sccache: "true"
-          manylinux: auto
+      - name: Install PyTorch (Linux)
+        if: runner.os == 'Linux'
+        run: pip install torch==2.6.0 --index-url https://download.pytorch.org/whl/cpu
+
+      - name: Install PyTorch (macOS)
+        if: runner.os == 'macOS'
+        run: pip install torch==2.6.0
+
+      - name: Build wheels
+        working-directory: ./py_dynamic_learned_index
+        run: LIBTORCH_USE_PYTORCH=1 maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
@@ -73,8 +73,12 @@ jobs:
           pattern: wheels-*
           merge-multiple: true # Flattens the structure automatically
 
-      - name: List wheels
-        run: ls -R dist/
+      - name: Clean dist directory
+        # This ensures ONLY .whl files are sent to PyPI,
+        # removing any accidental logs or metadata.
+        run: |
+          find dist/ -type f ! -name "*.whl" -delete
+          ls -R dist/
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
@@ -82,3 +86,4 @@ jobs:
           # No password needed if Trusted Publishing is set up on PyPI
           packages-dir: dist/
           verbose: true
+          skip-existing: true
