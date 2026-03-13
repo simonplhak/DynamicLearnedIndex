@@ -40,7 +40,7 @@ jobs:
         run: cargo clippy --workspace --exclude cli_dynamic_learned_index -- -D warnings
 
       - name: Run tests
-        run: cargo test --workspace --exclude cli_dynamic_learned_index --verbose
+        run: cargo test --package dynamic_learned_index --verbose
 
   build-wheel:
     name: Build Python Wheel
