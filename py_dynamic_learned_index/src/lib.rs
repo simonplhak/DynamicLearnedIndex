@@ -291,18 +291,27 @@ impl DynamicLearnedIndex {
         Ok(x)
     }
 
-    fn insert<'py>(&self, py: Python<'py>, record: PyReadonlyArray1<'py, f32>, id: u32) -> PyResult<()> {
+    fn insert<'py>(
+        &self,
+        py: Python<'py>,
+        record: PyReadonlyArray1<'py, f32>,
+        id: u32,
+    ) -> PyResult<()> {
         let record = array2vec(record);
         py.detach(|| {
             let mut index = self.index.lock().unwrap();
-            index.insert(record, id).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+            index
+                .insert(record, id)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
         })
     }
 
     fn delete(&self, py: Python<'_>, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
         py.detach(|| {
             let mut index = self.index.lock().unwrap();
-            index.delete(id).map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+            index
+                .delete(id)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
         })
     }
 
