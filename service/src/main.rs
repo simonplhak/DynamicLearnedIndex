@@ -137,9 +137,7 @@ pub async fn search(
             }
         })?;
 
-    Ok(Json(SearchResponse {
-        results: results.into_iter().map(|id| id as u32).collect(),
-    }))
+    Ok(Json(SearchResponse { results }))
 }
 
 /// POST /insert - Insert a vector in the index
