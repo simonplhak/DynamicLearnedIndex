@@ -5,9 +5,7 @@ use axum::{
     routing::{get, post},
     Router,
 };
-use dynamic_learned_index::{
-    Array, Id, Index, IndexBuilder, SearchParams, SearchStrategy,
-};
+use dynamic_learned_index::{Array, Id, Index, IndexBuilder, SearchParams, SearchStrategy};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Arc;
