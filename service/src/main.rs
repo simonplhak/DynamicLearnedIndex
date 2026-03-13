@@ -6,8 +6,7 @@ use axum::{
     Router,
 };
 use dynamic_learned_index::{
-    Array, CompactionStrategy, DeleteMethod, DistanceFn, Id, Index, IndexBuilder, ModelDevice,
-    RebuildStrategy, SearchParams, SearchStrategy,
+    Array, Id, Index, IndexBuilder, SearchParams, SearchStrategy,
 };
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
