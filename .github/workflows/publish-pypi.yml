@@ -32,6 +32,8 @@ jobs:
 
       - name: Build Wheels
         uses: PyO3/maturin-action@v1
+        env:
+          LIBTORCH_USE_PYTORCH: "1"
         with:
           target: ${{ matrix.target }}
           # For Linux, this automatically uses a manylinux container
