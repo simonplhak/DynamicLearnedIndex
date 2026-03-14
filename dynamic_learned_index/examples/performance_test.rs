@@ -1,5 +1,5 @@
 use dynamic_learned_index::{
-    model::{ModelBuilder, ModelDevice, ModelLayer, RetrainStrategy},
+    model::{ModelBuilder, ModelDevice, ModelInterface, ModelLayer, RetrainStrategy},
     structs::LabelMethod,
     DliResult, TrainParams,
 };

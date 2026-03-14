@@ -22,7 +22,7 @@ fn load_h5(path: &PathBuf, dataset_name: &str) -> Vec<Array> {
 }
 
 #[cfg(not(feature = "hdf5"))]
-fn load_h5(path: &PathBuf, dataset_name: &str) -> Vec<Array> {
+fn load_h5(_path: &PathBuf, _dataset_name: &str) -> Vec<Array> {
     println!("Run with --feature hdf5");
     vec![]
 }

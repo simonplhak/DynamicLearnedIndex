@@ -12,63 +12,12 @@ use rand::rng;
 use std::collections::HashMap;
 
 use crate::errors::{DliError, DliResult};
-use crate::model::{ModelDevice, ModelLayer, RetrainStrategy, TrainParams};
+use crate::model::{CandleBackend, ModelDevice, ModelLayer, RetrainStrategy, TrainParams};
 use crate::structs::LabelMethod;
 use crate::types::ArraySlice;
 use crate::{clustering, sampling, ModelConfig};
 
-#[derive(Debug, Default)]
-pub struct ModelBuilder {
-    device: Option<ModelDevice>,
-    input_nodes: Option<i64>,
-    layers: Vec<ModelLayer>,
-    labels: Option<usize>,
-    train_params: Option<TrainParams>,
-    label_method: Option<LabelMethod>,
-    weights_path: Option<PathBuf>,
-}
-
-impl ModelBuilder {
-    pub fn device(&mut self, device: ModelDevice) -> &mut Self {
-        self.device = Some(device);
-        self
-    }
-
-    pub fn input_nodes(&mut self, input_nodes: i64) -> &mut Self {
-        self.input_nodes = Some(input_nodes);
-        self
-    }
-
-    pub fn layers(&mut self, layers: Vec<ModelLayer>) -> &mut Self {
-        self.layers = layers;
-        self
-    }
-
-    pub fn add_layer(&mut self, layer: ModelLayer) -> &mut Self {
-        self.layers.push(layer);
-        self
-    }
-
-    pub fn labels(&mut self, labels: usize) -> &mut Self {
-        self.labels = Some(labels);
-        self
-    }
-
-    pub fn train_params(&mut self, train_params: TrainParams) -> &mut Self {
-        self.train_params = Some(train_params);
-        self
-    }
-
-    pub fn label_method(&mut self, label_method: LabelMethod) -> &mut Self {
-        self.label_method = Some(label_method);
-        self
-    }
-
-    pub fn weights_path(&mut self, weights_path: PathBuf) -> &mut Self {
-        self.weights_path = Some(weights_path);
-        self
-    }
-
+impl crate::model::BaseModelBuilder<CandleBackend> {
     pub fn build(&self) -> DliResult<Model> {
         let device = self
             .device
@@ -139,18 +88,10 @@ pub struct Model {
     label_method: LabelMethod,
 }
 
-impl Model {
-    pub fn vec2tensor(&self, xs: &[f32]) -> DliResult<Tensor> {
-        Tensor::from_slice(
-            xs,
-            (xs.len() / self.input_shape, self.input_shape),
-            &self.device,
-        )?
-        .to_dtype(DType::F32)
-        .map_err(|e| e.into())
-    }
+impl crate::model::ModelInterface for Model {
+    type TensorType = Tensor;
 
-    pub fn predict(&self, xs: &Tensor) -> DliResult<Vec<(usize, f32)>> {
+    fn predict(&self, xs: &Tensor) -> DliResult<Vec<(usize, f32)>> {
         let logits = self.model.forward(xs)?;
         let final_result = ops::softmax(&logits, D::Minus1)?;
         let predictions = final_result.squeeze(0)?.to_vec1::<f32>()?;
@@ -160,7 +101,80 @@ impl Model {
         Ok(predictions)
     }
 
-    pub fn memory_usage(&self) -> usize {
+    fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
+        let dim = xs.len() / self.input_shape;
+        let batch_size = 4096;
+
+        let mut predictions = Vec::with_capacity(dim);
+
+        for chunk in xs.chunks(batch_size * self.input_shape) {
+            let chunk_dim = chunk.len() / self.input_shape;
+            let dataset = Tensor::from_slice(chunk, (chunk_dim, self.input_shape), &self.device)?;
+            let rs = self.model.forward(&dataset)?.argmax(1)?.to_vec1::<u32>()?;
+            predictions.extend(rs.into_iter().map(|v| v as usize));
+        }
+        Ok(predictions)
+    }
+
+    fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
+        let sample_size = sampling::select_sample_size(
+            self.labels,
+            xs.len() / self.input_shape,
+            self.train_params.threshold_samples,
+        );
+        debug!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
+        let xs = sampling::sample(xs, sample_size, self.input_shape);
+
+        let ys = clustering::compute_labels(
+            &xs,
+            &self.label_method,
+            self.labels,
+            self.input_shape,
+            self.train_params.max_iters,
+        );
+
+        let optim_config = candle_nn::ParamsAdamW {
+            lr: 1e-3,
+            weight_decay: 0.0, // Make it behave like regular Adam
+            ..Default::default()
+        };
+        let mut opt = candle_nn::AdamW::new(self.varmap.all_vars(), optim_config)?;
+        self._train(&xs, &ys, &mut opt)?;
+        Ok(())
+    }
+
+    fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
+        match self.train_params.retrain_strategy {
+            RetrainStrategy::NoRetrain => {
+                debug!("No retraining performed as per strategy.");
+            }
+            RetrainStrategy::FromScratch => {
+                reset_model(&mut self.varmap, &self.device)?;
+                self.train(_xs)?;
+            }
+        };
+        Ok(())
+    }
+
+    fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig> {
+        self.varmap.save(&weights_filename)?;
+        Ok(ModelConfig {
+            layers: self
+                .model
+                .layers
+                .iter()
+                .take(self.model.layers.len() - 1)
+                .map(|layer| match layer {
+                    CandleModelLayer::Linear(lin) => ModelLayer::Linear(lin.weight().dims()[0]),
+                    CandleModelLayer::ReLU => ModelLayer::ReLU,
+                })
+                .collect(),
+            train_params: self.train_params,
+            weights_path: Some(weights_filename),
+        })
+    }
+
+    fn memory_usage(&self) -> usize {
         let mut total = std::mem::size_of::<Self>();
 
         let varmap_size: usize = self
@@ -188,50 +202,22 @@ impl Model {
         total
     }
 
-    #[log_time]
-    pub fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
-        let dim = xs.len() / self.input_shape;
-        let batch_size = 4096;
-
-        let mut predictions = Vec::with_capacity(dim);
-
-        for chunk in xs.chunks(batch_size * self.input_shape) {
-            let chunk_dim = chunk.len() / self.input_shape;
-            let dataset = Tensor::from_slice(chunk, (chunk_dim, self.input_shape), &self.device)?;
-            let rs = self.model.forward(&dataset)?.argmax(1)?.to_vec1::<u32>()?;
-            predictions.extend(rs.into_iter().map(|v| v as usize));
-        }
-        Ok(predictions)
+    fn vec2tensor(&self, xs: &[f32]) -> DliResult<Tensor> {
+        Tensor::from_slice(
+            xs,
+            (xs.len() / self.input_shape, self.input_shape),
+            &self.device,
+        )?
+        .to_dtype(DType::F32)
+        .map_err(|e| e.into())
     }
 
-    #[log_time]
-    pub fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
-        let sample_size = sampling::select_sample_size(
-            self.labels,
-            xs.len() / self.input_shape,
-            self.train_params.threshold_samples,
-        );
-        debug!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
-        let xs = sampling::sample(xs, sample_size, self.input_shape);
-
-        let ys = clustering::compute_labels(
-            &xs,
-            &self.label_method,
-            self.labels,
-            self.input_shape,
-            self.train_params.max_iters,
-        );
-
-        let optim_config = candle_nn::ParamsAdamW {
-            lr: 1e-3,
-            weight_decay: 0.0, // Make it behave like regular Adam
-            ..Default::default()
-        };
-        let mut opt = candle_nn::AdamW::new(self.varmap.all_vars(), optim_config)?;
-        self._train(&xs, &ys, &mut opt)?;
-        Ok(())
+    fn input_shape(&self) -> usize {
+        self.input_shape
     }
+}
 
+impl Model {
     #[log_time]
     fn _train(&mut self, xs: &ArraySlice, ys: &[i64], opt: &mut candle_nn::AdamW) -> DliResult<()> {
         let weighted_index = Self::weighted_index(ys)?;
@@ -293,37 +279,6 @@ impl Model {
         WeightedIndex::new(&weights)
             .map_err(|_| DliError::ModelCreation("Failed to create WeightedIndex"))
     }
-
-    pub fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
-        match self.train_params.retrain_strategy {
-            RetrainStrategy::NoRetrain => {
-                debug!("No retraining performed as per strategy.");
-            }
-            RetrainStrategy::FromScratch => {
-                reset_model(&mut self.varmap, &self.device)?;
-                self.train(_xs)?;
-            }
-        };
-        Ok(())
-    }
-
-    pub fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig> {
-        self.varmap.save(&weights_filename)?;
-        Ok(ModelConfig {
-            layers: self
-                .model
-                .layers
-                .iter()
-                .take(self.model.layers.len() - 1)
-                .map(|layer| match layer {
-                    CandleModelLayer::Linear(lin) => ModelLayer::Linear(lin.weight().dims()[0]),
-                    CandleModelLayer::ReLU => ModelLayer::ReLU,
-                })
-                .collect(),
-            train_params: self.train_params,
-            weights_path: Some(weights_filename),
-        })
-    }
 }
 
 enum CandleModelLayer {
@@ -369,7 +324,7 @@ fn reset_model(var_map: &mut VarMap, device: &Device) -> CandleResult<()> {
 
 #[cfg(test)]
 mod tests {
-    use crate::model::RetrainStrategy;
+    use crate::model::{BaseModelBuilder, ModelInterface, RetrainStrategy};
 
     use super::*;
 
@@ -387,7 +342,7 @@ mod tests {
         };
 
         // Act
-        let model = ModelBuilder::default()
+        let model = BaseModelBuilder::<CandleBackend>::default()
             .device(ModelDevice::Cpu)
             .input_nodes(input_nodes)
             .add_layer(ModelLayer::Linear(256))
@@ -422,7 +377,7 @@ mod tests {
         use tempfile::NamedTempFile;
 
         // Create and train a model
-        let mut builder = ModelBuilder::default();
+        let mut builder = BaseModelBuilder::<CandleBackend>::default();
         let mut model = builder
             .device(ModelDevice::Cpu)
             .input_nodes(10)
@@ -466,7 +421,7 @@ mod tests {
         model.dump(weights_path.clone()).unwrap();
 
         // Load model from weights
-        let mut loaded_builder = ModelBuilder::default();
+        let mut loaded_builder = BaseModelBuilder::<CandleBackend>::default();
         let loaded_model = loaded_builder
             .device(ModelDevice::Cpu)
             .input_nodes(10)
@@ -510,7 +465,7 @@ mod tests {
         // Arrange
         let input_nodes = 10;
         let labels = 5;
-        let mut builder = ModelBuilder::default();
+        let mut builder = BaseModelBuilder::<CandleBackend>::default();
         let mut model = builder
             .device(ModelDevice::Cpu)
             .input_nodes(input_nodes)
@@ -577,7 +532,7 @@ mod tests {
         // Arrange
         let input_nodes = 2;
         let labels = 2;
-        let mut builder = ModelBuilder::default();
+        let mut builder = BaseModelBuilder::<CandleBackend>::default();
         let mut model = builder
             .device(ModelDevice::Cpu)
             .input_nodes(input_nodes)

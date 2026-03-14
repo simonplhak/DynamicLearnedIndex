@@ -1,14 +1,86 @@
-pub mod candle_model;
-#[cfg(feature = "tch")]
-pub mod tch_model;
+mod features;
 
 use std::path::PathBuf;
 
-#[cfg(not(feature = "tch"))]
-pub use candle_model::{Model, ModelBuilder};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "tch")]
-pub use tch_model::{Model, ModelBuilder};
+
+use crate::errors::DliResult;
+use crate::structs::LabelMethod;
+use crate::types::ArraySlice;
+use std::marker::PhantomData;
+
+pub trait ModelInterface {
+    fn predict(&self, xs: &Self::TensorType) -> DliResult<Vec<(usize, f32)>>;
+    fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>>;
+    fn train(&mut self, xs: &ArraySlice) -> DliResult<()>;
+    fn retrain(&mut self, xs: &ArraySlice) -> DliResult<()>;
+    fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig>;
+    fn memory_usage(&self) -> usize;
+    fn vec2tensor(&self, xs: &[f32]) -> DliResult<Self::TensorType>;
+    fn input_shape(&self) -> usize;
+
+    type TensorType;
+}
+
+#[derive(Default)]
+pub struct CandleBackend;
+
+#[derive(Default)]
+pub struct TchBackend;
+
+#[derive(Debug, Clone, Default)]
+pub struct BaseModelBuilder<B> {
+    pub device: Option<ModelDevice>,
+    pub input_nodes: Option<i64>,
+    pub layers: Vec<ModelLayer>,
+    pub labels: Option<usize>,
+    pub train_params: Option<TrainParams>,
+    pub label_method: Option<LabelMethod>,
+    pub weights_path: Option<PathBuf>,
+    _backend: PhantomData<B>,
+}
+
+impl<B> BaseModelBuilder<B> {
+    pub fn device(&mut self, device: ModelDevice) -> &mut Self {
+        self.device = Some(device);
+        self
+    }
+
+    pub fn input_nodes(&mut self, input_nodes: i64) -> &mut Self {
+        self.input_nodes = Some(input_nodes);
+        self
+    }
+
+    pub fn layers(&mut self, layers: Vec<ModelLayer>) -> &mut Self {
+        self.layers = layers;
+        self
+    }
+
+    pub fn add_layer(&mut self, layer: ModelLayer) -> &mut Self {
+        self.layers.push(layer);
+        self
+    }
+
+    pub fn labels(&mut self, labels: usize) -> &mut Self {
+        self.labels = Some(labels);
+        self
+    }
+
+    pub fn train_params(&mut self, train_params: TrainParams) -> &mut Self {
+        self.train_params = Some(train_params);
+        self
+    }
+
+    pub fn label_method(&mut self, label_method: LabelMethod) -> &mut Self {
+        self.label_method = Some(label_method);
+        self
+    }
+
+    pub fn weights_path(&mut self, weights_path: PathBuf) -> &mut Self {
+        self.weights_path = Some(weights_path);
+        self
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
 pub enum ModelDevice {
@@ -73,3 +145,21 @@ pub enum ModelLayer {
     #[serde(rename = "relu")]
     ReLU,
 }
+
+#[cfg(feature = "candle")]
+pub mod candle_model;
+
+#[cfg(feature = "tch")]
+pub mod tch_model;
+
+#[cfg(feature = "candle")]
+pub type Model = candle_model::Model;
+
+#[cfg(feature = "tch")]
+pub type Model = tch_model::Model;
+
+#[cfg(feature = "candle")]
+pub type ModelBuilder = BaseModelBuilder<CandleBackend>;
+
+#[cfg(feature = "tch")]
+pub type ModelBuilder = BaseModelBuilder<TchBackend>;

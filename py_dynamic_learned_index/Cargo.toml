@@ -9,14 +9,15 @@ name = "py_dynamic_learned_index"
 crate-type = ["cdylib"]
 
 [dependencies]
-dynamic_learned_index = { path = "../dynamic_learned_index", features = ["pyo3"] }
+dynamic_learned_index = { path = "../dynamic_learned_index", default-features = false }
 numpy = { version = "0.27.0" }
 pyo3 = { version = "0.27.0", features = ["extension-module"]  }
 structured-logger = { version = "1.0.3", default-features = false }
 log = { version = "0.4.27", features = ["kv"] }
 
 [features]
-default = []
+default = ["candle"]
 measure_time = ["dynamic_learned_index/measure_time"]
 mkl = ["dynamic_learned_index/mkl"]
-tch = ["dynamic_learned_index/tch"]
+tch = ["dynamic_learned_index/tch", "dynamic_learned_index/pyo3"]
+candle = ["dynamic_learned_index/candle", "dynamic_learned_index/pyo3"]

@@ -2,12 +2,13 @@
 
 extern crate test;
 
-use dynamic_learned_index::model::candle_model::{
-    Model as ModelNew, ModelBuilder as ModelNewBuilder,
-};
+#[cfg(feature = "candle")]
+use dynamic_learned_index::model::{candle_model::Model as CandleModel, CandleBackend};
 #[cfg(feature = "tch")]
-use dynamic_learned_index::model::tch_model::{Model, ModelBuilder};
-use dynamic_learned_index::model::{ModelLayer, RetrainStrategy, TrainParams};
+use dynamic_learned_index::model::{tch_model::Model as TchModel, TchBackend};
+use dynamic_learned_index::model::{
+    BaseModelBuilder, ModelInterface, ModelLayer, RetrainStrategy, TrainParams,
+};
 use dynamic_learned_index::structs::LabelMethod;
 use dynamic_learned_index::ModelDevice;
 use rand::Rng;
@@ -29,8 +30,8 @@ fn generate_random_data(size: usize, dim: usize) -> Vec<f32> {
 }
 
 #[cfg(feature = "tch")]
-fn pytorch_model() -> Model {
-    ModelBuilder::default()
+fn pytorch_model() -> TchModel {
+    BaseModelBuilder::<TchBackend>::default()
         .device(ModelDevice::Cpu)
         .input_nodes(VECTOR_DIM as i64)
         .add_layer(ModelLayer::Linear(HIDDEN_NEURONS))
@@ -90,8 +91,9 @@ fn bench_pytorch_model_predict_many(b: &mut Bencher) {
     });
 }
 
-fn candle_model() -> ModelNew {
-    ModelNewBuilder::default()
+#[cfg(feature = "candle")]
+fn candle_model() -> CandleModel {
+    BaseModelBuilder::<CandleBackend>::default()
         .device(ModelDevice::Cpu)
         .input_nodes(VECTOR_DIM as i64)
         .add_layer(ModelLayer::Linear(HIDDEN_NEURONS))
@@ -110,6 +112,7 @@ fn candle_model() -> ModelNew {
         .unwrap()
 }
 
+#[cfg(feature = "candle")]
 #[bench]
 fn bench_candle_model_train(b: &mut Bencher) {
     let data = generate_random_data(SAMPLE_SIZE, VECTOR_DIM);
@@ -120,6 +123,7 @@ fn bench_candle_model_train(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "candle")]
 #[bench]
 fn bench_candle_model_predict_single(b: &mut Bencher) {
     let train_data = generate_random_data(1000, VECTOR_DIM);
@@ -135,6 +139,7 @@ fn bench_candle_model_predict_single(b: &mut Bencher) {
     });
 }
 
+#[cfg(feature = "candle")]
 #[bench]
 fn bench_candle_model_predict_many(b: &mut Bencher) {
     let train_data = generate_random_data(1000, VECTOR_DIM);

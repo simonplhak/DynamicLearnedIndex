@@ -1,6 +1,6 @@
 use crate::{
     bucket::{self, Bucket},
-    model::{Model, ModelBuilder, ModelConfig, ModelDevice},
+    model::{Model, ModelBuilder, ModelConfig, ModelDevice, ModelInterface as _},
     structs::{DiskBucket, DiskLevelIndex, LevelIndexConfig},
     Array, ArraySlice, DeleteMethod, DistanceFn, DliError, DliResult, Id,
 };

@@ -12,6 +12,7 @@ const VECTOR_DIM: usize = 768;
 const SAMPLE_SIZE: usize = 10_000;
 const NUM_CLUSTERS: usize = 81;
 const NUM_ITERS: usize = 1;
+#[cfg(feature = "kmeans_clustering")]
 const LANES: usize = 8; // Assuming 256-bit SIMD with f32 (32 bytes / 4 bytes per f32)
 
 fn generate_random_data(size: usize, dim: usize) -> Vec<f32> {

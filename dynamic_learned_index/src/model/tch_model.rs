@@ -10,7 +10,7 @@ use tch::{
 use crate::{
     clustering::{self},
     errors::{DliError, DliResult},
-    model::{ModelDevice, ModelLayer, TrainParams},
+    model::{ModelDevice, ModelLayer, TchBackend, TrainParams},
     sampling,
     structs::LabelMethod,
     types::ArraySlice,
@@ -24,66 +24,13 @@ fn to_tch_device(device: ModelDevice) -> Device {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct ModelBuilder {
-    device: Option<Device>,
-    input_nodes: Option<i64>,
-    layers: Vec<ModelLayer>,
-    labels: Option<usize>,
-    train_params: Option<TrainParams>,
-    label_method: Option<LabelMethod>,
-    retrain_params: Option<TrainParams>,
-    weights_path: Option<PathBuf>,
-}
-
-impl ModelBuilder {
-    pub fn device(&mut self, device: ModelDevice) -> &mut Self {
-        self.device = Some(to_tch_device(device));
-        self
-    }
-
-    pub fn input_nodes(&mut self, input_nodes: i64) -> &mut Self {
-        self.input_nodes = Some(input_nodes);
-        self
-    }
-
-    pub fn layers(&mut self, layers: Vec<ModelLayer>) -> &mut Self {
-        self.layers = layers;
-        self
-    }
-
-    pub fn add_layer(&mut self, layer: ModelLayer) -> &mut Self {
-        self.layers.push(layer);
-        self
-    }
-
-    pub fn labels(&mut self, labels: usize) -> &mut Self {
-        self.labels = Some(labels);
-        self
-    }
-
-    pub fn retrain_params(&mut self, retrain_params: TrainParams) -> &mut Self {
-        self.retrain_params = Some(retrain_params);
-        self
-    }
-
-    pub fn train_params(&mut self, train_params: TrainParams) -> &mut Self {
-        self.train_params = Some(train_params);
-        self
-    }
-
-    pub fn label_method(&mut self, label_method: LabelMethod) -> &mut Self {
-        self.label_method = Some(label_method);
-        self
-    }
-
-    pub fn weights_path(&mut self, weights_path: PathBuf) -> &mut Self {
-        self.weights_path = Some(weights_path);
-        self
-    }
-
+impl crate::model::BaseModelBuilder<TchBackend> {
     pub fn build(&self) -> DliResult<Model> {
-        let device = self.device.ok_or(DliError::MissingAttribute("device"))?;
+        let device_mdl = self
+            .device
+            .as_ref()
+            .ok_or(DliError::MissingAttribute("device"))?;
+        let device = to_tch_device(*device_mdl);
         let label_method = self
             .label_method
             .ok_or(DliError::MissingAttribute("label_method"))?;
@@ -128,14 +75,12 @@ impl ModelBuilder {
             vs.load(path)?;
         }
         let train_params = self.train_params.unwrap_or_default();
-        let retrain_params = self.retrain_params.unwrap_or_default();
         let model = Model {
             model: Box::new(model),
             vs,
             labels,
             device,
             train_params,
-            retrain_params,
             input_shape: input_nodes as usize,
             label_method,
             layers: self.layers.clone(),
@@ -153,28 +98,26 @@ pub struct Model {
     device: Device,
     pub input_shape: usize,
     train_params: TrainParams,
-    retrain_params: TrainParams,
     label_method: LabelMethod,
     layers: Vec<ModelLayer>,
 }
 
-impl Model {
-    /// returns vec of tuples (label, confidence) sorted by confidence
-    pub fn predict(&self, xs: &ArraySlice) -> Vec<(usize, f32)> {
-        let xs = vec2tensor(xs);
+impl crate::model::ModelInterface for Model {
+    type TensorType = Tensor;
+
+    fn predict(&self, xs: &Tensor) -> DliResult<Vec<(usize, f32)>> {
         let xs = match self.device {
-            Device::Cpu => xs,
+            Device::Cpu => xs.shallow_clone(),
             _ => xs.to_device(self.device),
         };
-        let xs = xs.to_device(self.device);
         let predictions = tensor2vec(&self.model.forward(&xs).softmax(-1, tch::Kind::Float));
         let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
         predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         assert!(predictions.len() <= self.labels);
-        predictions
+        Ok(predictions)
     }
 
-    pub fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
+    fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
         let xs_tensor = Tensor::from_slice(xs);
         let xs_tensor = xs_tensor.view((
             (xs.len() / self.input_shape) as i64,
@@ -184,7 +127,7 @@ impl Model {
         Ok(tensor2vec_usize(&labels))
     }
 
-    pub fn train(&mut self, xs: &ArraySlice) {
+    fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
         let sample_size = sampling::select_sample_size(
             self.labels,
             xs.len() / self.input_shape,
@@ -211,13 +154,53 @@ impl Model {
                 opt.backward_step(&loss);
             }
         }
+        Ok(())
     }
 
-    pub fn retrain(&mut self, _xs: &ArraySlice) {
-        debug!(epochs = self.retrain_params.epochs; "model:retrain");
+    fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
+        Ok(())
     }
 
-    fn dataset(&self, xs: &[f32], ys: &[i64]) -> Dataset {
+    fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig> {
+        self.vs.save(&weights_filename)?;
+        Ok(ModelConfig {
+            train_params: self.train_params,
+            weights_path: Some(weights_filename),
+            layers: self.layers.clone(),
+        })
+    }
+
+    fn memory_usage(&self) -> usize {
+        std::mem::size_of::<Self>()
+            + (self
+                .vs
+                .variables()
+                .into_values()
+                .map(|tensor| {
+                    let numel = tensor.size().iter().product::<i64>() as u64;
+                    let element_size = match tensor.kind() {
+                        tch::Kind::Float => 4,
+                        tch::Kind::Double => 8,
+                        tch::Kind::Int64 => 8,
+                        tch::Kind::Int => 4,
+                        _ => 4, // default to 4 bytes
+                    };
+                    numel * element_size
+                })
+                .sum::<u64>() as usize)
+    }
+
+    fn vec2tensor(&self, xs: &[f32]) -> DliResult<Tensor> {
+        Ok(vec2tensor(xs))
+    }
+
+    fn input_shape(&self) -> usize {
+        self.input_shape
+    }
+}
+
+impl Model {
+    pub fn dataset(&self, xs: &[f32], ys: &[i64]) -> Dataset {
         let total_queries = ys.len();
         assert!(xs.len().is_multiple_of(self.input_shape));
         assert!(xs.len() / self.input_shape == ys.len());

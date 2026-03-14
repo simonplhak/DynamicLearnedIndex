@@ -17,8 +17,8 @@ kentro = { version = "0.1.0" }
 rayon = { version = "1.10.0" }
 simsimd = { version = "6.4.9" }
 ndarray = "0.16.1"
-candle-nn = { git = "https://github.com/huggingface/candle.git", tag = "0.9.1" }
-candle-core = { git = "https://github.com/huggingface/candle.git", tag = "0.9.1" }
+candle-nn = { git = "https://github.com/huggingface/candle.git", tag = "0.9.1", optional = true }
+candle-core = { git = "https://github.com/huggingface/candle.git", tag = "0.9.1", optional = true }
 flat-knn = { git = "https://github.com/simonplhak/flat-knn" }
 bytemuck = "1.24.0"
 thiserror = "2.0.17"
@@ -27,13 +27,19 @@ kmeans = { version = "=2.0.0", optional = true }
 hdf5 = { package = "hdf5-metno", version = "0.9.0", optional = true }
 
 [features]
-default = []
+default = ["candle"]
 measure_time = ["measure_time_macro/enabled"]
 pyo3 = ["dep:pyo3"]
 tch = ["dep:tch"]
+candle = ["dep:candle-core", "dep:candle-nn"]
 mkl = ["candle-core/mkl", "candle-nn/mkl"]
 kmeans_clustering = ["dep:kmeans"]
 hdf5 = ["dep:hdf5"]
+
+[package.metadata.cargo-feature-combinations]
+skip-combinations = [
+    ["tch", "candle"],
+]
 
 [dev-dependencies]
 tempfile = "3.14.0"
