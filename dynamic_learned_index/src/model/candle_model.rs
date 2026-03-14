@@ -83,7 +83,7 @@ pub struct Model {
     varmap: VarMap,
     labels: usize,
     device: Device,
-    input_shape: usize,
+    pub input_shape: usize,
     train_params: TrainParams,
     label_method: LabelMethod,
 }
@@ -210,10 +210,6 @@ impl crate::model::ModelInterface for Model {
         )?
         .to_dtype(DType::F32)
         .map_err(|e| e.into())
-    }
-
-    fn input_shape(&self) -> usize {
-        self.input_shape
     }
 }
 

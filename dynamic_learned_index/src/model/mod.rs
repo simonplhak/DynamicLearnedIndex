@@ -17,7 +17,6 @@ pub trait ModelInterface {
     fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig>;
     fn memory_usage(&self) -> usize;
     fn vec2tensor(&self, xs: &[f32]) -> DliResult<Self::TensorType>;
-    fn input_shape(&self) -> usize;
 
     type TensorType;
 }

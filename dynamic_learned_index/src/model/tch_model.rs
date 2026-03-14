@@ -96,7 +96,7 @@ pub struct Model {
     vs: nn::VarStore,
     labels: usize,
     device: Device,
-    input_shape: usize,
+    pub input_shape: usize,
     train_params: TrainParams,
     label_method: LabelMethod,
     layers: Vec<ModelLayer>,

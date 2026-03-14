@@ -274,7 +274,7 @@ impl LevelIndex {
 
     #[log_time]
     pub(crate) fn insert_many(&mut self, records: Array, ids: Vec<Id>) -> DliResult<()> {
-        let input_shape = self.model.input_shape();
+        let input_shape = self.model.input_shape;
         assert!(records.len() / input_shape == ids.len());
         if records.is_empty() {
             return Ok(());
@@ -430,7 +430,7 @@ mod tests {
         }
 
         // Verify model configuration
-        assert_eq!(level.model.input_shape(), 10);
+        assert_eq!(level.model.input_shape, 10);
         // Note: labels field is private, but should equal n_buckets (4)
 
         // Verify level is initially empty
@@ -456,7 +456,7 @@ mod tests {
             .build()
             .expect("Failed to build with L2 distance");
 
-        assert_eq!(level_l2.model.input_shape(), 5);
+        assert_eq!(level_l2.model.input_shape, 5);
         assert_eq!(level_l2.n_buckets(), 3);
 
         // Test with Dot distance
@@ -469,7 +469,7 @@ mod tests {
             .build()
             .expect("Failed to build with Dot distance");
 
-        assert_eq!(level_dot.model.input_shape(), 8);
+        assert_eq!(level_dot.model.input_shape, 8);
         assert_eq!(level_dot.n_buckets(), 5);
 
         // Test with custom model config
@@ -498,7 +498,7 @@ mod tests {
             .build()
             .expect("Failed to build with custom model config");
 
-        assert_eq!(level_custom.model.input_shape(), 12);
+        assert_eq!(level_custom.model.input_shape, 12);
         assert_eq!(level_custom.n_buckets(), 2);
     }
 
@@ -576,7 +576,7 @@ mod tests {
 
         // Verify loaded level has same properties
         assert_eq!(loaded_level.n_buckets(), n_buckets);
-        assert_eq!(loaded_level.model.input_shape(), input_shape);
+        assert_eq!(loaded_level.model.input_shape, input_shape);
         assert_eq!(loaded_level.occupied(), 20); // Same number of records
 
         // Get predictions from loaded level
