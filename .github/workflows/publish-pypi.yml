@@ -53,7 +53,7 @@ jobs:
           export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
           export CARGO_PROFILE_RELEASE_STRIP=true
           export RUSTFLAGS="-C target-cpu=generic"
-          LIBTORCH_USE_PYTORCH=1 maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip
+          LIBTORCH_USE_PYTORCH=1 maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
