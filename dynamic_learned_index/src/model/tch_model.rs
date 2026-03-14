@@ -96,7 +96,7 @@ pub struct Model {
     vs: nn::VarStore,
     labels: usize,
     device: Device,
-    pub input_shape: usize,
+    input_shape: usize,
     train_params: TrainParams,
     label_method: LabelMethod,
     layers: Vec<ModelLayer>,
@@ -192,10 +192,6 @@ impl crate::model::ModelInterface for Model {
 
     fn vec2tensor(&self, xs: &[f32]) -> DliResult<Tensor> {
         Ok(vec2tensor(xs))
-    }
-
-    fn input_shape(&self) -> usize {
-        self.input_shape
     }
 }
 

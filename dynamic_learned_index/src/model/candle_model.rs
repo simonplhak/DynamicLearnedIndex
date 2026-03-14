@@ -83,7 +83,7 @@ pub struct Model {
     varmap: VarMap,
     labels: usize,
     device: Device,
-    pub input_shape: usize,
+    input_shape: usize,
     train_params: TrainParams,
     label_method: LabelMethod,
 }
