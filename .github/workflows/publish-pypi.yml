@@ -49,7 +49,7 @@ jobs:
       - name: Build wheels
         working-directory: ./py_dynamic_learned_index
         run: |
-          export CARGO_PROFILE_RELEASE_LTO=full
+          export CARGO_PROFILE_RELEASE_LTO=true
           export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
           export CARGO_PROFILE_RELEASE_STRIP=true
           export RUSTFLAGS="-C target-cpu=generic"
