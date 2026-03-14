@@ -48,7 +48,12 @@ jobs:
 
       - name: Build wheels
         working-directory: ./py_dynamic_learned_index
-        run: LIBTORCH_USE_PYTORCH=1 maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip
+        run: |
+          export CARGO_PROFILE_RELEASE_LTO=full
+          export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=1
+          export CARGO_PROFILE_RELEASE_STRIP=true
+          export RUSTFLAGS="-C target-cpu=generic"
+          LIBTORCH_USE_PYTORCH=1 maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4

@@ -7,3 +7,11 @@ members = [
     "py_dynamic_learned_index",
     "service"
 ]
+
+# Size optimization for release builds - applies to all workspace members
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = true
+panic = "abort"
