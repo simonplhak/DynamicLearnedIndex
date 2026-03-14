@@ -1,16 +1,14 @@
 pub mod candle_model;
 #[cfg(feature = "tch")]
-pub mod mix_model;
-#[cfg(feature = "tch")]
 pub mod tch_model;
 
 use std::path::PathBuf;
 
 #[cfg(not(feature = "tch"))]
 pub use candle_model::{Model, ModelBuilder};
-#[cfg(feature = "tch")]
-pub use mix_model::{Model, ModelBuilder};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "tch")]
+pub use tch_model::{Model, ModelBuilder};
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
 pub enum ModelDevice {
