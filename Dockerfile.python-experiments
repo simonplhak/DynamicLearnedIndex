@@ -16,20 +16,18 @@ ENV PATH="/root/.local/bin:${PATH}"
 # Install Python 3.12 via uv and pin it
 RUN uv python install 3.12
 RUN uv python pin 3.12
-
 COPY python-experiments-uv/pyproject.toml python-experiments-uv/uv.lock README.md .
-
+WORKDIR /app
 RUN uv sync
 
-COPY --from=artifact *.whl /tmp/
+COPY --from=artifact *.whl /app
 # to build the image locally uncomment this line and comment out the line above
 # COPY target/wheels/py_dynamic_learned_index-0.1.0-cp312-cp312-linux_x86_64.whl /tmp/
 
 # Install rust wheel if compatible (note: wheel is linux_x86_64, may fail on aarch64)
 # To build for aarch64: pip wheel or build from rust source
-RUN uv pip install /tmp/py_dynamic_learned_index-0.1.0-cp312-cp312-linux_x86_64.whl
+RUN uv pip install /app/*.whl && uv run python -c "import py_dynamic_learned_index; print('Successfully installed:', dir(py_dynamic_learned_index))"
 
-WORKDIR /app
 
 # Allow running shell scripts from experiments/scripts/
 ENTRYPOINT ["/bin/bash", "-c"]
