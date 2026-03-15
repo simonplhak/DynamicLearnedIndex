@@ -96,10 +96,36 @@ jobs:
           path: target/wheels/*.whl
           retention-days: 1
 
+  build-sdist:
+    name: Build source distribution
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12"
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build sdist
+        working-directory: ./py_dynamic_learned_index
+        run: maturin sdist --out ../target/wheels
+
+      - name: Upload sdist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-sdist
+          path: target/wheels/*.tar.gz
+          retention-days: 1
+
   publish-pypi:
     name: Publish to PyPI
     runs-on: ubuntu-latest
-    needs: build-wheels
+    needs: [build-wheels, build-sdist]
     permissions:
       id-token: write # Required for Trusted Publishing
       contents: read
@@ -113,10 +139,10 @@ jobs:
           merge-multiple: true # Flattens the structure automatically
 
       - name: Clean dist directory
-        # This ensures ONLY .whl files are sent to PyPI,
+        # This ensures ONLY .whl and .tar.gz files are sent to PyPI,
         # removing any accidental logs or metadata.
         run: |
-          find dist/ -type f ! -name "*.whl" -delete
+          find dist/ -type f ! -name "*.whl" ! -name "*.tar.gz" -delete
           ls -R dist/
 
       - name: Publish to PyPI
