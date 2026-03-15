@@ -47,6 +47,7 @@ jobs:
         run: pip install torch==2.6.0
 
       - name: Build wheels
+        if: runner.os == 'macOS'
         working-directory: ./py_dynamic_learned_index
         run: |
           export LIBTORCH_USE_PYTORCH=1
@@ -56,6 +57,42 @@ jobs:
           export CARGO_PROFILE_RELEASE_STRIP=false
           export RUSTFLAGS="-C target-cpu=generic"
           maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features
+
+      - name: Build wheels
+        if: runner.os == 'Linux'
+        working-directory: ./py_dynamic_learned_index
+        run: |
+          export LIBTORCH_USE_PYTORCH=1
+          export LIBTORCH_STATIC=0
+          export CARGO_PROFILE_RELEASE_LTO=thin
+          export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
+          export CARGO_PROFILE_RELEASE_STRIP=false
+          export RUSTFLAGS="-C target-cpu=generic"
+          maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features --skip-auditwheel
+
+      - name: Install auditwheel (Linux only)
+        if: runner.os == 'Linux'
+        run: pip install auditwheel
+
+      - name: Manually repair wheels (Linux only)
+        if: runner.os == 'Linux'
+        working-directory: ./py_dynamic_learned_index
+        run: |
+          mkdir -p target/repaired_wheels
+
+          # Repair the wheel, explicitly excluding PyTorch's bulky shared libraries
+          for whl in target/wheels/*.whl; do
+            auditwheel repair "$whl" \
+              --exclude libtorch.so \
+              --exclude libtorch_cpu.so \
+              --exclude libc10.so \
+              --exclude libtorch_python.so \
+              -w target/repaired_wheels
+          done
+
+          # Replace the original linux_x86_64 wheels with the repaired manylinux wheels
+          rm target/wheels/*.whl
+          mv target/repaired_wheels/*.whl target/wheels/
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
