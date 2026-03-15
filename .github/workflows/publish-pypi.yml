@@ -21,7 +21,7 @@ jobs:
             target: x86_64
           - os: ubuntu-24.04-arm
             target: aarch64
-          - os: macos-13
+          - os: macos-latest
             target: x86_64
           - os: macos-latest
             target: aarch64
@@ -57,10 +57,13 @@ jobs:
           export CARGO_PROFILE_RELEASE_STRIP=false
           if [ "${{ matrix.target }}" == "x86_64" ]; then
             export RUSTFLAGS="-C target-cpu=x86-64-v3"
+            TARGET="x86_64-apple-darwin"
           else
             export RUSTFLAGS="-C target-cpu=apple-m1"
+            TARGET="aarch64-apple-darwin"
           fi
-          maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features
+          rustup target add $TARGET
+          maturin build --target $TARGET --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features
 
       - name: Build wheels
         if: runner.os == 'Linux'
