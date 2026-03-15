@@ -35,8 +35,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install maturin
-        run: pip install maturin
+      - name: Install maturin and tools
+        run: pip install maturin auditwheel
 
       - name: Install PyTorch (Linux)
         if: runner.os == 'Linux'
@@ -70,13 +70,8 @@ jobs:
           export RUSTFLAGS="-C target-cpu=generic"
           maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features --skip-auditwheel
 
-      - name: Install auditwheel (Linux only)
-        if: runner.os == 'Linux'
-        run: pip install auditwheel
-
       - name: Manually repair wheels (Linux only)
         if: runner.os == 'Linux'
-        working-directory: ./py_dynamic_learned_index
         run: |
           mkdir -p target/repaired_wheels
 
