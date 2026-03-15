@@ -55,7 +55,11 @@ jobs:
           export CARGO_PROFILE_RELEASE_LTO=thin
           export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
           export CARGO_PROFILE_RELEASE_STRIP=false
-          export RUSTFLAGS="-C target-cpu=generic"
+          if [ "${{ matrix.target }}" == "x86_64" ]; then
+            export RUSTFLAGS="-C target-cpu=x86-64-v3"
+          else
+            export RUSTFLAGS="-C target-cpu=apple-m1"
+          fi
           maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features
 
       - name: Build wheels
@@ -67,7 +71,11 @@ jobs:
           export CARGO_PROFILE_RELEASE_LTO=thin
           export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=16
           export CARGO_PROFILE_RELEASE_STRIP=false
-          export RUSTFLAGS="-C target-cpu=generic"
+          if [ "${{ matrix.target }}" == "x86_64" ]; then
+            export RUSTFLAGS="-C target-cpu=x86-64-v3"
+          else
+            export RUSTFLAGS="-C target-cpu=generic"
+          fi
           maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features --skip-auditwheel
 
       - name: Manually repair wheels (Linux only)
