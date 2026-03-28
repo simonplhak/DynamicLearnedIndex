@@ -292,15 +292,10 @@ impl Index {
         query: &ArraySlice,
         params: &SearchParams,
     ) -> Vec<(f32, usize)> {
-        flat_knn::knn(
-            records2visit,
-            query,
-            params.k,
-            match self.distance_fn {
-                DistanceFn::L2 => flat_knn::Metric::L2,
-                DistanceFn::Dot => flat_knn::Metric::Dot,
-            },
-        )
+        match self.distance_fn {
+            DistanceFn::L2 => flat_knn::knn::<_, flat_knn::L2>(records2visit, query, params.k),
+            DistanceFn::Dot => flat_knn::knn::<_, flat_knn::Dot>(records2visit, query, params.k),
+        }
     }
 
     fn is_level_underutilized(&self, level_idx: usize) -> bool {

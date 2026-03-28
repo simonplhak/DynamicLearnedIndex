@@ -140,15 +140,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
-name = "approx"
-version = "0.5.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cab112f0a86d568ea0e627cc1d6be74a1e9cd55214684db5561995f6dad897c6"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -958,21 +949,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "faiss"
-version = "0.13.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3618cbbe48ebdc63b461cd1bf52f64c27a40e4d294beceedbf2fd4898571e204"
-dependencies = [
- "faiss-sys",
-]
-
-[[package]]
-name = "faiss-sys"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c4a8fa67f7070bb81f41dc71c98813b3e40a66bedab12d6c2ac2af50f0837a7e"
-
-[[package]]
 name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1010,12 +986,9 @@ dependencies = [
 [[package]]
 name = "flat-knn"
 version = "0.1.0"
-source = "git+https://github.com/simonplhak/flat-knn#dc9f487d864a00dfb45786afc91c48a4cb9f4982"
+source = "git+https://github.com/simonplhak/flat-knn#58cb15a90373071a52a6bf01a5349e277a74d78b"
 dependencies = [
- "faiss",
- "linfa",
- "linfa-nn",
- "ndarray 0.16.1",
+ "half",
  "ordered-float",
  "rand 0.9.2",
  "rayon",
@@ -1875,16 +1848,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kdtree"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f0a0e9f770b65bac9aad00f97a67ab5c5319effed07f6da385da3c2115e47ba"
-dependencies = [
- "num-traits",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "kentro"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1954,36 +1917,6 @@ dependencies = [
  "libc",
  "plain",
  "redox_syscall 0.7.3",
-]
-
-[[package]]
-name = "linfa"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87b84e47ca7a9d63f5be24c104e216c8263bfada38080cbdfe1082e611a81fd3"
-dependencies = [
- "approx",
- "ndarray 0.16.1",
- "num-traits",
- "rand 0.8.5",
- "sprs",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "linfa-nn"
-version = "0.8.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7ba257f89880df17b486e67731ef20c4a748a5f5f5eaace010853f69a0beee3"
-dependencies = [
- "kdtree",
- "linfa",
- "ndarray 0.16.1",
- "ndarray-stats",
- "noisy_float",
- "num-traits",
- "order-stat",
- "thiserror 2.0.18",
 ]
 
 [[package]]
@@ -2110,7 +2043,6 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "882ed72dce9365842bf196bdeedf5055305f11fc8c03dee7bb0194a6cad34841"
 dependencies = [
- "approx",
  "matrixmultiply",
  "num-complex",
  "num-integer",
@@ -2136,21 +2068,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ndarray-stats"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17ebbe97acce52d06aebed4cd4a87c0941f4b2519b59b82b4feb5bd0ce003dfd"
-dependencies = [
- "indexmap",
- "itertools",
- "ndarray 0.16.1",
- "noisy_float",
- "num-integer",
- "num-traits",
- "rand 0.8.5",
-]
-
-[[package]]
 name = "nix"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2159,15 +2076,6 @@ dependencies = [
  "bitflags 1.3.2",
  "cfg-if",
  "libc",
-]
-
-[[package]]
-name = "noisy_float"
-version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c16843be85dd410c6a12251c4eca0dd1d3ee8c5725f746c4d5e0fdcec0a864b2"
-dependencies = [
- "num-traits",
 ]
 
 [[package]]
@@ -2398,12 +2306,6 @@ name = "option-ext"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
-
-[[package]]
-name = "order-stat"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "efa535d5117d3661134dbf1719b6f0ffe06f2375843b13935db186cd094105eb"
 
 [[package]]
 name = "ordered-float"
@@ -3309,18 +3211,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
 dependencies = [
  "lock_api",
-]
-
-[[package]]
-name = "sprs"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "704ef26d974e8a452313ed629828cd9d4e4fa34667ca1ad9d6b1fffa43c6e166"
-dependencies = [
- "ndarray 0.16.1",
- "num-complex",
- "num-traits",
- "smallvec",
 ]
 
 [[package]]
