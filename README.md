@@ -20,9 +20,30 @@ cargo run -p cli_dynamic_learned_index
 
 ## Build
 
-Thi library uses SIMD instructions for performance. It needs to know at a compile time the number of bits in SIMD register that CPU supports. To specify the number of bits go to [`dynamic_learned_index/src/constants.rs`](dynamic_learned_index/src/constants.rs) and change `SIMD_REGISTER_SIZE` constant (do not change any other constants). To find out how many bits in SIMD register your CPU support visit manufacturer webpage (in Linux you can find your CPU model via command `cat /proc/cpuinfo | grep -i 'model name'`).
+If you want to build the `cli_dynamic_learned_index` workspace, you need to have hdf5 library installed on your system. You can install it via your package manager.
 
-You also need to install hdf5 version 1.10.
+### Feature flags
+
+**dynamic_learned_index** crate:
+
+- `measure_time`: enables time measuring macro, mostly for development purposes
+- `tch`: enables the use of `tch-rs` library for model training
+  - You need to have `libtorch` installed on your system to use this feature. Follow the installation instructions for `libtorch` from [tch-rs homepage](https://github.com/LaurentMazare/tch-rs).
+- `candle`: enabled by default, enables the use of `candle` library for model training
+- `mkl`: enables the use of `mkl` library for linear algebra operations, can be used with `candle` feature to speed up training on CPU
+
+**cli_dynamic_learned_index** crate:
+
+- `measure_time`: enables time measuring macro, mostly for development purposes
+- `kmeans`: just for running benchmarks for kmeans implementation, not used in the main codebase
+- `kentro`: just for running benchmarks for kentro implementation, not used in the main codebase
+
+**py_dynamic_learned_index* crate:
+
+- `measure_time`: enables time measuring macro, mostly for development purposes
+- `mkl`: enables the use of `mkl` library for linear algebra operations, can be used with `candle` feature to speed up training on CPU
+- `tch`: enables the use of `tch-rs` library for model training, can be used with `candle` feature to speed up training on CPU
+- `candle`: enables the use of `candle` library for model training, can be used with `mkl` or `tch` features to speed up training on CPU
 
 ### Linking with Python
 
@@ -33,34 +54,23 @@ Setup python environment
 ```shell
 cd py_dynamic_learned_index
 uv sync
-maturin develop --release
+uv run maturin develop --release
 python -c "import py_dynamic_learned_index; print(py_dynamic_learned_index.__version__)"  # test installation
-```
-
-Update dynamic_learned_index dependency
-
-```shell
-cd py_dynamic_learned_index
-maturin develop --release
-python -c "import py_dynamic_learned_index; print(py_dynamic_learned_index.__version__)"  # test installation
-```
-
-### Export
-
-To export python bindings use the following command:
-
-```shell
-cd py_dynamic_learned_index
-uv run maturin build --release --zig --compatibility manylinux2014
-
-# you can also use feature "measure_time" to enable time measuring macro - mostly for dev purposes
-uv run maturin build --release --zig --compatibility manylinux2014 --features measure_time
 ```
 
 Then you can install the package via pip:
 
 ```shell
 pip install ./target/wheels/py_dynamic_learned_index*.whl
+```
+
+Building the wheel in release mode:
+
+```shell
+cd py_dynamic_learned_index
+uv sync
+uv run maturin build --release
+uv pip install ./target/wheels/py_dynamic_learned_index*.whl
 ```
 
 ## Running experiments via CLI
@@ -102,27 +112,19 @@ compaction_strategy:
   type: bentley_saxe  # curently only possible value
   rebuild_strategy: no_rebuild # currently only possible value
 levels:
-  0:
-    model:
-      layers:
-      - type: linear
-        value: 256
-      - type: relu
-      ...  # add more layers if needed
-      # be aware that always index adds an output layer
-      train_params:
-        threshold_samples: 1000
-        batch_size: 8
-        epochs: 3
-        max_iters: 10
-      retrain_params:
-        threshold_samples: 1000
-        batch_size: 8
-        epochs: 3
-        max_iters: 10
-    bucket_size: 5000
-  5:
-    ...
+  model:
+    layers:
+    - type: linear
+      value: 256
+    - type: relu
+    ...  # add more layers if needed
+    # be aware that always index adds an output layer
+    train_params:
+      threshold_samples: 1000
+      batch_size: 8
+      epochs: 3
+      max_iters: 10
+  bucket_size: 5000
 buffer_size: 5000
 input_shape: 768
 arity: 3
@@ -147,6 +149,30 @@ To run experiments via CLI, you can use the `cli_dynamic_learned_index` binary. 
 
 ```shell
 ./target/release/cli_dynamic_learned_index experiment test_build data/k300 --force
+```
+
+## Rust API
+
+The `dynamic_learned_index` crate provides a public API for building and querying indices programmatically from Rust code.
+
+```rust
+use dynamic_learned_index::{Index, IndexBuilder, IndexConfig, SearchParams, SearchStrategy};
+
+// Build an index with f32 float type
+let mut index = IndexBuilder::<f32>::default()
+    .input_shape(768)
+    .buffer_size(5000)
+    .bucket_size(5000)
+    .arity(3)
+    .build()?;
+
+// Insert data
+index.insert(vec![1.0, 2.0, 3.0], 0)?;
+
+// Search for k nearest neighbors
+let query = vec![1.0, 2.0, 3.0];
+let results = index.search(&query, 10)?;
+index.delete(0)?;
 ```
 
 ## Python API
@@ -187,10 +213,10 @@ cargo build --release
   --output-dir index_dump
 
 # run benchmark and save as a baseline
-cargo bench -p dynamic_learned_index --bench index_benchmarks -- --warm-up-time 5 --measurement-time 15 --save-baseline base
+cargo bench -p cli_dynamic_learned_index --bench index_benchmarks -- --warm-up-time 5 --measurement-time 15 --save-baseline base
 
 # run benchmark and compare with the baseline
-cargo bench -p dynamic_learned_index --bench index_benchmarks -- --warm-up-time 5 --measurement-time 15 --baseline base 
+cargo bench -p cli_dynamic_learned_index --bench index_benchmarks -- --warm-up-time 5 --measurement-time 15 --baseline base 
 ```
 
 Results are in `target/criterion/report/index.html` file.
@@ -221,7 +247,7 @@ cargo build --release
 # starts benchmark
 # searches 100 queries and generate flamegraph
 # ends benchmark
-cargo run -p dynamic_learned_index --example profiler
+cargo run -p cli_dynamic_learned_index --example profiler
 ```
 
 The flamegraph is stored in `flamegraph.svg` file. You can open it in a web browser.
@@ -236,24 +262,12 @@ google-chrome flamegraph.svg
 To run benchmarks, use the following command:
 
 ```shell
-cargo bench -p dynamic_learned_index
+cargo bench -p cli_dynamic_learned_index
 ```
 
 In basic case there is just candle model benchmark. To run tch model benchmark, enable `tch` feature:
 
 ```shell
+# model benchmarks are in dynamic_learned_index due to the visibility
 cargo bench -p dynamic_learned_index --features tch
-```
-
-### Libtorch installation
-
-If you want to run all benchmarks you need to install `tch-rs` dependency that serves as a wrapper for `libtorch` c++ implementation.
-Follow the installation instructions for `libtorch` from [tch-rs homepage](https://github.com/LaurentMazare/tch-rs).
-
-When using libtorch from pip installation, you need to call cargo build within the environment where the torch package is installed.
-
-```shell
-# build is stored in `./target/release`
-# entrypoint is in `./target/release/cli_dynamic_learned_index` binary
-cargo build --release
 ```
