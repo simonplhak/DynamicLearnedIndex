@@ -795,7 +795,6 @@ dependencies = [
  "half",
  "hdf5-metno",
  "kentro",
- "kmeans",
  "log",
  "measure_time_macro",
  "ndarray 0.16.1",
