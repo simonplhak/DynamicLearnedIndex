@@ -510,6 +510,7 @@ dependencies = [
  "clap",
  "dotenvy",
  "dynamic_learned_index",
+ "half",
  "hdf5-metno",
  "indicatif",
  "log",
@@ -834,6 +835,7 @@ dependencies = [
  "dotenvy",
  "env_logger",
  "flat-knn",
+ "half",
  "hdf5-metno",
  "kentro",
  "kmeans",
@@ -1444,6 +1446,7 @@ checksum = "1698f197367c277fac6c3a35ad12397941b57f7554778d925ceb54c3fe754723"
 dependencies = [
  "ascii",
  "cfg-if",
+ "half",
  "hdf5-metno-sys",
  "libc",
 ]
@@ -2578,6 +2581,7 @@ name = "py_dynamic_learned_index"
 version = "0.1.1"
 dependencies = [
  "dynamic_learned_index",
+ "half",
  "log",
  "numpy",
  "pyo3",

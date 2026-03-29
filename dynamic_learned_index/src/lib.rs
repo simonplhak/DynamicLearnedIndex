@@ -10,9 +10,10 @@ mod sampling;
 pub mod structs;
 pub mod types;
 pub use errors::{DliError, DliResult};
-pub use index::{CompactionStrategy, Index, IndexBuilder, RebuildStrategy};
+pub use index::{CompactionStrategy, Index, IndexBuilder};
 pub use model::{ModelConfig, ModelDevice, ModelLayer, TrainParams};
 pub use structs::{
-    DeleteMethod, DistanceFn, IndexConfig, SearchParams, SearchParamsT, SearchStrategy,
+    DeleteMethod, DistanceFn, IndexConfig, RebuildStrategy, SearchParams, SearchParamsT,
+    SearchStrategy,
 };
 pub use types::{Array, ArrayNumType, ArraySlice, Id};

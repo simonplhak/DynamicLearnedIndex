@@ -1,6 +1,7 @@
 use anyhow::{Ok, Result};
-use dynamic_learned_index::types::{Array, Id};
+use dynamic_learned_index::types::Id;
 use dynamic_learned_index::{DliResult, Index, SearchStrategy};
+use half::f16;
 use indicatif::ProgressBar;
 #[cfg(feature = "measure_time")]
 use log::debug;
@@ -19,15 +20,19 @@ pub struct EvalMetrics {
 
 #[log_time]
 pub fn eval_queries(
-    index: &Index,
+    index: &Index<f16>,
     gt: &[Vec<Id>],
-    queries: &[Array],
+    queries: &[Vec<f16>],
     search_strategy: SearchStrategy,
     use_progress: bool,
 ) -> Result<EvalMetrics> {
     assert!(queries.len() == gt.len());
     let max_k = 10;
-    assert!(queries.len() > max_k);
+    assert!(
+        queries.len() > max_k,
+        "Number of queries must be greater than {}",
+        max_k
+    );
     assert!(index.size() >= max_k);
     let bar = match use_progress {
         true => Some(ProgressBar::new(gt.len() as u64).with_message("Inserting queries")),
@@ -92,8 +97,8 @@ pub struct ValidationOptions {
 
 #[log_time]
 pub fn insert_all_data(
-    index: &mut Index,
-    queries: Vec<Array>,
+    index: &mut Index<f16>,
+    queries: Vec<Vec<f16>>,
     limit: Option<usize>,
     validation_options: Option<ValidationOptions>,
     start_from_one: bool,

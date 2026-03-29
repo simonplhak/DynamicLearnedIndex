@@ -35,7 +35,7 @@ fn main() {
 
     let index_path = root.join(INDEX_DUMP_DIR);
     println!("Loading index from {:?}", index_path);
-    let index = IndexBuilder::from_disk(&index_path)
+    let index = IndexBuilder::<f32>::from_disk(&index_path)
         .expect("Failed to load index from disk")
         .build()
         .expect("Failed to build index");

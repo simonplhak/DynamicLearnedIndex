@@ -1,10 +1,11 @@
 use anyhow::Result;
-use dynamic_learned_index::types::{Array, Id};
+use dynamic_learned_index::types::Id;
+use half::f16;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
-type Dataset = Vec<Array>;
-type Queries = Vec<Array>;
+type Dataset = Vec<Vec<f16>>;
+type Queries = Vec<Vec<f16>>;
 type GroundTruth = Vec<Vec<Id>>;
 
 pub(crate) fn load_dataset_config(path: &Path) -> Result<DatasetConfig> {
@@ -71,15 +72,15 @@ pub struct H5LoadMethod {
     dataset_name: String,
 }
 
-fn load_dataset(load_method: &LoadMethod) -> Result<Vec<Array>> {
+fn load_dataset(load_method: &LoadMethod) -> Result<Vec<Vec<f16>>> {
     match &load_method {
         LoadMethod::H5(dataset) => load_h5(&dataset.path, &dataset.dataset_name),
     }
 }
 
-fn load_h5(path: &PathBuf, dataset_name: &str) -> Result<Vec<Array>> {
+fn load_h5(path: &PathBuf, dataset_name: &str) -> Result<Vec<Vec<f16>>> {
     let emb = hdf5::File::open(path)?.dataset(dataset_name)?;
-    let data = emb.read_2d::<f32>()?;
+    let data = emb.read_2d::<f16>()?;
     Ok(data.outer_iter().map(|row| row.to_vec()).collect())
 }
 

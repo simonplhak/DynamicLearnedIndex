@@ -1,5 +1,7 @@
-use crate::{structs::DiskBucket, DeleteMethod, DliError, DliResult, Id};
-use half::f16;
+use crate::{
+    structs::{DiskBucket, FloatElement},
+    DeleteMethod, DliError, DliResult, Id,
+};
 use std::{
     fmt::Debug,
     fs::File,
@@ -18,29 +20,6 @@ pub struct BufferKind;
 
 #[derive(Debug)]
 pub struct BucketKind;
-
-pub trait FloatElement: bytemuck::Pod + Default {
-    fn zero() -> Self;
-    fn to_f32_slice(slice: &[Self]) -> &[f32];
-}
-
-impl FloatElement for f32 {
-    fn zero() -> Self {
-        0.0f32
-    }
-    fn to_f32_slice(slice: &[Self]) -> &[f32] {
-        slice
-    }
-}
-
-impl FloatElement for f16 {
-    fn zero() -> Self {
-        f16::ZERO
-    }
-    fn to_f32_slice(slice: &[Self]) -> &[f32] {
-        bytemuck::cast_slice(slice)
-    }
-}
 
 #[derive(Debug)]
 pub(crate) struct StorageContainer<K, F: FloatElement> {
@@ -294,6 +273,7 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use super::*;
+    use half::f16;
 
     fn create_bucket() -> Bucket<f32> {
         StorageBuilder::<BucketKind, f32>::default()

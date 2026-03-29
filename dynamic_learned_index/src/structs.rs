@@ -1,14 +1,14 @@
-use std::path::PathBuf;
-
 use serde::{Deserialize, Serialize};
+use std::{borrow::Cow, path::PathBuf};
 
 use crate::{
     constants::{
         DEFAULT_ARITY, DEFAULT_BUCKET_SIZE, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE,
         DEFAULT_SEARCH_K, DEFAULT_SEARCH_N_CANDIDATES,
     },
-    ArrayNumType, CompactionStrategy, Id, ModelConfig, ModelDevice,
+    Id, ModelConfig, ModelDevice,
 };
+use half::f16;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct LevelIndexConfig {
@@ -25,9 +25,50 @@ impl Default for LevelIndexConfig {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub enum RebuildStrategy {
+    #[default]
+    #[serde(rename = "no_rebuild")]
+    NoRebuild,
+    #[serde(rename = "basic_rebuild")]
+    BasicRebuild,
+    #[serde(rename = "greedy_rebuild")]
+    GreedyRebuild,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "type", content = "rebuild_strategy")]
+pub enum CompactionStrategyConfig {
+    #[serde(rename = "bentley_saxe")]
+    BentleySaxe(RebuildStrategy),
+}
+
+impl Default for CompactionStrategyConfig {
+    fn default() -> Self {
+        CompactionStrategyConfig::BentleySaxe(Default::default())
+    }
+}
+
+impl From<&str> for CompactionStrategyConfig {
+    fn from(val: &str) -> Self {
+        match val {
+            "bentley_saxe:no_rebuild" => {
+                CompactionStrategyConfig::BentleySaxe(RebuildStrategy::NoRebuild)
+            }
+            "bentley_saxe:basic_rebuild" => {
+                CompactionStrategyConfig::BentleySaxe(RebuildStrategy::BasicRebuild)
+            }
+            "bentley_saxe:greedy_rebuild" => {
+                CompactionStrategyConfig::BentleySaxe(RebuildStrategy::GreedyRebuild)
+            }
+            _ => panic!("Unknown compaction strategy: {val}"),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct IndexConfig {
-    pub compaction_strategy: CompactionStrategy,
+    pub compaction_strategy: CompactionStrategyConfig,
     pub levels: LevelIndexConfig,
     pub buffer_size: usize,
     pub input_shape: usize,
@@ -156,8 +197,34 @@ impl Default for SearchStrategy {
     }
 }
 
-pub struct Records2Visit<'a> {
-    pub records: Vec<&'a [ArrayNumType]>,
+pub trait FloatElement: bytemuck::Pod + Default {
+    fn zero() -> Self;
+    fn to_f32_slice(slice: &[Self]) -> Cow<'_, [f32]>;
+}
+
+impl FloatElement for f32 {
+    fn zero() -> Self {
+        0.0f32
+    }
+    fn to_f32_slice(slice: &[Self]) -> Cow<'_, [f32]> {
+        Cow::Borrowed(slice)
+    }
+}
+
+impl FloatElement for f16 {
+    fn zero() -> Self {
+        f16::ZERO
+    }
+    fn to_f32_slice(slice: &[Self]) -> Cow<'_, [f32]> {
+        // HalfFloatVecExt::to_f32_slice is not zero-copy, it allocates a new Vec<f32> and converts each f16 to f32
+        let mut v = Vec::with_capacity(slice.len());
+        v.extend(slice.iter().map(|x| x.to_f32()));
+        Cow::Owned(v)
+    }
+}
+
+pub struct Records2Visit<'a, F: FloatElement> {
+    pub records: Vec<&'a [F]>,
     pub ids: Vec<Id>,
 }
 
@@ -185,7 +252,7 @@ pub struct DiskBuffer {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DiskIndex {
-    pub compaction_strategy: CompactionStrategy,
+    pub compaction_strategy: CompactionStrategyConfig,
     pub levels_config: LevelIndexConfig,
     pub buffer_size: usize,
     pub input_shape: usize,

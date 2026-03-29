@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use dynamic_learned_index::{
     model::RetrainStrategy, IndexBuilder, ModelDevice, ModelLayer, SearchParams,
 };
+use half::f16;
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::{
     prelude::*,
@@ -49,14 +50,14 @@ unsafe impl Sync for PyFileLike {}
 
 #[pyclass]
 struct DynamicLearnedIndexBuilder {
-    builder: Mutex<IndexBuilder>,
+    builder: Mutex<IndexBuilder<f16>>,
 }
 
 #[pymethods]
 impl DynamicLearnedIndexBuilder {
     #[new]
     fn new() -> PyResult<Self> {
-        let builder = IndexBuilder::default();
+        let builder = IndexBuilder::<f16>::default();
         Ok(DynamicLearnedIndexBuilder {
             builder: Mutex::new(builder),
         })
@@ -218,7 +219,7 @@ impl DynamicLearnedIndexBuilder {
 
 #[pyclass]
 struct DynamicLearnedIndex {
-    index: Mutex<dynamic_learned_index::Index>,
+    index: Mutex<dynamic_learned_index::Index<f16>>,
 }
 
 fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyResult<SearchParams> {
@@ -277,7 +278,7 @@ impl DynamicLearnedIndex {
     fn search<'py>(
         &self,
         py: Python<'py>,
-        query: PyReadonlyArray1<'py, f32>,
+        query: PyReadonlyArray1<'py, u16>,
         k: usize,
         py_kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyArray1<u32>>> {
@@ -294,7 +295,7 @@ impl DynamicLearnedIndex {
     fn insert<'py>(
         &self,
         py: Python<'py>,
-        record: PyReadonlyArray1<'py, f32>,
+        record: PyReadonlyArray1<'py, u16>,
         id: u32,
     ) -> PyResult<()> {
         let record = array2vec(record);
@@ -306,12 +307,18 @@ impl DynamicLearnedIndex {
         })
     }
 
-    fn delete(&self, py: Python<'_>, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
+    fn delete(&self, py: Python<'_>, id: u32) -> PyResult<Option<(Vec<u16>, u32)>> {
         py.detach(|| {
             let mut index = self.index.lock().unwrap();
-            index
+            let deleted = index
                 .delete(id)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+            if let Some((vec, id)) = deleted {
+                let vec_u16: Vec<u16> = f16tou16_vec(vec);
+                Ok(Some((vec_u16, id)))
+            } else {
+                Ok(None)
+            }
         })
     }
 
@@ -369,8 +376,21 @@ impl DynamicLearnedIndex {
     }
 }
 
-fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {
-    x.as_array().iter().copied().collect()
+// fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {
+//     x.as_array().iter().copied().collect()
+// }
+
+fn array2vec<'py>(x: PyReadonlyArray1<'py, u16>) -> Vec<half::f16> {
+    let slice: &[u16] = x.as_slice().unwrap();
+    // SAFETY: f16 is repr(transparent) over u16 — identical layout, same alignment
+    let f16_slice: &[half::f16] =
+        unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const half::f16, slice.len()) };
+    f16_slice.to_vec()
+}
+
+fn f16tou16_vec(x: Vec<half::f16>) -> Vec<u16> {
+    let mut x = std::mem::ManuallyDrop::new(x);
+    unsafe { Vec::from_raw_parts(x.as_mut_ptr() as *mut u16, x.len(), x.capacity()) }
 }
 
 #[pyfunction]

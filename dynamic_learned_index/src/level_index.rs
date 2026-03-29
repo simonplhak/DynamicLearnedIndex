@@ -1,8 +1,8 @@
 use crate::{
-    bucket::{self, Bucket, FloatElement},
+    bucket::{self, Bucket},
     model::{Model, ModelBuilder, ModelConfig, ModelDevice, ModelInterface as _},
-    structs::{DiskBucket, DiskLevelIndex, LevelIndexConfig},
-    ArraySlice, DeleteMethod, DistanceFn, DliError, DliResult, Id,
+    structs::{DiskBucket, DiskLevelIndex, FloatElement, LevelIndexConfig},
+    DeleteMethod, DistanceFn, DliError, DliResult, Id,
 };
 #[cfg(feature = "measure_time")]
 use log::debug;
@@ -210,7 +210,7 @@ impl<F: FloatElement> LevelIndex<F> {
 
     pub(crate) fn buckets2visit_predictions(
         &self,
-        query: &ArraySlice,
+        query: &[F],
     ) -> DliResult<Vec<(usize, f32, usize)>> {
         if self.occupied() == 0 {
             return Ok(self
@@ -220,7 +220,7 @@ impl<F: FloatElement> LevelIndex<F> {
                 .map(|(bucket_id, _)| (bucket_id, 0.0, 0))
                 .collect());
         }
-        let query = self.model.vec2tensor(query)?;
+        let query = self.model.vec2tensor(&F::to_f32_slice(query))?;
         let preds = self
             .model
             .predict(&query)?
@@ -232,7 +232,7 @@ impl<F: FloatElement> LevelIndex<F> {
 
     pub(crate) fn buckets2visit_predictions_many(
         &self,
-        queries: &[&[f32]],
+        queries: &[&[F]],
     ) -> DliResult<Vec<Vec<(usize, f32, usize)>>> {
         if self.occupied() == 0 {
             let empty_predictions = self
@@ -246,7 +246,7 @@ impl<F: FloatElement> LevelIndex<F> {
 
         let mut flat_queries = Vec::new();
         for query in queries {
-            flat_queries.extend_from_slice(query);
+            flat_queries.extend_from_slice(&F::to_f32_slice(query));
         }
 
         // Get batch predictions (bucket assignments) using predict_many
@@ -266,13 +266,13 @@ impl<F: FloatElement> LevelIndex<F> {
 
     #[log_time]
     pub(crate) fn train(&mut self, xs: &[F]) -> DliResult<()> {
-        self.model.train(F::to_f32_slice(xs))?;
+        self.model.train(&F::to_f32_slice(xs))?;
         Ok(())
     }
 
     #[log_time]
     pub(crate) fn retrain(&mut self, xs: &[F]) -> DliResult<()> {
-        self.model.retrain(F::to_f32_slice(xs))?;
+        self.model.retrain(&F::to_f32_slice(xs))?;
         Ok(())
     }
 
@@ -283,7 +283,9 @@ impl<F: FloatElement> LevelIndex<F> {
         if records.is_empty() {
             return Ok(());
         }
-        let assignments = self.model.predict_many(F::to_f32_slice(&records))?;
+        let xs = F::to_f32_slice(&records);
+        println!("xs={}, {}, {}", xs.len(), xs.len() / input_shape, ids.len());
+        let assignments = self.model.predict_many(&xs)?;
         assert!(assignments.len() == ids.len());
         // Calculate frequency of each bucket index in assignments
         let mut frequencies = vec![0; self.buckets.len()];
