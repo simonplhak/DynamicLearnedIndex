@@ -16,7 +16,21 @@ structured-logger = { version = "1.0.3", default-features = false }
 log = { version = "0.4.27", features = ["kv"] }
 indicatif = { version = "0.17.11" }
 half = "2.7.1"
+rand = "0.9.0"
+criterion = { version = "0.8.1", features = ["html_reports"] }
+pprof = { version = "0.15", features = ["flamegraph"] }
+env_logger = "0.11"
+kmeans = { version = "=2.0.0", optional = true }
+kentro = { version = "0.1.0", optional = true }
+ndarray = { version = "0.16.1", optional = true }
 
 [features]
 default = []
 measure_time = ["dynamic_learned_index/measure_time", "measure_time_macro/enabled"]
+kmeans = ["dep:kmeans"]
+kentro = ["dep:kentro", "dep:ndarray"]
+
+
+[[bench]]
+name = "index_benchmarks"
+harness = false

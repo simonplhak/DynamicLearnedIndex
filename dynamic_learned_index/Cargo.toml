@@ -25,6 +25,7 @@ thiserror = "2.0.17"
 pyo3 = { version = "0.27.0", optional = true }
 kmeans = { version = "=2.0.0", optional = true }
 hdf5 = { package = "hdf5-metno", version = "0.9.0", optional = true }
+half = "2.7.1"
 
 [features]
 default = ["candle"]
@@ -34,7 +35,6 @@ tch = ["dep:tch"]
 candle = ["dep:candle-core", "dep:candle-nn"]
 mkl = ["candle-core/mkl", "candle-nn/mkl"]
 kmeans_clustering = ["dep:kmeans"]
-hdf5 = ["dep:hdf5"]
 
 [package.metadata.cargo-feature-combinations]
 skip-combinations = [
@@ -43,10 +43,3 @@ skip-combinations = [
 
 [dev-dependencies]
 tempfile = "3.14.0"
-criterion = { version = "0.8.1", features = ["html_reports"] }
-pprof = { version = "0.15", features = ["flamegraph"] }
-env_logger = "0.11"
-
-[[bench]]
-name = "index_benchmarks"
-harness = false
