@@ -52,7 +52,7 @@ index: DynamicLearnedIndex = builder.build()
 # ).build()
 
 
-queries = [np.random.rand(input_shape).astype(np.float32) for _ in range(1000)]
+queries = [np.random.rand(input_shape).astype(np.float16).view(np.uint16) for _ in range(1000)]
 for i, query in enumerate(queries):
     index.insert(query, i)
 

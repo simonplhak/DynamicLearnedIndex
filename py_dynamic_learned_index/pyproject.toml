@@ -18,17 +18,6 @@ dependencies = [
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
-repair-wheel-command = [
-    "auditwheel",
-    "repair",
-    "--exclude", "libtorch.so",
-    "--exclude", "libtorch_cpu.so",
-    "--exclude", "libc10.so",
-    "--exclude", "libshm.so",
-    "--exclude", "libtorch_python.so",
-    "-w", "{dest_dir}",
-    "{wheel}"
-]
 
 [dependency-groups]
 dev = [
