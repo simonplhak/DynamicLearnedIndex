@@ -22,13 +22,12 @@ pub struct BufferKind;
 #[derive(Debug)]
 pub struct BucketKind;
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
 pub(crate) struct StorageContainer<K> {
     records: Vec<ArrayNumType>,
     pub ids: Vec<Id>,
     pub size: usize,
     pub input_shape: usize,
-    #[serde(skip)]
     _kind: PhantomData<K>,
 }
 
