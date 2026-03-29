@@ -21,17 +21,24 @@ pub struct BucketKind;
 
 pub trait FloatElement: bytemuck::Pod + Default {
     fn zero() -> Self;
+    fn to_f32_slice(slice: &[Self]) -> &[f32];
 }
 
 impl FloatElement for f32 {
     fn zero() -> Self {
         0.0f32
     }
+    fn to_f32_slice(slice: &[Self]) -> &[f32] {
+        slice
+    }
 }
 
 impl FloatElement for f16 {
     fn zero() -> Self {
         f16::ZERO
+    }
+    fn to_f32_slice(slice: &[Self]) -> &[f32] {
+        bytemuck::cast_slice(slice)
     }
 }
 

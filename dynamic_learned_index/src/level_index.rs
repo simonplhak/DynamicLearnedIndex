@@ -1,8 +1,8 @@
 use crate::{
-    bucket::{self, Bucket},
+    bucket::{self, Bucket, FloatElement},
     model::{Model, ModelBuilder, ModelConfig, ModelDevice, ModelInterface as _},
     structs::{DiskBucket, DiskLevelIndex, LevelIndexConfig},
-    Array, ArraySlice, DeleteMethod, DistanceFn, DliError, DliResult, Id,
+    ArraySlice, DeleteMethod, DistanceFn, DliError, DliResult, Id,
 };
 #[cfg(feature = "measure_time")]
 use log::debug;
@@ -14,11 +14,11 @@ use std::{
 };
 
 #[derive(Debug, Default)]
-pub(crate) struct LevelIndexBuilder {
+pub(crate) struct LevelIndexBuilder<F: FloatElement> {
     id: Option<String>,
     n_buckets: Option<usize>,
     buckets: Option<(Vec<DiskBucket>, PathBuf, PathBuf)>,
-    buckets_in_memory: Option<Vec<Bucket<f32>>>,
+    buckets_in_memory: Option<Vec<Bucket<F>>>,
     model_config: Option<ModelConfig>,
     bucket_size: Option<usize>,
     input_shape: Option<usize>,
@@ -26,7 +26,7 @@ pub(crate) struct LevelIndexBuilder {
     distance_fn: Option<DistanceFn>,
 }
 
-impl LevelIndexBuilder {
+impl<F: FloatElement> LevelIndexBuilder<F> {
     pub fn n_buckets(mut self, size: usize) -> Self {
         self.n_buckets = Some(size);
         self
@@ -73,12 +73,12 @@ impl LevelIndexBuilder {
     }
 
     #[allow(dead_code)]
-    pub fn buckets_in_memory(mut self, buckets: Vec<Bucket<f32>>) -> Self {
+    pub fn buckets_in_memory(mut self, buckets: Vec<Bucket<F>>) -> Self {
         self.buckets_in_memory = Some(buckets);
         self
     }
 
-    pub fn build(self) -> DliResult<LevelIndex> {
+    pub fn build(self) -> DliResult<LevelIndex<F>> {
         let input_shape = self
             .input_shape
             .ok_or(DliError::MissingAttribute("input_shape"))?;
@@ -95,7 +95,7 @@ impl LevelIndexBuilder {
             buckets
                 .into_iter()
                 .map(|disk_bucket| {
-                    bucket::BucketBuilder::<f32>::from_disk(
+                    bucket::BucketBuilder::<F>::from_disk(
                         disk_bucket,
                         &mut records_file,
                         &mut ids_file,
@@ -112,7 +112,7 @@ impl LevelIndexBuilder {
                 .ok_or(DliError::MissingAttribute("n_buckets"))?;
             (0..n_buckets)
                 .map(|_| {
-                    bucket::BucketBuilder::<f32>::default()
+                    bucket::BucketBuilder::<F>::default()
                         .input_shape(input_shape)
                         .size(bucket_size)
                         .build()
@@ -147,14 +147,14 @@ impl LevelIndexBuilder {
     }
 }
 
-pub struct LevelIndex {
+pub struct LevelIndex<F: FloatElement> {
     model: Model,
-    buckets: Vec<Bucket<f32>>,
+    buckets: Vec<Bucket<F>>,
     ids_map: HashMap<Id, (usize, usize)>, // Id -> (bucket_idx, record_idx)
 }
 
-impl LevelIndex {
-    fn new(model: Model, buckets: Vec<Bucket<f32>>) -> Self {
+impl<F: FloatElement> LevelIndex<F> {
+    fn new(model: Model, buckets: Vec<Bucket<F>>) -> Self {
         Self {
             model,
             buckets,
@@ -194,7 +194,7 @@ impl LevelIndex {
             .count()
     }
 
-    pub(crate) fn bucket(&self, bucket_idx: usize) -> &Bucket<f32> {
+    pub(crate) fn bucket(&self, bucket_idx: usize) -> &Bucket<F> {
         &self.buckets[bucket_idx]
     }
 
@@ -265,25 +265,25 @@ impl LevelIndex {
     }
 
     #[log_time]
-    pub(crate) fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
-        self.model.train(xs)?;
+    pub(crate) fn train(&mut self, xs: &[F]) -> DliResult<()> {
+        self.model.train(F::to_f32_slice(xs))?;
         Ok(())
     }
 
     #[log_time]
-    pub(crate) fn retrain(&mut self, xs: &ArraySlice) -> DliResult<()> {
-        self.model.retrain(xs)?;
+    pub(crate) fn retrain(&mut self, xs: &[F]) -> DliResult<()> {
+        self.model.retrain(F::to_f32_slice(xs))?;
         Ok(())
     }
 
     #[log_time]
-    pub(crate) fn insert_many(&mut self, records: Array, ids: Vec<Id>) -> DliResult<()> {
+    pub(crate) fn insert_many(&mut self, records: Vec<F>, ids: Vec<Id>) -> DliResult<()> {
         let input_shape = self.model.input_shape;
         assert!(records.len() / input_shape == ids.len());
         if records.is_empty() {
             return Ok(());
         }
-        let assignments = self.model.predict_many(&records)?;
+        let assignments = self.model.predict_many(F::to_f32_slice(&records))?;
         assert!(assignments.len() == ids.len());
         // Calculate frequency of each bucket index in assignments
         let mut frequencies = vec![0; self.buckets.len()];
@@ -316,9 +316,9 @@ impl LevelIndex {
         Ok(())
     }
 
-    pub(crate) fn get_data(&mut self) -> (Array, Vec<Id>) {
+    pub(crate) fn get_data(&mut self) -> (Vec<F>, Vec<Id>) {
         self.ids_map.clear(); // clear existing id mappings
-        let (data, ids): (Vec<Array>, Vec<Vec<Id>>) = self
+        let (data, ids): (Vec<_>, Vec<Vec<Id>>) = self
             .buckets
             .iter_mut()
             .filter(|bucket| bucket.occupied() > 0)
@@ -330,7 +330,7 @@ impl LevelIndex {
         )
     }
 
-    pub(crate) fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> Option<(Array, Id)> {
+    pub(crate) fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> Option<(Vec<F>, Id)> {
         let deleted = self.ids_map.get(id).cloned();
         if let Some((bucket_idx, record_idx)) = deleted {
             assert!(bucket_idx < self.buckets.len());
@@ -386,7 +386,7 @@ mod tests {
     use crate::structs::DistanceFn;
     use crate::{ModelConfig, ModelLayer, TrainParams};
 
-    fn make_level_with_records(records: Vec<Vec<f32>>, ids: Vec<Id>) -> LevelIndex {
+    fn make_level_with_records(records: Vec<Vec<f32>>, ids: Vec<Id>) -> LevelIndex<f32> {
         let input_shape = if records.is_empty() {
             1
         } else {
@@ -413,7 +413,7 @@ mod tests {
 
     #[test]
     fn test_level_index_builder_minimal_params() {
-        let builder = LevelIndexBuilder::default();
+        let builder = LevelIndexBuilder::<f32>::default();
 
         let level = builder
             .n_buckets(4)
@@ -451,7 +451,7 @@ mod tests {
         // Test that the model is built correctly with different configurations
 
         // Test with L2 distance
-        let level_l2 = LevelIndexBuilder::default()
+        let level_l2 = LevelIndexBuilder::<f32>::default()
             .n_buckets(3)
             .input_shape(5)
             .bucket_size(20)
@@ -464,7 +464,7 @@ mod tests {
         assert_eq!(level_l2.n_buckets(), 3);
 
         // Test with Dot distance
-        let level_dot = LevelIndexBuilder::default()
+        let level_dot = LevelIndexBuilder::<f32>::default()
             .n_buckets(5)
             .input_shape(8)
             .bucket_size(30)
@@ -493,7 +493,7 @@ mod tests {
             weights_path: None,
         };
 
-        let level_custom = LevelIndexBuilder::default()
+        let level_custom = LevelIndexBuilder::<f32>::default()
             .n_buckets(2)
             .input_shape(12)
             .bucket_size(40)
@@ -515,7 +515,7 @@ mod tests {
         let n_buckets = 4;
         let bucket_size = 50;
 
-        let mut level = LevelIndexBuilder::default()
+        let mut level = LevelIndexBuilder::<f32>::default()
             .n_buckets(n_buckets)
             .input_shape(input_shape)
             .bucket_size(bucket_size)
@@ -565,7 +565,7 @@ mod tests {
         assert!(disk_level.ids_path.exists());
 
         // Load level from disk
-        let loaded_level = LevelIndexBuilder::default()
+        let loaded_level = LevelIndexBuilder::<f32>::default()
             .model(disk_level.config.model)
             .distance_fn(DistanceFn::Dot)
             .model_device(ModelDevice::Cpu)
@@ -877,7 +877,7 @@ mod tests {
 
     #[test]
     fn test_insert_many_empty() -> DliResult<()> {
-        let mut level = LevelIndexBuilder::default()
+        let mut level = LevelIndexBuilder::<f32>::default()
             .n_buckets(1)
             .input_shape(3)
             .bucket_size(100)

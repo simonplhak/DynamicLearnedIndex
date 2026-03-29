@@ -22,7 +22,7 @@ pub struct Index {
     input_shape: usize,
     arity: usize,
     device: ModelDevice,
-    levels: Vec<LevelIndex>,
+    levels: Vec<LevelIndex<f32>>,
     buffer: Buffer<f32>,
     distance_fn: DistanceFn,
     delete_method: DeleteMethod,
@@ -728,8 +728,8 @@ impl IndexBuilder {
         device: ModelDevice,
         distance_fn: DistanceFn,
         input_shape: usize,
-    ) -> DliResult<LevelIndex> {
-        LevelIndexBuilder::default()
+    ) -> DliResult<LevelIndex<f32>> {
+        LevelIndexBuilder::<f32>::default()
             .model(disk_index.config.model)
             .distance_fn(distance_fn)
             .model_device(device)
@@ -835,8 +835,8 @@ mod tests {
     fn create_level_with_records_per_bucket(
         input_shape: usize,
         bucket_size: usize,
-        buckets_data: Vec<(Array, Vec<Id>)>,
-    ) -> DliResult<LevelIndex> {
+        buckets_data: Vec<(Vec<f32>, Vec<Id>)>,
+    ) -> DliResult<LevelIndex<f32>> {
         let mut buckets: Vec<Bucket<f32>> = buckets_data
             .iter()
             .map(|(records, ids)| {
@@ -991,7 +991,7 @@ mod tests {
 
     #[test]
     fn test_level_index_builder_missing_attributes() {
-        let builder = LevelIndexBuilder::default();
+        let builder = LevelIndexBuilder::<f32>::default();
         let result = builder.build();
         assert!(matches!(
             result,
