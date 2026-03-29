@@ -169,18 +169,18 @@ pub struct DiskBucket {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DiskBuffer {
-    pub records_path: PathBuf,
-    pub ids_path: PathBuf,
-    pub count: usize,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DiskLevelIndex {
     pub records_path: PathBuf,
     pub ids_path: PathBuf,
     pub buckets: Vec<DiskBucket>,
     pub config: LevelIndexConfig,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct DiskBuffer {
+    pub records_path: PathBuf,
+    pub ids_path: PathBuf,
+    pub data: DiskBucket,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

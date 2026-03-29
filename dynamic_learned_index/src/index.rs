@@ -312,7 +312,16 @@ impl Index {
             .enumerate()
             .map(|(level_id, level)| level.dump(&working_dir, level_id))
             .collect::<DliResult<Vec<_>>>()?;
-        let disk_buffer = self.buffer.dump(&working_dir);
+        let records_path = working_dir.join("buffer_records.bin");
+        let mut records_file = File::create(records_path.clone())?;
+        let ids_path = working_dir.join("buffer_ids.bin");
+        let mut ids_file = File::create(ids_path.clone())?;
+        let disk_buffer_storage = self.buffer.dump(&mut records_file, &mut ids_file);
+        let disk_buffer = DiskBuffer {
+            records_path,
+            ids_path,
+            data: disk_buffer_storage,
+        };
         let disk_index = DiskIndex {
             levels_config: self.levels_config.clone(),
             compaction_strategy: self.compaction_strategy.clone(),
@@ -742,13 +751,26 @@ impl IndexBuilder {
         let input_shape = self
             .input_shape
             .ok_or(DliError::MissingAttribute("input_shape"))?;
-        let mut buffer = BufferBuilder::default()
-            .input_shape(input_shape)
-            .size(buffer_size);
-        if let Some(disk_buffer) = self.disk_buffer {
-            buffer = buffer.disk_buffer(disk_buffer);
-        }
-        let buffer = buffer.build()?;
+        let buffer = match self.disk_buffer {
+            Some(disk_buffer) => {
+                let DiskBuffer {
+                    records_path,
+                    ids_path,
+                    data,
+                } = disk_buffer;
+                let mut records_file = File::create(records_path)?;
+                let mut ids_file = File::create(ids_path)?;
+                BufferBuilder::from_disk(data, &mut records_file, &mut ids_file)
+                    .input_shape(input_shape)
+                    .size(buffer_size)
+                    .build()?
+            }
+            None => BufferBuilder::default()
+                .input_shape(input_shape)
+                .size(buffer_size)
+                .build()?,
+        };
+
         let arity = self.arity.ok_or(DliError::MissingAttribute("arity"))?;
         let device = self.device.ok_or(DliError::MissingAttribute("device"))?;
         let distance_fn = self

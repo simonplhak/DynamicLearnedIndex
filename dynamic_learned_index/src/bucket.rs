@@ -2,38 +2,78 @@ use std::{
     fmt::Debug,
     fs::File,
     io::{Read as _, Seek as _, Write as _},
-    path::Path,
+    marker::PhantomData,
 };
 
 use crate::{
-    structs::{DiskBucket, DiskBuffer},
-    Array, ArrayNumType, ArraySlice, DeleteMethod, DliError, DliResult, Id,
+    structs::DiskBucket, Array, ArrayNumType, ArraySlice, DeleteMethod, DliError, DliResult, Id,
 };
 use serde::Serialize;
 
+pub type Buffer = StorageContainer<BufferKind>;
+pub type Bucket = StorageContainer<BucketKind>;
+
+pub type BucketBuilder<'a> = StorageBuilder<'a, BucketKind>;
+pub type BufferBuilder<'a> = StorageBuilder<'a, BufferKind>;
+
+#[derive(Debug)]
+pub struct BufferKind;
+
+#[derive(Debug)]
+pub struct BucketKind;
+
 #[derive(Debug, Serialize)]
-pub(crate) struct Buffer {
+pub(crate) struct StorageContainer<K> {
     records: Vec<ArrayNumType>,
     pub ids: Vec<Id>,
     pub size: usize,
-    input_shape: usize,
+    pub input_shape: usize,
+    #[serde(skip)]
+    _kind: PhantomData<K>,
 }
 
-impl Buffer {
+/// Shared methods for all storage containers
+impl<K> StorageContainer<K> {
+    /// Get a reference to the record at index i
     pub fn record(&self, i: usize) -> &ArraySlice {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
         &self.records[start..end]
     }
 
-    pub fn insert(&mut self, record: Array, id: Id) {
-        if !self.has_space(1) {
-            panic!("Buffer is full, cannot insert new record");
-        }
-        self.records.extend(record);
-        self.ids.push(id);
+    /// Check if container has space for the given number of records
+    pub fn has_space(&self, count: usize) -> bool {
+        self.occupied() + count <= self.size
     }
 
+    /// Get the number of occupied slots
+    pub fn occupied(&self) -> usize {
+        self.ids.len()
+    }
+
+    /// Calculate memory usage of this container
+    pub fn memory_usage(&self) -> usize {
+        let records_size = self.records.capacity() * std::mem::size_of::<ArrayNumType>();
+        let ids_size = self.ids.capacity() * std::mem::size_of::<Id>();
+        std::mem::size_of::<Self>() + records_size + ids_size
+    }
+
+    pub fn dump(&self, records_file: &mut File, ids_file: &mut File) -> DiskBucket {
+        let records_offset = records_file.stream_position().unwrap();
+        let records_bytes: &[u8] = bytemuck::cast_slice(&self.records);
+        records_file.write_all(records_bytes).unwrap();
+        let ids_offset = ids_file.stream_position().unwrap();
+        let ids_bytes: &[u8] = bytemuck::cast_slice(&self.ids);
+        ids_file.write_all(ids_bytes).unwrap();
+        DiskBucket {
+            records_offset,
+            ids_offset,
+            count: self.occupied(),
+        }
+    }
+}
+
+impl StorageContainer<BufferKind> {
     pub fn get_data(&mut self) -> (Array, Vec<Id>) {
         let records = std::mem::replace(
             &mut self.records,
@@ -44,6 +84,16 @@ impl Buffer {
         (records, ids)
     }
 
+    /// Insert a record into the buffer. Panics if full.
+    pub fn insert(&mut self, record: Array, id: Id) {
+        if !self.has_space(1) {
+            panic!("Buffer is full, cannot insert new record");
+        }
+        self.records.extend(record);
+        self.ids.push(id);
+    }
+
+    /// Delete a record by ID. Returns the deleted record and ID if found.
     pub fn delete(&mut self, id: &Id) -> Option<(Array, Id)> {
         let idx = self.ids.iter().position(|inner_id| inner_id == id);
         match idx {
@@ -52,41 +102,49 @@ impl Buffer {
             None => None,
         }
     }
+}
 
-    pub fn has_space(&self, count: usize) -> bool {
-        self.occupied() + count <= self.size
+impl StorageContainer<BucketKind> {
+    pub fn get_data(&mut self) -> (Array, Vec<Id>) {
+        let records = std::mem::take(&mut self.records);
+        let ids = std::mem::take(&mut self.ids);
+        (records, ids)
     }
 
-    pub fn occupied(&self) -> usize {
-        self.ids.len()
-    }
-
-    pub fn memory_usage(&self) -> usize {
-        let records_size = self.records.capacity() * std::mem::size_of::<ArrayNumType>();
-        let ids_size = self.ids.capacity() * std::mem::size_of::<Id>();
-        std::mem::size_of::<Self>() + records_size + ids_size
-    }
-
-    pub fn dump(&self, working_dir: &Path) -> DiskBuffer {
-        let records_path = working_dir.join("buffer_records.bin");
-        let mut records_file = File::create(records_path.clone()).unwrap();
-        let records_bytes: &[u8] = bytemuck::cast_slice(&self.records);
-        records_file.write_all(records_bytes).unwrap();
-
-        let ids_path = working_dir.join("buffer_ids.bin");
-        let mut ids_file = File::create(ids_path.clone()).unwrap();
-        let ids_bytes: &[u8] = bytemuck::cast_slice(&self.ids);
-        ids_file.write_all(ids_bytes).unwrap();
-
-        DiskBuffer {
-            records_path,
-            ids_path,
-            count: self.occupied(),
+    pub fn insert(&mut self, record: Array, id: Id) -> usize {
+        if !self.has_space(1) {
+            self.resize(1);
         }
+        self.records.extend(record);
+        self.ids.push(id);
+        self.occupied() - 1
+    }
+
+    pub fn delete(
+        &mut self,
+        record_idx: usize,
+        _delete_method: &DeleteMethod,
+    ) -> Option<((Array, Id), (usize, Id))> {
+        swap_and_pop(
+            &mut self.records,
+            &mut self.ids,
+            record_idx,
+            self.input_shape,
+        )
+    }
+
+    pub fn resize(&mut self, new_n_objects: usize) {
+        assert!(new_n_objects > 0);
+        self.records.reserve(new_n_objects * self.input_shape);
+        self.ids.reserve(new_n_objects);
+    }
+
+    pub fn size(&self) -> usize {
+        self.size
     }
 }
 
-fn swap_and_pop(
+pub(crate) fn swap_and_pop(
     records: &mut Array,
     ids: &mut Vec<Id>,
     idx: usize,
@@ -119,173 +177,55 @@ fn swap_and_pop(
     }
 }
 
-#[derive(Debug, Serialize)]
-pub(crate) struct Bucket {
-    records: Vec<ArrayNumType>,
-    pub ids: Vec<Id>,
-    size: usize,
-    input_shape: usize,
-}
-
-impl Bucket {
-    pub fn record(&self, i: usize) -> &ArraySlice {
-        let start = i * self.input_shape;
-        let end = start + self.input_shape;
-        &self.records[start..end]
-    }
-
-    pub fn insert(&mut self, record: Array, id: Id) -> usize {
-        if !self.has_space(1) {
-            self.resize(1)
-        }
-        self.records.extend(record);
-        self.ids.push(id);
-        self.occupied() - 1
-    }
-
-    pub fn resize(&mut self, new_n_objects: usize) {
-        assert!(new_n_objects > 0);
-        self.records.reserve(new_n_objects * self.input_shape);
-        self.ids.reserve(new_n_objects);
-    }
-
-    pub fn get_data(&mut self) -> (Array, Vec<Id>) {
-        let records = std::mem::take(&mut self.records);
-        let ids = std::mem::take(&mut self.ids);
-        (records, ids)
-    }
-
-    pub fn delete(
-        &mut self,
-        record_idx: usize,
-        delete_method: &DeleteMethod,
-    ) -> Option<((Array, Id), (usize, Id))> // (Deleted Array, Deleted Id), (New Index of Swapped Record, Swapped Id)
-    {
-        match delete_method {
-            DeleteMethod::OidToBucket => swap_and_pop(
-                &mut self.records,
-                &mut self.ids,
-                record_idx,
-                self.input_shape,
-            ),
-        }
-    }
-
-    pub fn has_space(&self, count: usize) -> bool {
-        self.occupied() + count <= self.size
-    }
-
-    pub fn occupied(&self) -> usize {
-        self.ids.len()
-    }
-
-    pub fn memory_usage(&self) -> usize {
-        let records_size = self.records.capacity() * std::mem::size_of::<ArrayNumType>();
-        let ids_size = self.ids.capacity() * std::mem::size_of::<Id>();
-        std::mem::size_of::<Self>() + records_size + ids_size
-    }
-
-    pub fn size(&self) -> usize {
-        self.size
-    }
-
-    pub fn dump(&self, records_file: &mut File, ids_file: &mut File) -> DiskBucket {
-        let records_offset = records_file.stream_position().unwrap();
-        let records_bytes: &[u8] = bytemuck::cast_slice(&self.records);
-        records_file.write_all(records_bytes).unwrap();
-        let ids_offset = ids_file.stream_position().unwrap();
-        let ids_bytes: &[u8] = bytemuck::cast_slice(&self.ids);
-        ids_file.write_all(ids_bytes).unwrap();
-        DiskBucket {
-            records_offset,
-            ids_offset,
-            count: self.occupied(),
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct BufferBuilder {
+#[derive(Debug)]
+pub(crate) struct StorageBuilder<'a, B> {
     size: Option<usize>,
     input_shape: Option<usize>,
-    disk_buffer: Option<DiskBuffer>,
-}
-
-impl BufferBuilder {
-    pub fn size(mut self, size: usize) -> Self {
-        self.size = Some(size);
-        self
-    }
-
-    pub fn input_shape(mut self, input_shape: usize) -> Self {
-        self.input_shape = Some(input_shape);
-        self
-    }
-
-    pub fn disk_buffer(mut self, disk_buffer: DiskBuffer) -> Self {
-        self.disk_buffer = Some(disk_buffer);
-        self
-    }
-
-    pub fn build(self) -> DliResult<Buffer> {
-        let size = self.size.ok_or(DliError::MissingAttribute("size"))?;
-        let input_shape = self
-            .input_shape
-            .ok_or(DliError::MissingAttribute("input_shape"))?;
-        let (records, ids) = match self.disk_buffer {
-            Some(disk_buffer) => {
-                let mut records_file = File::open(&disk_buffer.records_path)?;
-                let mut ids_file = File::open(&disk_buffer.ids_path)?;
-
-                // Read records
-                records_file.seek(std::io::SeekFrom::Start(0)).unwrap();
-                let mut records = vec![0.0f32; disk_buffer.count * input_shape];
-                let records_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut records);
-                records_file.read_exact(records_bytes).unwrap();
-
-                // Read ids
-                ids_file.seek(std::io::SeekFrom::Start(0)).unwrap();
-                let mut ids = vec![0u32; disk_buffer.count];
-                let ids_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut ids);
-                ids_file.read_exact(ids_bytes).unwrap();
-
-                (records, ids)
-            }
-            None => (
-                Vec::with_capacity(size * input_shape),
-                Vec::with_capacity(size),
-            ),
-        };
-        Ok(Buffer {
-            records,
-            ids,
-            size,
-            input_shape,
-        })
-    }
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct BucketBuilder<'a> {
-    input_shape: Option<usize>,
-    size: Option<usize>,
     disk_bucket: Option<DiskBucket>,
     records_file: Option<&'a mut File>,
     ids_file: Option<&'a mut File>,
+    _marker: PhantomData<B>,
 }
 
-impl<'a> BucketBuilder<'a> {
+impl Default for StorageBuilder<'_, BucketKind> {
+    fn default() -> Self {
+        Self {
+            size: None,
+            input_shape: None,
+            disk_bucket: None,
+            records_file: None,
+            ids_file: None,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl Default for StorageBuilder<'_, BufferKind> {
+    fn default() -> Self {
+        Self {
+            size: None,
+            input_shape: None,
+            disk_bucket: None,
+            records_file: None,
+            ids_file: None,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'a, B> StorageBuilder<'a, B> {
     pub fn from_disk(
         disk_bucket: DiskBucket,
         records_file: &'a mut File,
         ids_file: &'a mut File,
     ) -> Self {
         Self {
-            input_shape: None,
             size: None,
+            input_shape: None,
             disk_bucket: Some(disk_bucket),
             records_file: Some(records_file),
             ids_file: Some(ids_file),
+            _marker: PhantomData,
         }
     }
 
@@ -299,7 +239,7 @@ impl<'a> BucketBuilder<'a> {
         self
     }
 
-    pub fn build(self) -> DliResult<Bucket> {
+    pub fn build(self) -> DliResult<StorageContainer<B>> {
         let size = self.size.ok_or(DliError::MissingAttribute("size"))?;
         let input_shape = self
             .input_shape
@@ -314,30 +254,27 @@ impl<'a> BucketBuilder<'a> {
                     .ok_or(DliError::MissingAttribute("ids_file"))?;
 
                 // Read records
-                records_file
-                    .seek(std::io::SeekFrom::Start(disk_bucket.records_offset))
-                    .unwrap();
+                records_file.seek(std::io::SeekFrom::Start(disk_bucket.records_offset))?;
                 let mut records = vec![0.0f32; disk_bucket.count * input_shape];
                 let records_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut records);
-                records_file.read_exact(records_bytes).unwrap();
+                records_file.read_exact(records_bytes)?;
 
                 // Read ids
-                ids_file
-                    .seek(std::io::SeekFrom::Start(disk_bucket.ids_offset))
-                    .unwrap();
+                ids_file.seek(std::io::SeekFrom::Start(disk_bucket.ids_offset))?;
                 let mut ids = vec![0u32; disk_bucket.count];
                 let ids_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut ids);
-                ids_file.read_exact(ids_bytes).unwrap();
+                ids_file.read_exact(ids_bytes)?;
 
                 (records, ids)
             }
             None => (Vec::new(), Vec::new()),
         };
-        Ok(Bucket {
+        Ok(StorageContainer {
             records,
             ids,
             size,
             input_shape,
+            _kind: PhantomData,
         })
     }
 }
@@ -350,7 +287,7 @@ mod tests {
     use super::*;
 
     fn create_bucket() -> Bucket {
-        BucketBuilder::default()
+        StorageBuilder::<BucketKind>::default()
             .size(10)
             .input_shape(5)
             .build()
@@ -410,14 +347,15 @@ mod tests {
             .unwrap();
         original_buffer.insert(vec![1.0; original_buffer.input_shape], 1);
         original_buffer.insert(vec![2.0; original_buffer.input_shape], 2);
-        let working_dir = tempfile::tempdir().unwrap();
-        let dump = original_buffer.dump(working_dir.path());
-        let deserialized = BufferBuilder::default()
-            .size(original_buffer.size)
-            .input_shape(original_buffer.input_shape)
-            .disk_buffer(dump)
-            .build()
-            .unwrap();
+        let mut records_file = NamedTempFile::new().unwrap();
+        let mut ids_file = NamedTempFile::new().unwrap();
+        let dump = original_buffer.dump(records_file.as_file_mut(), ids_file.as_file_mut());
+        let deserialized =
+            BufferBuilder::from_disk(dump, records_file.as_file_mut(), ids_file.as_file_mut())
+                .size(original_buffer.size)
+                .input_shape(original_buffer.input_shape)
+                .build()
+                .unwrap();
 
         assert_eq!(original_buffer.size, deserialized.size);
         assert_eq!(original_buffer.input_shape, deserialized.input_shape);
@@ -435,14 +373,15 @@ mod tests {
             .input_shape(5)
             .build()
             .unwrap();
-        let working_dir = tempfile::tempdir().unwrap();
-        let dump = original_buffer.dump(working_dir.path());
-        let deserialized = BufferBuilder::default()
-            .size(original_buffer.size)
-            .input_shape(original_buffer.input_shape)
-            .disk_buffer(dump)
-            .build()
-            .unwrap();
+        let mut records_file = NamedTempFile::new().unwrap();
+        let mut ids_file = NamedTempFile::new().unwrap();
+        let dump = original_buffer.dump(records_file.as_file_mut(), ids_file.as_file_mut());
+        let deserialized =
+            BufferBuilder::from_disk(dump, records_file.as_file_mut(), ids_file.as_file_mut())
+                .size(original_buffer.size)
+                .input_shape(original_buffer.input_shape)
+                .build()
+                .unwrap();
 
         assert_eq!(original_buffer.size, deserialized.size);
         assert_eq!(original_buffer.input_shape, deserialized.input_shape);
