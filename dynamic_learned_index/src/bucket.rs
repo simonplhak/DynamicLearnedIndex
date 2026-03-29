@@ -1,3 +1,5 @@
+use crate::{structs::DiskBucket, DeleteMethod, DliError, DliResult, Id};
+use half::f16;
 use std::{
     fmt::Debug,
     fs::File,
@@ -5,16 +7,11 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{
-    structs::DiskBucket, Array, ArrayNumType, ArraySlice, DeleteMethod, DliError, DliResult, Id,
-};
-use serde::Serialize;
+pub type Buffer<F> = StorageContainer<BufferKind, F>;
+pub type Bucket<F> = StorageContainer<BucketKind, F>;
 
-pub type Buffer = StorageContainer<BufferKind>;
-pub type Bucket = StorageContainer<BucketKind>;
-
-pub type BucketBuilder<'a> = StorageBuilder<'a, BucketKind>;
-pub type BufferBuilder<'a> = StorageBuilder<'a, BufferKind>;
+pub type BucketBuilder<'a, F> = StorageBuilder<'a, BucketKind, F>;
+pub type BufferBuilder<'a, F> = StorageBuilder<'a, BufferKind, F>;
 
 #[derive(Debug)]
 pub struct BufferKind;
@@ -22,9 +19,25 @@ pub struct BufferKind;
 #[derive(Debug)]
 pub struct BucketKind;
 
+pub trait FloatElement: bytemuck::Pod + Default {
+    fn zero() -> Self;
+}
+
+impl FloatElement for f32 {
+    fn zero() -> Self {
+        0.0f32
+    }
+}
+
+impl FloatElement for f16 {
+    fn zero() -> Self {
+        f16::ZERO
+    }
+}
+
 #[derive(Debug)]
-pub(crate) struct StorageContainer<K> {
-    records: Vec<ArrayNumType>,
+pub(crate) struct StorageContainer<K, F: FloatElement> {
+    records: Vec<F>,
     pub ids: Vec<Id>,
     pub size: usize,
     pub input_shape: usize,
@@ -32,9 +45,9 @@ pub(crate) struct StorageContainer<K> {
 }
 
 /// Shared methods for all storage containers
-impl<K> StorageContainer<K> {
+impl<K, F: FloatElement> StorageContainer<K, F> {
     /// Get a reference to the record at index i
-    pub fn record(&self, i: usize) -> &ArraySlice {
+    pub fn record(&self, i: usize) -> &[F] {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
         &self.records[start..end]
@@ -52,7 +65,7 @@ impl<K> StorageContainer<K> {
 
     /// Calculate memory usage of this container
     pub fn memory_usage(&self) -> usize {
-        let records_size = self.records.capacity() * std::mem::size_of::<ArrayNumType>();
+        let records_size = self.records.capacity() * std::mem::size_of::<F>();
         let ids_size = self.ids.capacity() * std::mem::size_of::<Id>();
         std::mem::size_of::<Self>() + records_size + ids_size
     }
@@ -72,8 +85,8 @@ impl<K> StorageContainer<K> {
     }
 }
 
-impl StorageContainer<BufferKind> {
-    pub fn get_data(&mut self) -> (Array, Vec<Id>) {
+impl<F: FloatElement> StorageContainer<BufferKind, F> {
+    pub fn get_data(&mut self) -> (Vec<F>, Vec<Id>) {
         let records = std::mem::replace(
             &mut self.records,
             Vec::with_capacity(self.size * self.input_shape),
@@ -84,7 +97,7 @@ impl StorageContainer<BufferKind> {
     }
 
     /// Insert a record into the buffer. Panics if full.
-    pub fn insert(&mut self, record: Array, id: Id) {
+    pub fn insert(&mut self, record: Vec<F>, id: Id) {
         if !self.has_space(1) {
             panic!("Buffer is full, cannot insert new record");
         }
@@ -93,7 +106,7 @@ impl StorageContainer<BufferKind> {
     }
 
     /// Delete a record by ID. Returns the deleted record and ID if found.
-    pub fn delete(&mut self, id: &Id) -> Option<(Array, Id)> {
+    pub fn delete(&mut self, id: &Id) -> Option<(Vec<F>, Id)> {
         let idx = self.ids.iter().position(|inner_id| inner_id == id);
         match idx {
             Some(idx) => swap_and_pop(&mut self.records, &mut self.ids, idx, self.input_shape)
@@ -103,14 +116,14 @@ impl StorageContainer<BufferKind> {
     }
 }
 
-impl StorageContainer<BucketKind> {
-    pub fn get_data(&mut self) -> (Array, Vec<Id>) {
+impl<F: FloatElement> StorageContainer<BucketKind, F> {
+    pub fn get_data(&mut self) -> (Vec<F>, Vec<Id>) {
         let records = std::mem::take(&mut self.records);
         let ids = std::mem::take(&mut self.ids);
         (records, ids)
     }
 
-    pub fn insert(&mut self, record: Array, id: Id) -> usize {
+    pub fn insert(&mut self, record: Vec<F>, id: Id) -> usize {
         if !self.has_space(1) {
             self.resize(1);
         }
@@ -123,7 +136,7 @@ impl StorageContainer<BucketKind> {
         &mut self,
         record_idx: usize,
         _delete_method: &DeleteMethod,
-    ) -> Option<((Array, Id), (usize, Id))> {
+    ) -> Option<((Vec<F>, Id), (usize, Id))> {
         swap_and_pop(
             &mut self.records,
             &mut self.ids,
@@ -143,12 +156,12 @@ impl StorageContainer<BucketKind> {
     }
 }
 
-pub(crate) fn swap_and_pop(
-    records: &mut Array,
+pub(crate) fn swap_and_pop<F>(
+    records: &mut Vec<F>,
     ids: &mut Vec<Id>,
     idx: usize,
     input_shape: usize,
-) -> Option<((Array, Id), (usize, Id))> // (Deleted Array, Deleted Id), (New Index of Swapped Record, Swapped Id)
+) -> Option<((Vec<F>, Id), (usize, Id))> // (Deleted Array, Deleted Id), (New Index of Swapped Record, Swapped Id)
 {
     let occupied = ids.len();
     match occupied - 1 == idx {
@@ -156,7 +169,7 @@ pub(crate) fn swap_and_pop(
             // idx is the last one, just pop
             let inner_id = ids.pop().unwrap(); // we are sure that there is something
             let record_start = idx * input_shape;
-            let removed_vector: Vec<f32> = records.drain(record_start..).collect();
+            let removed_vector = records.drain(record_start..).collect();
             Some(((removed_vector, inner_id), (idx, inner_id)))
         }
         false => {
@@ -170,23 +183,24 @@ pub(crate) fn swap_and_pop(
                 records.swap(record_start + i, last_record_start + i);
             }
             // Remove the record from the end
-            let removed_vector: Vec<f32> = records.drain(last_record_start..).collect();
+            let removed_vector = records.drain(last_record_start..).collect();
             Some(((removed_vector, inner_id), (idx, ids[idx])))
         }
     }
 }
 
 #[derive(Debug)]
-pub(crate) struct StorageBuilder<'a, B> {
+pub(crate) struct StorageBuilder<'a, B, F: FloatElement> {
     size: Option<usize>,
     input_shape: Option<usize>,
     disk_bucket: Option<DiskBucket>,
     records_file: Option<&'a mut File>,
     ids_file: Option<&'a mut File>,
     _marker: PhantomData<B>,
+    _marker_f: PhantomData<F>,
 }
 
-impl Default for StorageBuilder<'_, BucketKind> {
+impl<B, F: FloatElement> Default for StorageBuilder<'_, B, F> {
     fn default() -> Self {
         Self {
             size: None,
@@ -195,24 +209,12 @@ impl Default for StorageBuilder<'_, BucketKind> {
             records_file: None,
             ids_file: None,
             _marker: PhantomData,
+            _marker_f: PhantomData,
         }
     }
 }
 
-impl Default for StorageBuilder<'_, BufferKind> {
-    fn default() -> Self {
-        Self {
-            size: None,
-            input_shape: None,
-            disk_bucket: None,
-            records_file: None,
-            ids_file: None,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<'a, B> StorageBuilder<'a, B> {
+impl<'a, B, F: FloatElement> StorageBuilder<'a, B, F> {
     pub fn from_disk(
         disk_bucket: DiskBucket,
         records_file: &'a mut File,
@@ -225,6 +227,7 @@ impl<'a, B> StorageBuilder<'a, B> {
             records_file: Some(records_file),
             ids_file: Some(ids_file),
             _marker: PhantomData,
+            _marker_f: PhantomData,
         }
     }
 
@@ -238,7 +241,7 @@ impl<'a, B> StorageBuilder<'a, B> {
         self
     }
 
-    pub fn build(self) -> DliResult<StorageContainer<B>> {
+    pub fn build(self) -> DliResult<StorageContainer<B, F>> {
         let size = self.size.ok_or(DliError::MissingAttribute("size"))?;
         let input_shape = self
             .input_shape
@@ -254,7 +257,7 @@ impl<'a, B> StorageBuilder<'a, B> {
 
                 // Read records
                 records_file.seek(std::io::SeekFrom::Start(disk_bucket.records_offset))?;
-                let mut records = vec![0.0f32; disk_bucket.count * input_shape];
+                let mut records = vec![F::zero(); disk_bucket.count * input_shape];
                 let records_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut records);
                 records_file.read_exact(records_bytes)?;
 
@@ -285,8 +288,8 @@ mod tests {
 
     use super::*;
 
-    fn create_bucket() -> Bucket {
-        StorageBuilder::<BucketKind>::default()
+    fn create_bucket() -> Bucket<f32> {
+        StorageBuilder::<BucketKind, f32>::default()
             .size(10)
             .input_shape(5)
             .build()
@@ -301,12 +304,15 @@ mod tests {
         let mut records_file = NamedTempFile::new().unwrap();
         let mut ids_file = NamedTempFile::new().unwrap();
         let dump = original_bucket.dump(records_file.as_file_mut(), ids_file.as_file_mut());
-        let deserialized =
-            BucketBuilder::from_disk(dump, records_file.as_file_mut(), ids_file.as_file_mut())
-                .input_shape(original_bucket.input_shape)
-                .size(original_bucket.size)
-                .build()
-                .unwrap();
+        let deserialized = BucketBuilder::<f32>::from_disk(
+            dump,
+            records_file.as_file_mut(),
+            ids_file.as_file_mut(),
+        )
+        .input_shape(original_bucket.input_shape)
+        .size(original_bucket.size)
+        .build()
+        .unwrap();
 
         assert_eq!(original_bucket.size, deserialized.size);
         assert_eq!(original_bucket.input_shape, deserialized.input_shape);
@@ -323,12 +329,15 @@ mod tests {
         let mut records_file = NamedTempFile::new().unwrap();
         let mut ids_file = NamedTempFile::new().unwrap();
         let dump = original_bucket.dump(records_file.as_file_mut(), ids_file.as_file_mut());
-        let deserialized =
-            BucketBuilder::from_disk(dump, records_file.as_file_mut(), ids_file.as_file_mut())
-                .input_shape(original_bucket.input_shape)
-                .size(original_bucket.size)
-                .build()
-                .unwrap();
+        let deserialized = BucketBuilder::<f32>::from_disk(
+            dump,
+            records_file.as_file_mut(),
+            ids_file.as_file_mut(),
+        )
+        .input_shape(original_bucket.input_shape)
+        .size(original_bucket.size)
+        .build()
+        .unwrap();
 
         assert_eq!(original_bucket.size, deserialized.size);
         assert_eq!(original_bucket.input_shape, deserialized.input_shape);
@@ -339,7 +348,7 @@ mod tests {
 
     #[test]
     fn test_buffer_serialize() {
-        let mut original_buffer = BufferBuilder::default()
+        let mut original_buffer = BufferBuilder::<f32>::default()
             .size(10)
             .input_shape(5)
             .build()
@@ -349,12 +358,15 @@ mod tests {
         let mut records_file = NamedTempFile::new().unwrap();
         let mut ids_file = NamedTempFile::new().unwrap();
         let dump = original_buffer.dump(records_file.as_file_mut(), ids_file.as_file_mut());
-        let deserialized =
-            BufferBuilder::from_disk(dump, records_file.as_file_mut(), ids_file.as_file_mut())
-                .size(original_buffer.size)
-                .input_shape(original_buffer.input_shape)
-                .build()
-                .unwrap();
+        let deserialized = BufferBuilder::<f32>::from_disk(
+            dump,
+            records_file.as_file_mut(),
+            ids_file.as_file_mut(),
+        )
+        .size(original_buffer.size)
+        .input_shape(original_buffer.input_shape)
+        .build()
+        .unwrap();
 
         assert_eq!(original_buffer.size, deserialized.size);
         assert_eq!(original_buffer.input_shape, deserialized.input_shape);
@@ -367,7 +379,7 @@ mod tests {
 
     #[test]
     fn test_buffer_empty_serialize() {
-        let original_buffer = BufferBuilder::default()
+        let original_buffer = BufferBuilder::<f32>::default()
             .size(10)
             .input_shape(5)
             .build()
@@ -375,12 +387,15 @@ mod tests {
         let mut records_file = NamedTempFile::new().unwrap();
         let mut ids_file = NamedTempFile::new().unwrap();
         let dump = original_buffer.dump(records_file.as_file_mut(), ids_file.as_file_mut());
-        let deserialized =
-            BufferBuilder::from_disk(dump, records_file.as_file_mut(), ids_file.as_file_mut())
-                .size(original_buffer.size)
-                .input_shape(original_buffer.input_shape)
-                .build()
-                .unwrap();
+        let deserialized = BufferBuilder::<f32>::from_disk(
+            dump,
+            records_file.as_file_mut(),
+            ids_file.as_file_mut(),
+        )
+        .size(original_buffer.size)
+        .input_shape(original_buffer.input_shape)
+        .build()
+        .unwrap();
 
         assert_eq!(original_buffer.size, deserialized.size);
         assert_eq!(original_buffer.input_shape, deserialized.input_shape);
@@ -399,7 +414,7 @@ mod tests {
 
     #[test]
     fn test_bucket_builder() {
-        let bucket = BucketBuilder::default()
+        let bucket = BucketBuilder::<f32>::default()
             .size(20)
             .input_shape(3)
             .build()
@@ -411,7 +426,7 @@ mod tests {
 
     #[test]
     fn test_bucket_builder_missing_attributes() {
-        let result = BucketBuilder::default().build();
+        let result = BucketBuilder::<f32>::default().build();
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -454,7 +469,7 @@ mod tests {
 
     #[test]
     fn test_has_space() {
-        let mut bucket = BucketBuilder::default()
+        let mut bucket = BucketBuilder::<f32>::default()
             .size(3)
             .input_shape(2)
             .build()
@@ -494,7 +509,7 @@ mod tests {
 
     #[test]
     fn test_resize_dynamic_bucket() {
-        let mut bucket = BucketBuilder::default()
+        let mut bucket = BucketBuilder::<f32>::default()
             .size(2)
             .input_shape(3)
             .build()
@@ -593,7 +608,7 @@ mod tests {
 
     #[test]
     fn test_buffer_delete() {
-        let mut buffer = BufferBuilder::default()
+        let mut buffer = BufferBuilder::<f32>::default()
             .size(5)
             .input_shape(2)
             .build()
@@ -630,7 +645,7 @@ mod tests {
 
     #[test]
     fn test_buffer_get_data_state() {
-        let mut buffer = BufferBuilder::default()
+        let mut buffer = BufferBuilder::<f32>::default()
             .size(5)
             .input_shape(2)
             .build()
@@ -658,5 +673,197 @@ mod tests {
         assert_eq!(buffer.occupied(), 1);
         assert_eq!(buffer.ids, vec![3]);
         assert_eq!(buffer.record(0), &[3.0, 3.0]);
+    }
+
+    // Helper to create an f16 bucket
+    fn create_bucket_f16() -> StorageContainer<BucketKind, f16> {
+        StorageBuilder::<BucketKind, f16>::default()
+            .size(10)
+            .input_shape(5)
+            .build()
+            .unwrap()
+    }
+
+    // Helper to create an f16 buffer
+    fn create_buffer_f16() -> StorageContainer<BufferKind, f16> {
+        StorageBuilder::<BufferKind, f16>::default()
+            .size(10)
+            .input_shape(5)
+            .build()
+            .unwrap()
+    }
+
+    #[test]
+    fn test_bucket_serialize_f16() {
+        let mut original_bucket = create_bucket_f16();
+        original_bucket.insert(vec![f16::from_f32(1.0); original_bucket.input_shape], 1);
+        original_bucket.insert(vec![f16::from_f32(2.0); original_bucket.input_shape], 2);
+        let mut records_file = NamedTempFile::new().unwrap();
+        let mut ids_file = NamedTempFile::new().unwrap();
+        let dump = original_bucket.dump(records_file.as_file_mut(), ids_file.as_file_mut());
+        let deserialized = StorageBuilder::<BucketKind, f16>::from_disk(
+            dump,
+            records_file.as_file_mut(),
+            ids_file.as_file_mut(),
+        )
+        .input_shape(original_bucket.input_shape)
+        .size(original_bucket.size)
+        .build()
+        .unwrap();
+
+        assert_eq!(original_bucket.size, deserialized.size);
+        assert_eq!(original_bucket.input_shape, deserialized.input_shape);
+        assert_eq!(original_bucket.records, deserialized.records);
+        assert_eq!(original_bucket.ids, deserialized.ids);
+        assert_eq!(original_bucket.occupied(), deserialized.occupied());
+        assert_eq!(original_bucket.record(0), deserialized.record(0));
+        assert_eq!(original_bucket.record(1), deserialized.record(1));
+    }
+
+    #[test]
+    fn test_bucket_empty_serialize_f16() {
+        let original_bucket = create_bucket_f16();
+        let mut records_file = NamedTempFile::new().unwrap();
+        let mut ids_file = NamedTempFile::new().unwrap();
+        let dump = original_bucket.dump(records_file.as_file_mut(), ids_file.as_file_mut());
+        let deserialized = StorageBuilder::<BucketKind, f16>::from_disk(
+            dump,
+            records_file.as_file_mut(),
+            ids_file.as_file_mut(),
+        )
+        .input_shape(original_bucket.input_shape)
+        .size(original_bucket.size)
+        .build()
+        .unwrap();
+
+        assert_eq!(original_bucket.size, deserialized.size);
+        assert_eq!(original_bucket.input_shape, deserialized.input_shape);
+        assert_eq!(original_bucket.records, deserialized.records);
+        assert_eq!(original_bucket.ids, deserialized.ids);
+        assert_eq!(original_bucket.occupied(), deserialized.occupied());
+    }
+
+    #[test]
+    fn test_buffer_serialize_f16() {
+        let mut original_buffer = create_buffer_f16();
+        original_buffer.insert(vec![f16::from_f32(1.0); original_buffer.input_shape], 1);
+        original_buffer.insert(vec![f16::from_f32(2.0); original_buffer.input_shape], 2);
+        let mut records_file = NamedTempFile::new().unwrap();
+        let mut ids_file = NamedTempFile::new().unwrap();
+        let dump = original_buffer.dump(records_file.as_file_mut(), ids_file.as_file_mut());
+        let deserialized = StorageBuilder::<BufferKind, f16>::from_disk(
+            dump,
+            records_file.as_file_mut(),
+            ids_file.as_file_mut(),
+        )
+        .size(original_buffer.size)
+        .input_shape(original_buffer.input_shape)
+        .build()
+        .unwrap();
+
+        assert_eq!(original_buffer.size, deserialized.size);
+        assert_eq!(original_buffer.input_shape, deserialized.input_shape);
+        assert_eq!(original_buffer.records, deserialized.records);
+        assert_eq!(original_buffer.ids, deserialized.ids);
+        assert_eq!(original_buffer.occupied(), deserialized.occupied());
+        assert_eq!(original_buffer.record(0), deserialized.record(0));
+        assert_eq!(original_buffer.record(1), deserialized.record(1));
+    }
+
+    #[test]
+    fn test_buffer_empty_serialize_f16() {
+        let original_buffer = create_buffer_f16();
+        let mut records_file = NamedTempFile::new().unwrap();
+        let mut ids_file = NamedTempFile::new().unwrap();
+        let dump = original_buffer.dump(records_file.as_file_mut(), ids_file.as_file_mut());
+        let deserialized = StorageBuilder::<BufferKind, f16>::from_disk(
+            dump,
+            records_file.as_file_mut(),
+            ids_file.as_file_mut(),
+        )
+        .size(original_buffer.size)
+        .input_shape(original_buffer.input_shape)
+        .build()
+        .unwrap();
+
+        assert_eq!(original_buffer.size, deserialized.size);
+        assert_eq!(original_buffer.input_shape, deserialized.input_shape);
+        assert_eq!(original_buffer.records, deserialized.records);
+        assert_eq!(original_buffer.ids, deserialized.ids);
+        assert_eq!(original_buffer.occupied(), deserialized.occupied());
+    }
+
+    #[test]
+    fn test_bucket_insert_multiple_records_f16() {
+        let mut bucket = create_bucket_f16();
+        let record1 = vec![
+            f16::from_f32(1.0),
+            f16::from_f32(2.0),
+            f16::from_f32(3.0),
+            f16::from_f32(4.0),
+            f16::from_f32(5.0),
+        ];
+        let record2 = vec![
+            f16::from_f32(5.0),
+            f16::from_f32(4.0),
+            f16::from_f32(3.0),
+            f16::from_f32(2.0),
+            f16::from_f32(1.0),
+        ];
+        let record3 = vec![
+            f16::from_f32(2.5),
+            f16::from_f32(3.5),
+            f16::from_f32(4.5),
+            f16::from_f32(5.5),
+            f16::from_f32(6.5),
+        ];
+
+        let idx = bucket.insert(record1.clone(), 1);
+        assert_eq!(idx, 0);
+        let idx = bucket.insert(record2.clone(), 2);
+        assert_eq!(idx, 1);
+        let idx = bucket.insert(record3.clone(), 3);
+        assert_eq!(idx, 2);
+
+        assert_eq!(bucket.occupied(), 3);
+        assert_eq!(bucket.record(0), record1.as_slice());
+        assert_eq!(bucket.record(1), record2.as_slice());
+        assert_eq!(bucket.record(2), record3.as_slice());
+        assert_eq!(bucket.ids, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_buffer_delete_f16() {
+        let mut buffer = StorageBuilder::<BufferKind, f16>::default()
+            .size(5)
+            .input_shape(2)
+            .build()
+            .unwrap();
+
+        // Insert records with f16 values
+        buffer.insert(vec![f16::from_f32(1.0), f16::from_f32(1.0)], 1);
+        buffer.insert(vec![f16::from_f32(2.0), f16::from_f32(2.0)], 2);
+        buffer.insert(vec![f16::from_f32(3.0), f16::from_f32(3.0)], 3);
+
+        assert_eq!(buffer.occupied(), 3);
+
+        // Delete existing ID (ID 2)
+        let result = buffer.delete(&2);
+        assert!(result.is_some());
+        let (deleted_record, deleted_id) = result.unwrap();
+
+        assert_eq!(deleted_id, 2);
+        assert_eq!(deleted_record.len(), 2);
+        assert_eq!(buffer.occupied(), 2);
+
+        // Verify swap: Index 0 is still ID 1, Index 1 should now be ID 3
+        assert_eq!(buffer.ids, vec![1, 3]);
+        assert_eq!(buffer.record(0), &[f16::from_f32(1.0), f16::from_f32(1.0)]);
+        assert_eq!(buffer.record(1), &[f16::from_f32(3.0), f16::from_f32(3.0)]);
+
+        // Delete non-existent ID (ID 99)
+        let result = buffer.delete(&99);
+        assert!(result.is_none());
+        assert_eq!(buffer.occupied(), 2);
     }
 }

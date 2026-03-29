@@ -18,7 +18,7 @@ pub(crate) struct LevelIndexBuilder {
     id: Option<String>,
     n_buckets: Option<usize>,
     buckets: Option<(Vec<DiskBucket>, PathBuf, PathBuf)>,
-    buckets_in_memory: Option<Vec<Bucket>>,
+    buckets_in_memory: Option<Vec<Bucket<f32>>>,
     model_config: Option<ModelConfig>,
     bucket_size: Option<usize>,
     input_shape: Option<usize>,
@@ -73,7 +73,7 @@ impl LevelIndexBuilder {
     }
 
     #[allow(dead_code)]
-    pub fn buckets_in_memory(mut self, buckets: Vec<Bucket>) -> Self {
+    pub fn buckets_in_memory(mut self, buckets: Vec<Bucket<f32>>) -> Self {
         self.buckets_in_memory = Some(buckets);
         self
     }
@@ -95,10 +95,14 @@ impl LevelIndexBuilder {
             buckets
                 .into_iter()
                 .map(|disk_bucket| {
-                    bucket::BucketBuilder::from_disk(disk_bucket, &mut records_file, &mut ids_file)
-                        .input_shape(input_shape)
-                        .size(bucket_size)
-                        .build()
+                    bucket::BucketBuilder::<f32>::from_disk(
+                        disk_bucket,
+                        &mut records_file,
+                        &mut ids_file,
+                    )
+                    .input_shape(input_shape)
+                    .size(bucket_size)
+                    .build()
                 })
                 .collect::<Result<Vec<_>, _>>()?
         } else {
@@ -108,7 +112,7 @@ impl LevelIndexBuilder {
                 .ok_or(DliError::MissingAttribute("n_buckets"))?;
             (0..n_buckets)
                 .map(|_| {
-                    bucket::BucketBuilder::default()
+                    bucket::BucketBuilder::<f32>::default()
                         .input_shape(input_shape)
                         .size(bucket_size)
                         .build()
@@ -145,12 +149,12 @@ impl LevelIndexBuilder {
 
 pub struct LevelIndex {
     model: Model,
-    buckets: Vec<Bucket>,
+    buckets: Vec<Bucket<f32>>,
     ids_map: HashMap<Id, (usize, usize)>, // Id -> (bucket_idx, record_idx)
 }
 
 impl LevelIndex {
-    fn new(model: Model, buckets: Vec<Bucket>) -> Self {
+    fn new(model: Model, buckets: Vec<Bucket<f32>>) -> Self {
         Self {
             model,
             buckets,
@@ -190,7 +194,7 @@ impl LevelIndex {
             .count()
     }
 
-    pub(crate) fn bucket(&self, bucket_idx: usize) -> &Bucket {
+    pub(crate) fn bucket(&self, bucket_idx: usize) -> &Bucket<f32> {
         &self.buckets[bucket_idx]
     }
 
@@ -767,7 +771,7 @@ mod tests {
         let bucket_1_ids = [3u32];
 
         // Create buckets in memory
-        let mut bucket_0 = bucket::BucketBuilder::default()
+        let mut bucket_0 = bucket::BucketBuilder::<f32>::default()
             .input_shape(input_shape)
             .size(bucket_size)
             .build()?;
@@ -778,7 +782,7 @@ mod tests {
             bucket_0.insert(rec.to_vec(), *id);
         }
 
-        let mut bucket_1 = bucket::BucketBuilder::default()
+        let mut bucket_1 = bucket::BucketBuilder::<f32>::default()
             .input_shape(input_shape)
             .size(bucket_size)
             .build()?;

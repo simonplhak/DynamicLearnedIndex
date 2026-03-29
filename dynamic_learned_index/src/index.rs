@@ -23,7 +23,7 @@ pub struct Index {
     arity: usize,
     device: ModelDevice,
     levels: Vec<LevelIndex>,
-    buffer: Buffer,
+    buffer: Buffer<f32>,
     distance_fn: DistanceFn,
     delete_method: DeleteMethod,
 }
@@ -220,7 +220,7 @@ impl Index {
 
     pub fn memory_usage(&self) -> usize {
         let levels_size: usize = self.levels.iter().map(|l| l.memory_usage()).sum();
-        let buffer_heap = self.buffer.memory_usage() - std::mem::size_of::<Buffer>();
+        let buffer_heap = self.buffer.memory_usage() - std::mem::size_of::<Buffer<f32>>();
         std::mem::size_of::<Self>() + levels_size + buffer_heap
     }
 
@@ -760,12 +760,12 @@ impl IndexBuilder {
                 } = disk_buffer;
                 let mut records_file = File::create(records_path)?;
                 let mut ids_file = File::create(ids_path)?;
-                BufferBuilder::from_disk(data, &mut records_file, &mut ids_file)
+                BufferBuilder::<f32>::from_disk(data, &mut records_file, &mut ids_file)
                     .input_shape(input_shape)
                     .size(buffer_size)
                     .build()?
             }
-            None => BufferBuilder::default()
+            None => BufferBuilder::<f32>::default()
                 .input_shape(input_shape)
                 .size(buffer_size)
                 .build()?,
@@ -837,10 +837,10 @@ mod tests {
         bucket_size: usize,
         buckets_data: Vec<(Array, Vec<Id>)>,
     ) -> DliResult<LevelIndex> {
-        let mut buckets: Vec<Bucket> = buckets_data
+        let mut buckets: Vec<Bucket<f32>> = buckets_data
             .iter()
             .map(|(records, ids)| {
-                let mut bucket = bucket::BucketBuilder::default()
+                let mut bucket = bucket::BucketBuilder::<f32>::default()
                     .input_shape(input_shape)
                     .size(bucket_size)
                     .build()
@@ -856,7 +856,7 @@ mod tests {
         // If no buckets provided, create a single empty one for model training purposes
         if buckets.is_empty() {
             buckets.push(
-                bucket::BucketBuilder::default()
+                bucket::BucketBuilder::<f32>::default()
                     .input_shape(input_shape)
                     .size(bucket_size)
                     .build()
@@ -1295,7 +1295,7 @@ mod tests {
         let bucket_1_ids = [5u32, 6u32];
 
         // Create buckets in memory
-        let mut bucket_0 = bucket::BucketBuilder::default()
+        let mut bucket_0 = bucket::BucketBuilder::<f32>::default()
             .input_shape(input_shape)
             .size(bucket_size)
             .build()?;
@@ -1306,7 +1306,7 @@ mod tests {
             bucket_0.insert(rec.to_vec(), *id);
         }
 
-        let mut bucket_1 = bucket::BucketBuilder::default()
+        let mut bucket_1 = bucket::BucketBuilder::<f32>::default()
             .input_shape(input_shape)
             .size(bucket_size)
             .build()?;
