@@ -15,6 +15,8 @@ pub type Bucket<F> = StorageContainer<BucketKind, F>;
 pub type BucketBuilder<'a, F> = StorageBuilder<'a, BucketKind, F>;
 pub type BufferBuilder<'a, F> = StorageBuilder<'a, BufferKind, F>;
 
+type DeleteResult<F> = Option<((Vec<F>, Id), (usize, Id))>;
+
 #[derive(Debug)]
 pub struct BufferKind;
 
@@ -118,11 +120,7 @@ impl<F: FloatElement> StorageContainer<BucketKind, F> {
         self.occupied() - 1
     }
 
-    pub fn delete(
-        &mut self,
-        record_idx: usize,
-        _delete_method: &DeleteMethod,
-    ) -> Option<((Vec<F>, Id), (usize, Id))> {
+    pub fn delete(&mut self, record_idx: usize, _delete_method: &DeleteMethod) -> DeleteResult<F> {
         swap_and_pop(
             &mut self.records,
             &mut self.ids,
@@ -147,7 +145,7 @@ pub(crate) fn swap_and_pop<F>(
     ids: &mut Vec<Id>,
     idx: usize,
     input_shape: usize,
-) -> Option<((Vec<F>, Id), (usize, Id))> // (Deleted Array, Deleted Id), (New Index of Swapped Record, Swapped Id)
+) -> DeleteResult<F> // (Deleted Array, Deleted Id), (New Index of Swapped Record, Swapped Id)
 {
     let occupied = ids.len();
     match occupied - 1 == idx {
