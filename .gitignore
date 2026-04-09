@@ -17,3 +17,5 @@ perf.data.old
 .vscode
 index_dump/
 .agents/
+.kilo/
+skills-lock.json
