@@ -33,16 +33,11 @@ fn k_means_clustering(data: &[f32], input_shape: usize, k: usize, max_iters: usi
     let mut kmeans = kentro::KMeans::new(k)
         .with_iterations(max_iters)
         .with_euclidean(true);
-    println!(
-        "data={:?}, input_shape={}, k={}, max_iters={}",
-        data, input_shape, k, max_iters
-    );
 
     // Convert the Vec<f32> to Array2 with shape (count, input_shape)
     let data = ArrayView::from_shape((count, input_shape), data)
         .expect("Failed to reshape data into Array2");
     let clusters = kmeans.train(data.view(), None).unwrap();
-    println!("clusters={:?}", clusters);
     let mut result = vec![0; count];
     clusters
         .into_iter()

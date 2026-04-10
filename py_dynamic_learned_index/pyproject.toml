@@ -13,21 +13,6 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "numpy>=2.0.2",
-    "torch==2.6.0",
-]
-
-[tool.maturin]
-features = ["pyo3/extension-module"]
-repair-wheel-command = [
-    "auditwheel",
-    "repair",
-    "--exclude", "libtorch.so",
-    "--exclude", "libtorch_cpu.so",
-    "--exclude", "libc10.so",
-    "--exclude", "libshm.so",
-    "--exclude", "libtorch_python.so",
-    "-w", "{dest_dir}",
-    "{wheel}"
 ]
 
 [dependency-groups]
@@ -35,7 +20,12 @@ dev = [
     "maturin[patchelf]>=1.11.5",
     "ruff",
     "ziglang>=0.15.1",
+    "torch==2.6.0",
 ]
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "py_dynamic_learned_index._pydli"
 
 [tool.ruff]
 line-length = 88
@@ -44,4 +34,3 @@ target-version = "py39"
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 ignore = []
-

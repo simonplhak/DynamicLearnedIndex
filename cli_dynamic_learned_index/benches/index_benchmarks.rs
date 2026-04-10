@@ -1,8 +1,9 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
+use half::f16;
 use rand::{seq::SliceRandom, SeedableRng};
 use std::{hint::black_box, path::PathBuf};
 
-use dynamic_learned_index::{Array, IndexBuilder, SearchStrategy};
+use dynamic_learned_index::{IndexBuilder, SearchStrategy};
 
 const QUERIES_DATASET_PATH: &str = "data/k300/queries.h5";
 const QUERIES_DATASET_NAME: &str = "emb";
@@ -11,19 +12,13 @@ const MAX_K: usize = 10;
 const SEARCH_STRATEGY: SearchStrategy = SearchStrategy::ModelDriven(10_000);
 const SEED: u64 = 42;
 
-#[cfg(feature = "hdf5")]
-fn load_h5(path: &PathBuf, dataset_name: &str) -> Vec<Array> {
+fn load_h5(path: &PathBuf, dataset_name: &str) -> Vec<Vec<f16>> {
     let emb = hdf5::File::open(path)
         .expect("Failed to open HDF5 file")
         .dataset(dataset_name)
         .expect("Failed to open dataset");
-    let data = emb.read_2d::<f32>().expect("Failed to read dataset");
+    let data = emb.read_2d::<f16>().expect("Failed to read dataset");
     data.outer_iter().map(|row| row.to_vec()).collect()
-}
-
-#[cfg(not(feature = "hdf5"))]
-fn load_h5(_path: &PathBuf, _dataset_name: &str) -> Vec<Array> {
-    panic!("HDF5 feature is not enabled");
 }
 
 fn index_search_parametrized_benchmark(c: &mut Criterion) {
@@ -39,7 +34,7 @@ fn index_search_parametrized_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
     let index_path = root.join(INDEX_DUMP_DIR);
     println!("Loading index from {:?}", index_path);
-    let index = IndexBuilder::from_disk(&index_path)
+    let index = IndexBuilder::<f16>::from_disk(&index_path)
         .expect("Failed to load index from disk")
         .build()
         .expect("Failed to build index");
@@ -68,7 +63,7 @@ fn index_search_throughput_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("Index Throughput");
     group.throughput(Throughput::Elements(1));
     let index_path = root.join(INDEX_DUMP_DIR);
-    let index = IndexBuilder::from_disk(&index_path)
+    let index = IndexBuilder::<f16>::from_disk(&index_path)
         .expect("Failed to load index from disk")
         .build()
         .expect("Failed to build index");

@@ -3,34 +3,35 @@ use crate::{
     level_index::{LevelIndex, LevelIndexBuilder},
     model::{ModelDevice, RetrainStrategy},
     structs::{
-        DiskBuffer, DiskIndex, DiskLevelIndex, IndexConfig, LevelIndexConfig, Records2Visit,
+        CompactionStrategyConfig, DiskBuffer, DiskIndex, DiskLevelIndex, FloatElement, IndexConfig,
+        LevelIndexConfig, RebuildStrategy, Records2Visit,
     },
-    Array, ArraySlice, DeleteMethod, DistanceFn, DliError, DliResult, Id, ModelLayer, SearchParams,
-    SearchParamsT, SearchStrategy,
+    DeleteMethod, DistanceFn, DliError, DliResult, Id, ModelLayer, SearchParams, SearchParamsT,
+    SearchStrategy,
 };
+use flat_knn::VectorType;
 use log::debug;
 use measure_time_macro::log_time;
-use serde::{Deserialize, Serialize};
 use std::{
     fs::{create_dir, File},
     path::{absolute, Path},
 };
 
-pub struct Index {
-    compaction_strategy: CompactionStrategy,
+pub struct Index<F: FloatElement> {
+    compaction_strategy: CompactionStrategy<F>,
     levels_config: LevelIndexConfig,
     input_shape: usize,
     arity: usize,
     device: ModelDevice,
-    levels: Vec<LevelIndex>,
-    buffer: Buffer,
+    levels: Vec<LevelIndex<F>>,
+    buffer: Buffer<F>,
     distance_fn: DistanceFn,
     delete_method: DeleteMethod,
 }
 
-impl Index {
+impl<F: FloatElement + flat_knn::VectorType> Index<F> {
     #[log_time]
-    pub fn search<S>(&self, query: &ArraySlice, params: S) -> DliResult<Vec<Id>>
+    pub fn search<S>(&self, query: &[F], params: S) -> DliResult<Vec<Id>>
     where
         S: SearchParamsT,
     {
@@ -46,7 +47,7 @@ impl Index {
     }
 
     #[log_time]
-    pub fn search_bulk<S>(&self, xs: &ArraySlice, params: S) -> DliResult<Vec<Vec<Id>>>
+    pub fn search_bulk<S>(&self, xs: &[F], params: S) -> DliResult<Vec<Vec<Id>>>
     where
         S: SearchParamsT,
     {
@@ -57,7 +58,7 @@ impl Index {
         // Collect bucket predictions efficiently for all queries at once per level
         let mut level_predictions = Vec::new();
         for level in &self.levels {
-            let queries_refs: Vec<&[f32]> = (0..n_queries)
+            let queries_refs: Vec<&[F]> = (0..n_queries)
                 .map(|i| &xs[i * input_shape..(i + 1) * input_shape])
                 .collect();
             let preds = level.buckets2visit_predictions_many(&queries_refs)?;
@@ -97,7 +98,7 @@ impl Index {
         &'_ self,
         predictions: Vec<Vec<(usize, f32, usize)>>,
         search_strategy: SearchStrategy,
-    ) -> Records2Visit<'_> {
+    ) -> Records2Visit<'_, F> {
         match search_strategy {
             SearchStrategy::Base(_nprobe) => todo!(),
             SearchStrategy::ModelDriven(ncandidates) => {
@@ -178,7 +179,7 @@ impl Index {
     }
 
     #[log_time]
-    pub fn insert(&mut self, value: Array, id: Id) -> DliResult<()> {
+    pub fn insert(&mut self, value: Vec<F>, id: Id) -> DliResult<()> {
         self.buffer.insert(value, id);
         if self.buffer.has_space(1) {
             return Ok(()); // buffer is not full yet
@@ -190,7 +191,7 @@ impl Index {
     }
 
     #[log_time]
-    pub fn delete(&mut self, id: Id) -> DliResult<Option<(Array, Id)>> {
+    pub fn delete(&mut self, id: Id) -> DliResult<Option<(Vec<F>, Id)>> {
         if let Some(deleted) = self.buffer.delete(&id) {
             return Ok(Some(deleted));
         }
@@ -205,7 +206,7 @@ impl Index {
     }
 
     #[log_time]
-    fn delete_from_level(&mut self, id: Id) -> Option<(usize, (Array, Id))> {
+    fn delete_from_level(&mut self, id: Id) -> Option<(usize, (Vec<F>, Id))> {
         for (level_idx, level) in &mut self.levels.iter_mut().enumerate() {
             if let Some(deleted) = level.delete(&id, &self.delete_method) {
                 return Some((level_idx, deleted));
@@ -220,7 +221,7 @@ impl Index {
 
     pub fn memory_usage(&self) -> usize {
         let levels_size: usize = self.levels.iter().map(|l| l.memory_usage()).sum();
-        let buffer_heap = self.buffer.memory_usage() - std::mem::size_of::<Buffer>();
+        let buffer_heap = self.buffer.memory_usage() - std::mem::size_of::<Buffer<f32>>();
         std::mem::size_of::<Self>() + levels_size + buffer_heap
     }
 
@@ -278,7 +279,7 @@ impl Index {
     }
 
     #[log_time]
-    fn bucket_selection(&self, query: &ArraySlice) -> DliResult<Vec<Vec<(usize, f32, usize)>>> {
+    fn bucket_selection(&self, query: &[F]) -> DliResult<Vec<Vec<(usize, f32, usize)>>> {
         self.levels
             .iter()
             .map(|level| level.buckets2visit_predictions(query))
@@ -288,19 +289,14 @@ impl Index {
     #[log_time]
     fn merge_results(
         &self,
-        records2visit: &Vec<&[f32]>,
-        query: &ArraySlice,
+        records2visit: &Vec<&[F]>,
+        query: &[F],
         params: &SearchParams,
     ) -> Vec<(f32, usize)> {
-        flat_knn::knn(
-            records2visit,
-            query,
-            params.k,
-            match self.distance_fn {
-                DistanceFn::L2 => flat_knn::Metric::L2,
-                DistanceFn::Dot => flat_knn::Metric::Dot,
-            },
-        )
+        match self.distance_fn {
+            DistanceFn::L2 => flat_knn::knn::<_, flat_knn::L2>(records2visit, query, params.k),
+            DistanceFn::Dot => flat_knn::knn::<_, flat_knn::Dot>(records2visit, query, params.k),
+        }
     }
 
     fn is_level_underutilized(&self, level_idx: usize) -> bool {
@@ -317,10 +313,19 @@ impl Index {
             .enumerate()
             .map(|(level_id, level)| level.dump(&working_dir, level_id))
             .collect::<DliResult<Vec<_>>>()?;
-        let disk_buffer = self.buffer.dump(&working_dir);
+        let records_path = working_dir.join("buffer_records.bin");
+        let mut records_file = File::create(records_path.clone())?;
+        let ids_path = working_dir.join("buffer_ids.bin");
+        let mut ids_file = File::create(ids_path.clone())?;
+        let disk_buffer_storage = self.buffer.dump(&mut records_file, &mut ids_file);
+        let disk_buffer = DiskBuffer {
+            records_path,
+            ids_path,
+            data: disk_buffer_storage,
+        };
         let disk_index = DiskIndex {
             levels_config: self.levels_config.clone(),
-            compaction_strategy: self.compaction_strategy.clone(),
+            compaction_strategy: self.compaction_strategy.strategy.clone(),
             buffer_size: self.buffer.size,
             input_shape: self.input_shape,
             arity: self.arity,
@@ -336,49 +341,15 @@ impl Index {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
-pub enum RebuildStrategy {
-    #[default]
-    #[serde(rename = "no_rebuild")]
-    NoRebuild,
-    #[serde(rename = "basic_rebuild")]
-    BasicRebuild,
-    #[serde(rename = "greedy_rebuild")]
-    GreedyRebuild,
+// Generic version used in your actual logic
+#[derive(Debug, Clone)]
+pub struct CompactionStrategy<F: FloatElement> {
+    strategy: CompactionStrategyConfig,
+    _marker: std::marker::PhantomData<F>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(tag = "type", content = "rebuild_strategy")]
-pub enum CompactionStrategy {
-    #[serde(rename = "bentley_saxe")]
-    BentleySaxe(RebuildStrategy),
-}
-
-impl Default for CompactionStrategy {
-    fn default() -> Self {
-        CompactionStrategy::BentleySaxe(Default::default())
-    }
-}
-
-impl From<&str> for CompactionStrategy {
-    fn from(val: &str) -> Self {
-        match val {
-            "bentley_saxe:no_rebuild" => {
-                CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild)
-            }
-            "bentley_saxe:basic_rebuild" => {
-                CompactionStrategy::BentleySaxe(RebuildStrategy::BasicRebuild)
-            }
-            "bentley_saxe:greedy_rebuild" => {
-                CompactionStrategy::BentleySaxe(RebuildStrategy::GreedyRebuild)
-            }
-            _ => panic!("Unknown compaction strategy: {val}"),
-        }
-    }
-}
-
-impl CompactionStrategy {
-    fn available_level(&self, index: &Index) -> Option<usize> {
+impl<F: FloatElement + VectorType> CompactionStrategy<F> {
+    fn available_level(&self, index: &Index<F>) -> Option<usize> {
         let mut count = index.buffer.occupied();
         index
             .levels
@@ -395,8 +366,8 @@ impl CompactionStrategy {
             .map(|(i, _)| i)
     }
 
-    fn lower_level_data(&self, index: &mut Index, level_idx: usize) -> (Array, Vec<Id>) {
-        let (data, ids): (Vec<Array>, Vec<Vec<Id>>) = index
+    fn lower_level_data(&self, index: &mut Index<F>, level_idx: usize) -> (Vec<F>, Vec<Id>) {
+        let (data, ids): (Vec<Vec<F>>, Vec<Vec<Id>>) = index
             .levels
             .iter_mut()
             .take(level_idx)
@@ -417,10 +388,10 @@ impl CompactionStrategy {
     }
 
     #[log_time]
-    pub fn compact(&self, index: &mut Index) -> DliResult<()> {
+    pub fn compact(&self, index: &mut Index<F>) -> DliResult<()> {
         let original_occupied = index.occupied();
-        match self {
-            CompactionStrategy::BentleySaxe(_) => {
+        match self.strategy {
+            CompactionStrategyConfig::BentleySaxe(_) => {
                 match self.available_level(index) {
                     Some(level_idx) => {
                         let (data, ids) = self.lower_level_data(index, level_idx);
@@ -457,15 +428,15 @@ impl CompactionStrategy {
     }
 
     #[log_time]
-    pub fn rebuild(&self, index: &mut Index, level_idx: usize) -> DliResult<()> {
+    pub fn rebuild(&self, index: &mut Index<F>, level_idx: usize) -> DliResult<()> {
         assert!(level_idx < index.levels.len());
         let level_occupied = index.levels[level_idx].occupied();
         debug!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
-        match self {
-            CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild) => {
+        match self.strategy {
+            CompactionStrategyConfig::BentleySaxe(RebuildStrategy::NoRebuild) => {
                 debug!("index:no_rebuild");
             }
-            CompactionStrategy::BentleySaxe(RebuildStrategy::BasicRebuild) => {
+            CompactionStrategyConfig::BentleySaxe(RebuildStrategy::BasicRebuild) => {
                 debug!("index:basic_rebuild");
                 match Self::find_source_target_levels(index, level_idx, level_occupied) {
                     Some((from_level_idx, to_level_idx)) => {
@@ -476,7 +447,7 @@ impl CompactionStrategy {
                     }
                 }
             }
-            CompactionStrategy::BentleySaxe(RebuildStrategy::GreedyRebuild) => {
+            CompactionStrategyConfig::BentleySaxe(RebuildStrategy::GreedyRebuild) => {
                 debug!("index:greedy_rebuild");
                 match Self::find_source_target_levels(index, level_idx, level_occupied) {
                     Some((_, to_level_idx)) => {
@@ -504,7 +475,7 @@ impl CompactionStrategy {
     }
 
     fn find_source_target_levels(
-        index: &mut Index,
+        index: &mut Index<F>,
         level_idx: usize,
         level_occupied: usize,
     ) -> Option<(usize, usize)> {
@@ -534,7 +505,11 @@ impl CompactionStrategy {
     }
 }
 
-fn flush_buffer(index: &mut Index, level_idx: usize, level_occupied: usize) -> DliResult<()> {
+fn flush_buffer<F: FloatElement>(
+    index: &mut Index<F>,
+    level_idx: usize,
+    level_occupied: usize,
+) -> DliResult<()> {
     let buffer_occupied = index.buffer.occupied();
     let (data, ids) = index.buffer.get_data();
     index.levels[level_idx].insert_many(data, ids)?;
@@ -543,7 +518,11 @@ fn flush_buffer(index: &mut Index, level_idx: usize, level_occupied: usize) -> D
     Ok(())
 }
 
-fn move_data(index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize) -> DliResult<()> {
+fn move_data<F: FloatElement>(
+    index: &mut Index<F>,
+    from_level_idxs: &[usize],
+    to_level_idx: usize,
+) -> DliResult<()> {
     debug!(
         source_levels = from_level_idxs.iter().map(|idx| idx.to_string()).collect::<Vec<_>>().join(",").as_str(),
         to_level = to_level_idx;
@@ -573,7 +552,7 @@ fn move_data(index: &mut Index, from_level_idxs: &[usize], to_level_idx: usize) 
     Ok(())
 }
 
-fn lower_level(index: &Index, level_idx: usize, size: usize) -> Option<usize> {
+fn lower_level<F: FloatElement>(index: &Index<F>, level_idx: usize, size: usize) -> Option<usize> {
     // Find the next level with enough free space
     index
         .levels
@@ -585,8 +564,8 @@ fn lower_level(index: &Index, level_idx: usize, size: usize) -> Option<usize> {
 }
 
 #[derive(Clone)]
-pub struct IndexBuilder {
-    compaction_strategy: Option<CompactionStrategy>,
+pub struct IndexBuilder<F: FloatElement> {
+    compaction_strategy: Option<CompactionStrategyConfig>,
     levels_config: LevelIndexConfig,
     model_layers: Option<Vec<ModelLayer>>,
     buffer_size: Option<usize>,
@@ -597,15 +576,16 @@ pub struct IndexBuilder {
     delete_method: Option<DeleteMethod>,
     levels: Option<Vec<DiskLevelIndex>>,
     disk_buffer: Option<DiskBuffer>,
+    _marker: std::marker::PhantomData<F>,
 }
 
-impl Default for IndexBuilder {
+impl<F: FloatElement> Default for IndexBuilder<F> {
     fn default() -> Self {
         Self::from_config(Default::default())
     }
 }
 
-impl IndexBuilder {
+impl<F: FloatElement> IndexBuilder<F> {
     pub fn from_yaml(file: &Path) -> DliResult<Self> {
         let content = std::fs::read_to_string(file)?;
         let config = serde_yaml::from_str(&content)?;
@@ -625,6 +605,7 @@ impl IndexBuilder {
             levels: None,
             disk_buffer: None,
             model_layers: None,
+            _marker: std::marker::PhantomData,
         }
     }
 
@@ -646,6 +627,7 @@ impl IndexBuilder {
             levels: Some(disk_index.levels),
             disk_buffer: Some(disk_index.disk_buffer),
             model_layers: None,
+            _marker: std::marker::PhantomData,
         })
     }
 
@@ -664,7 +646,7 @@ impl IndexBuilder {
         self
     }
 
-    pub fn compaction_strategy(mut self, strategy: CompactionStrategy) -> Self {
+    pub fn compaction_strategy(mut self, strategy: CompactionStrategyConfig) -> Self {
         self.compaction_strategy = Some(strategy);
         self
     }
@@ -724,8 +706,8 @@ impl IndexBuilder {
         device: ModelDevice,
         distance_fn: DistanceFn,
         input_shape: usize,
-    ) -> DliResult<LevelIndex> {
-        LevelIndexBuilder::default()
+    ) -> DliResult<LevelIndex<F>> {
+        LevelIndexBuilder::<F>::default()
             .model(disk_index.config.model)
             .distance_fn(distance_fn)
             .model_device(device)
@@ -739,7 +721,7 @@ impl IndexBuilder {
             .build()
     }
 
-    pub fn build(self) -> DliResult<Index> {
+    pub fn build(self) -> DliResult<Index<F>> {
         let levels_config = self.levels_config;
         let buffer_size = self
             .buffer_size
@@ -747,21 +729,38 @@ impl IndexBuilder {
         let input_shape = self
             .input_shape
             .ok_or(DliError::MissingAttribute("input_shape"))?;
-        let mut buffer = BufferBuilder::default()
-            .input_shape(input_shape)
-            .size(buffer_size);
-        if let Some(disk_buffer) = self.disk_buffer {
-            buffer = buffer.disk_buffer(disk_buffer);
-        }
-        let buffer = buffer.build()?;
+        let buffer = match self.disk_buffer {
+            Some(disk_buffer) => {
+                let DiskBuffer {
+                    records_path,
+                    ids_path,
+                    data,
+                } = disk_buffer;
+                let mut records_file = File::create(records_path)?;
+                let mut ids_file = File::create(ids_path)?;
+                BufferBuilder::<F>::from_disk(data, &mut records_file, &mut ids_file)
+                    .input_shape(input_shape)
+                    .size(buffer_size)
+                    .build()?
+            }
+            None => BufferBuilder::<F>::default()
+                .input_shape(input_shape)
+                .size(buffer_size)
+                .build()?,
+        };
+
         let arity = self.arity.ok_or(DliError::MissingAttribute("arity"))?;
         let device = self.device.ok_or(DliError::MissingAttribute("device"))?;
         let distance_fn = self
             .distance_fn
             .ok_or(DliError::MissingAttribute("distance_fn"))?;
-        let compaction_strategy = self
+        let compaction_strategy_config = self
             .compaction_strategy
             .ok_or(DliError::MissingAttribute("compaction_strategy"))?;
+        let compaction_strategy = CompactionStrategy {
+            strategy: compaction_strategy_config,
+            _marker: std::marker::PhantomData,
+        };
         let delete_method = self
             .delete_method
             .ok_or(DliError::MissingAttribute("delete_method"))?;
@@ -807,7 +806,7 @@ mod tests {
             arity: 2,
             device: ModelDevice::Cpu,
             distance_fn: DistanceFn::Dot,
-            compaction_strategy: CompactionStrategy::BentleySaxe(RebuildStrategy::NoRebuild),
+            compaction_strategy: CompactionStrategyConfig::BentleySaxe(RebuildStrategy::NoRebuild),
             delete_method: DeleteMethod::OidToBucket,
         }
     }
@@ -818,12 +817,12 @@ mod tests {
     fn create_level_with_records_per_bucket(
         input_shape: usize,
         bucket_size: usize,
-        buckets_data: Vec<(Array, Vec<Id>)>,
-    ) -> DliResult<LevelIndex> {
-        let mut buckets: Vec<Bucket> = buckets_data
+        buckets_data: Vec<(Vec<f32>, Vec<Id>)>,
+    ) -> DliResult<LevelIndex<f32>> {
+        let mut buckets: Vec<Bucket<f32>> = buckets_data
             .iter()
             .map(|(records, ids)| {
-                let mut bucket = bucket::BucketBuilder::default()
+                let mut bucket = bucket::BucketBuilder::<f32>::default()
                     .input_shape(input_shape)
                     .size(bucket_size)
                     .build()
@@ -839,7 +838,7 @@ mod tests {
         // If no buckets provided, create a single empty one for model training purposes
         if buckets.is_empty() {
             buckets.push(
-                bucket::BucketBuilder::default()
+                bucket::BucketBuilder::<f32>::default()
                     .input_shape(input_shape)
                     .size(bucket_size)
                     .build()
@@ -896,7 +895,7 @@ mod tests {
         let mut temp_file = NamedTempFile::new()?;
         writeln!(temp_file, "{yaml_content}")?;
 
-        let index = IndexBuilder::from_yaml(temp_file.path())?.build()?;
+        let index = IndexBuilder::<f32>::from_yaml(temp_file.path())?.build()?;
         assert_eq!(index.buffer.size, 50);
         assert_eq!(index.input_shape, 10);
         assert_eq!(index.arity, 2);
@@ -909,7 +908,7 @@ mod tests {
 
     #[test]
     fn test_index_config_from_yaml_nonexistent_file() {
-        let result = IndexBuilder::from_yaml(Path::new("nonexistent.yaml"));
+        let result = IndexBuilder::<f32>::from_yaml(Path::new("nonexistent.yaml"));
         assert!(matches!(result, Err(DliError::IoError(_))));
     }
 
@@ -974,7 +973,7 @@ mod tests {
 
     #[test]
     fn test_level_index_builder_missing_attributes() {
-        let builder = LevelIndexBuilder::default();
+        let builder = LevelIndexBuilder::<f32>::default();
         let result = builder.build();
         assert!(matches!(
             result,
@@ -986,7 +985,7 @@ mod tests {
     #[test]
     fn test_index_builder_default() {
         // Test building an index with default configuration
-        let index = IndexBuilder::default().build().unwrap();
+        let index = IndexBuilder::<f32>::default().build().unwrap();
 
         // Verify default values are applied
         assert_eq!(index.buffer.size, crate::constants::DEFAULT_BUFFER_SIZE);
@@ -1005,8 +1004,8 @@ mod tests {
 
         // Verify compaction strategy is set
         assert!(matches!(
-            index.compaction_strategy,
-            CompactionStrategy::BentleySaxe(_)
+            index.compaction_strategy.strategy,
+            CompactionStrategyConfig::BentleySaxe(_)
         ));
 
         // Verify delete method is set
@@ -1016,7 +1015,7 @@ mod tests {
     #[test]
     fn test_index_builder_with_custom_params() {
         // Test building an index with custom parameters
-        let index = IndexBuilder::default()
+        let index = IndexBuilder::<f32>::default()
             .buffer_size(100)
             .bucket_size(200)
             .arity(4)
@@ -1193,7 +1192,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_index_available_level() -> DliResult<()> {
         let config = create_test_config();
-        let index = IndexBuilder::from_config(config).build()?;
+        let index = IndexBuilder::<f32>::from_config(config).build()?;
         // Initially no levels, so should return None
         assert_eq!(index.compaction_strategy.available_level(&index), None);
         Ok(())
@@ -1202,7 +1201,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_index_get_level_config() -> DliResult<()> {
         let config = create_test_config();
-        let index = IndexBuilder::from_config(config).build()?;
+        let index = IndexBuilder::<f32>::from_config(config).build()?;
 
         let level_config = index.get_level_index_config();
         assert_eq!(level_config.bucket_size, DEFAULT_BUCKET_SIZE); // default value
@@ -1212,7 +1211,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_index_insert_to_buffer() -> DliResult<()> {
         let config = create_test_config();
-        let mut index = IndexBuilder::from_config(config).build()?;
+        let mut index = IndexBuilder::<f32>::from_config(config).build()?;
 
         // Initial size should be buffer size
         let initial_size = index.size();
@@ -1231,7 +1230,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_empty_levels() -> DliResult<()> {
         let config = create_test_config();
-        let index = IndexBuilder::from_config(config).build()?;
+        let index = IndexBuilder::<f32>::from_config(config).build()?;
 
         // Should have no levels initially
         assert_eq!(index.levels.len(), 0);
@@ -1243,7 +1242,7 @@ mod tests {
     #[test]
     fn test_bentley_saxe_lower_level_data_empty() -> DliResult<()> {
         let config = create_test_config();
-        let mut index = IndexBuilder::from_config(config).build()?;
+        let mut index = IndexBuilder::<f32>::from_config(config).build()?;
 
         let (data, ids) = index
             .compaction_strategy
@@ -1278,7 +1277,7 @@ mod tests {
         let bucket_1_ids = [5u32, 6u32];
 
         // Create buckets in memory
-        let mut bucket_0 = bucket::BucketBuilder::default()
+        let mut bucket_0 = bucket::BucketBuilder::<f32>::default()
             .input_shape(input_shape)
             .size(bucket_size)
             .build()?;
@@ -1289,7 +1288,7 @@ mod tests {
             bucket_0.insert(rec.to_vec(), *id);
         }
 
-        let mut bucket_1 = bucket::BucketBuilder::default()
+        let mut bucket_1 = bucket::BucketBuilder::<f32>::default()
             .input_shape(input_shape)
             .size(bucket_size)
             .build()?;

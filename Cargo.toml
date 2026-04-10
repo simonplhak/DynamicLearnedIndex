@@ -5,7 +5,6 @@ members = [
     "dynamic_learned_index", 
     "measure_time_macro",
     "py_dynamic_learned_index",
-    "service"
 ]
 
 # Size optimization for release builds - applies to all workspace members

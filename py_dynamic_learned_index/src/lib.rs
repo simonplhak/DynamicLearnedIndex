@@ -1,10 +1,10 @@
 use std::io::Write;
 use std::path::Path;
-use std::sync::Mutex;
 
 use dynamic_learned_index::{
     model::RetrainStrategy, IndexBuilder, ModelDevice, ModelLayer, SearchParams,
 };
+use half::f16;
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
 use pyo3::{
     prelude::*,
@@ -12,6 +12,134 @@ use pyo3::{
     PyErr,
 };
 use structured_logger::json::new_writer;
+
+/// Helper function to apply configuration settings to an IndexBuilder
+fn apply_config<T>(
+    mut builder: IndexBuilder<T>,
+    config: &Bound<'_, PyDict>,
+) -> PyResult<IndexBuilder<T>>
+where
+    T: dynamic_learned_index::structs::FloatElement,
+{
+    if let Some(v) = config.get_item("buffer_size").ok().flatten() {
+        if let Ok(size) = v.extract::<usize>() {
+            builder = builder.buffer_size(size);
+        }
+    }
+    if let Some(v) = config.get_item("bucket_size").ok().flatten() {
+        if let Ok(size) = v.extract::<usize>() {
+            builder = builder.bucket_size(size);
+        }
+    }
+    if let Some(v) = config.get_item("arity").ok().flatten() {
+        if let Ok(arity) = v.extract::<usize>() {
+            builder = builder.arity(arity);
+        }
+    }
+    if let Some(v) = config.get_item("compaction_strategy").ok().flatten() {
+        if let Ok(s) = v.extract::<String>() {
+            builder = builder.compaction_strategy(s.as_str().into());
+        }
+    }
+    if let Some(v) = config.get_item("distance_fn").ok().flatten() {
+        if let Ok(s) = v.extract::<String>() {
+            builder = builder.distance_fn(s.as_str().into());
+        }
+    }
+    if let Some(v) = config.get_item("train_threshold_samples").ok().flatten() {
+        if let Ok(samples) = v.extract::<usize>() {
+            builder = builder.train_threshold_samples(samples);
+        }
+    }
+    if let Some(v) = config.get_item("train_batch_size").ok().flatten() {
+        if let Ok(size) = v.extract::<usize>() {
+            builder = builder.train_batch_size(size);
+        }
+    }
+    if let Some(v) = config.get_item("train_epochs").ok().flatten() {
+        if let Ok(epochs) = v.extract::<usize>() {
+            builder = builder.train_epochs(epochs);
+        }
+    }
+    if let Some(v) = config.get_item("retrain_strategy").ok().flatten() {
+        if let Ok(s) = v.extract::<String>() {
+            let retrain_strategy = match s.as_str() {
+                "no_retrain" => RetrainStrategy::NoRetrain,
+                "from_scratch" => RetrainStrategy::FromScratch,
+                _ => {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Invalid retrain strategy",
+                    ))
+                }
+            };
+            builder = builder.retrain_strategy(retrain_strategy);
+        }
+    }
+    if let Some(v) = config.get_item("input_shape").ok().flatten() {
+        if let Ok(shape) = v.extract::<usize>() {
+            builder = builder.input_shape(shape);
+        }
+    }
+    if let Some(v) = config.get_item("device").ok().flatten() {
+        if let Ok(s) = v.extract::<String>() {
+            let device = if s == "cpu" {
+                ModelDevice::Cpu
+            } else if s.starts_with("gpu:") {
+                let parts: Vec<&str> = s.split(':').collect();
+                if parts.len() == 2 {
+                    if let Ok(index) = parts[1].parse::<usize>() {
+                        ModelDevice::Gpu(index)
+                    } else {
+                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                            "Invalid device type",
+                        ));
+                    }
+                } else {
+                    return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                        "Invalid device type",
+                    ));
+                }
+            } else {
+                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+                    "Invalid device type",
+                ));
+            };
+            builder = builder.device(device);
+        }
+    }
+    if let Some(v) = config.get_item("delete_method").ok().flatten() {
+        if let Ok(s) = v.extract::<String>() {
+            builder = builder.delete_method(s.as_str().into());
+        }
+    }
+    if let Some(v) = config.get_item("layers").ok().flatten() {
+        if let Ok(layers) = v.extract::<Vec<Bound<'_, PyDict>>>() {
+            for layer_dict in layers {
+                if let Some(layer_type) = layer_dict.get_item("type").ok().flatten() {
+                    if let Ok(layer_type_str) = layer_type.extract::<String>() {
+                        match layer_type_str.as_str() {
+                            "linear" => {
+                                if let Some(hidden) =
+                                    layer_dict.get_item("hidden_neurons").ok().flatten()
+                                {
+                                    if let Ok(hidden_neurons) = hidden.extract::<usize>() {
+                                        builder =
+                                            builder.add_layer(ModelLayer::Linear(hidden_neurons));
+                                    }
+                                }
+                            }
+                            "relu" => {
+                                builder = builder.add_layer(ModelLayer::ReLU);
+                            }
+                            _ => {} // ignore unknown
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Ok(builder)
+}
 
 struct PyFileLike {
     inner: Py<PyAny>,
@@ -44,181 +172,49 @@ impl Write for PyFileLike {
     }
 }
 
-// Py<PyAny> is Send. Access is guarded by GIL so it is Sync.
-unsafe impl Sync for PyFileLike {}
-
 #[pyclass]
-struct DynamicLearnedIndexBuilder {
-    builder: Mutex<IndexBuilder>,
+struct _DynamicIndexBuilderF16 {
+    builder: IndexBuilder<f16>,
 }
 
 #[pymethods]
-impl DynamicLearnedIndexBuilder {
+impl _DynamicIndexBuilderF16 {
     #[new]
     fn new() -> PyResult<Self> {
-        let builder = IndexBuilder::default();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder),
-        })
+        let builder = IndexBuilder::<f16>::default();
+        Ok(_DynamicIndexBuilderF16 { builder })
     }
 
     #[staticmethod]
     fn from_yaml(file: &str) -> PyResult<Self> {
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(IndexBuilder::from_yaml(Path::new(file))?),
+        Ok(_DynamicIndexBuilderF16 {
+            builder: IndexBuilder::from_yaml(Path::new(file))?,
         })
     }
 
     #[staticmethod]
     fn from_disk(working_dir: &str) -> PyResult<Self> {
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(IndexBuilder::from_disk(Path::new(working_dir))?),
+        Ok(_DynamicIndexBuilderF16 {
+            builder: IndexBuilder::from_disk(Path::new(working_dir))?,
         })
     }
 
-    fn buffer_size(&self, size: usize) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.buffer_size(size)),
-        })
+    #[staticmethod]
+    fn from_config(config: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let builder = IndexBuilder::<f16>::default();
+        let builder = apply_config(builder, config)?;
+        Ok(_DynamicIndexBuilderF16 { builder })
     }
 
-    fn bucket_size(&self, size: usize) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.bucket_size(size)),
-        })
-    }
-
-    fn arity(&self, arity: usize) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.arity(arity)),
-        })
-    }
-
-    fn compaction_strategy(&self, compaction: &str) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.compaction_strategy(compaction.into())),
-        })
-    }
-
-    fn distance_fn(&self, distance_fn: &str) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.distance_fn(distance_fn.into())),
-        })
-    }
-
-    fn train_threshold_samples(&self, samples: usize) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.train_threshold_samples(samples)),
-        })
-    }
-
-    fn linear_model_layer(&self, hidden_neurons: usize) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.add_layer(ModelLayer::Linear(hidden_neurons))),
-        })
-    }
-
-    fn relu_layer(&self) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.add_layer(ModelLayer::ReLU)),
-        })
-    }
-
-    fn train_batch_size(&self, size: usize) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.train_batch_size(size)),
-        })
-    }
-
-    fn train_epochs(&self, epochs: usize) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.train_epochs(epochs)),
-        })
-    }
-
-    fn retrain_strategy(&self, strategy: &str) -> PyResult<Self> {
-        let retrain_strategy = match strategy {
-            "no_retrain" => RetrainStrategy::NoRetrain,
-            "from_scratch" => RetrainStrategy::FromScratch,
-            _ => {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "Invalid retrain strategy",
-                ))
-            }
-        };
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.retrain_strategy(retrain_strategy)),
-        })
-    }
-
-    fn input_shape(&self, shape: usize) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.input_shape(shape)),
-        })
-    }
-
-    fn device(&self, device: &str) -> PyResult<Self> {
-        let device = if device == "cpu" {
-            ModelDevice::Cpu
-        } else if device.starts_with("gpu:") {
-            let parts: Vec<&str> = device.split(':').collect();
-            if parts.len() == 2 {
-                let index_str = parts[1];
-                match index_str.parse::<usize>() {
-                    Ok(index) => ModelDevice::Gpu(index),
-                    Err(_) => {
-                        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                            "Invalid device type",
-                        ))
-                    }
-                }
-            } else {
-                return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                    "Invalid device type",
-                ));
-            }
-        } else {
-            return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
-                "Invalid device type",
-            ));
-        };
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.device(device)),
-        })
-    }
-
-    fn delete_method(&self, delete_method: &str) -> PyResult<Self> {
-        let builder = self.builder.lock().unwrap().clone();
-        Ok(DynamicLearnedIndexBuilder {
-            builder: Mutex::new(builder.delete_method(delete_method.into())),
-        })
-    }
-
-    fn build(&self) -> PyResult<DynamicLearnedIndex> {
-        let builder = self.builder.lock().unwrap().clone();
-        let index = builder.build()?;
-        Ok(DynamicLearnedIndex {
-            index: Mutex::new(index),
-        })
+    fn build(&self) -> PyResult<_DynamicLearnedIndexF16> {
+        let index = self.builder.clone().build()?;
+        Ok(_DynamicLearnedIndexF16 { index })
     }
 }
 
 #[pyclass]
-struct DynamicLearnedIndex {
-    index: Mutex<dynamic_learned_index::Index>,
+struct _DynamicLearnedIndexF16 {
+    index: dynamic_learned_index::Index<f16>,
 }
 
 fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyResult<SearchParams> {
@@ -226,7 +222,13 @@ fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyRes
         Some(kwargs) => {
             let n_candidates = kwargs
                 .iter()
-                .find(|(key, _)| key.extract::<String>().unwrap_or_default() == "n_candidates") // todo remove unwrap
+                .find(|(key, _)| {
+                    if let Ok(k) = key.extract::<String>() {
+                        k == "n_candidates"
+                    } else {
+                        false
+                    }
+                })
                 .map(|(_, value)| {
                     value.extract::<usize>().map_err(|_| {
                         PyErr::new::<pyo3::exceptions::PyTypeError, _>(
@@ -237,7 +239,13 @@ fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyRes
                 .unwrap_or(Ok(1))?;
             let search_strategy = kwargs
                 .iter()
-                .find(|(key, _)| key.extract::<String>().unwrap_or_default() == "search_strategy")
+                .find(|(key, _)| {
+                    if let Ok(k) = key.extract::<String>() {
+                        k == "search_strategy"
+                    } else {
+                        false
+                    }
+                })
                 .map(|(_, value)| match value.extract::<String>() {
                     Ok(strategy) => match strategy.as_str() {
                         "knn" => Ok(dynamic_learned_index::SearchStrategy::Base(n_candidates)),
@@ -264,113 +272,119 @@ fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyRes
 }
 
 #[pymethods]
-impl DynamicLearnedIndex {
+impl _DynamicLearnedIndexF16 {
     #[new]
     fn new() -> PyResult<Self> {
         let index = IndexBuilder::default().build()?;
-        Ok(DynamicLearnedIndex {
-            index: Mutex::new(index),
-        })
+        Ok(_DynamicLearnedIndexF16 { index })
     }
 
     #[pyo3(signature = (query, k, **py_kwargs))]
     fn search<'py>(
         &self,
         py: Python<'py>,
-        query: PyReadonlyArray1<'py, f32>,
+        query: PyReadonlyArray1<'py, u16>,
         k: usize,
         py_kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyArray1<u32>>> {
         let query = array2vec(query);
         let search_params = parse_search_kwargs(py_kwargs, k)?;
-        let result = py.detach(|| {
-            let index = self.index.lock().unwrap();
-            index.search(&query, search_params)
-        });
-        let x = result?.into_pyarray(py);
-        Ok(x)
+        let result = py.detach(|| self.index.search(&query, search_params));
+        Ok(result?.into_pyarray(py))
     }
 
-    fn insert<'py>(
-        &self,
-        py: Python<'py>,
-        record: PyReadonlyArray1<'py, f32>,
+    fn insert(
+        &mut self,
+        py: Python<'_>,
+        record: PyReadonlyArray1<'_, u16>,
         id: u32,
     ) -> PyResult<()> {
         let record = array2vec(record);
         py.detach(|| {
-            let mut index = self.index.lock().unwrap();
-            index
+            self.index
                 .insert(record, id)
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
         })
     }
 
-    fn delete(&self, py: Python<'_>, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
-        py.detach(|| {
-            let mut index = self.index.lock().unwrap();
-            index
-                .delete(id)
-                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
-        })
+    fn delete(&mut self, id: u32) -> PyResult<Option<(Vec<u16>, u32)>> {
+        let deleted = self
+            .index
+            .delete(id)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        if let Some((vec, id)) = deleted {
+            let vec_u16: Vec<u16> = f16tou16_vec(vec);
+            Ok(Some((vec_u16, id)))
+        } else {
+            Ok(None)
+        }
     }
 
     fn n_buckets(&self) -> usize {
-        self.index.lock().unwrap().n_buckets()
+        self.index.n_buckets()
     }
 
     fn n_levels(&self) -> usize {
-        self.index.lock().unwrap().n_levels()
+        self.index.n_levels()
     }
 
     fn occupied(&self) -> usize {
-        self.index.lock().unwrap().occupied()
+        self.index.occupied()
     }
 
     fn n_empty_buckets(&self) -> usize {
-        self.index.lock().unwrap().n_empty_buckets()
+        self.index.n_empty_buckets()
     }
 
     fn dump(&self, working_dir: &str) -> PyResult<()> {
-        let index = self.index.lock().unwrap();
-        index.dump(Path::new(working_dir))?;
+        self.index.dump(Path::new(working_dir))?;
         Ok(())
     }
 
     fn buffer_occupied(&self) -> usize {
-        self.index.lock().unwrap().buffer_occupied()
+        self.index.buffer_occupied()
     }
 
     fn level_occupied(&self, level_idx: usize) -> usize {
-        self.index.lock().unwrap().level_occupied(level_idx)
+        self.index.level_occupied(level_idx)
     }
 
     fn level_n_buckets(&self, level_idx: usize) -> usize {
-        self.index.lock().unwrap().level_n_buckets(level_idx)
+        self.index.level_n_buckets(level_idx)
     }
 
     fn level_total_size(&self, level_idx: usize) -> usize {
-        self.index.lock().unwrap().level_total_size(level_idx)
+        self.index.level_total_size(level_idx)
     }
 
     fn level_n_empty_buckets(&self, level_idx: usize) -> usize {
-        self.index.lock().unwrap().level_n_empty_buckets(level_idx)
+        self.index.level_n_empty_buckets(level_idx)
     }
 
     fn bucket_occupied(&self, level_idx: usize, bucket_idx: usize) -> usize {
-        self.index
-            .lock()
-            .unwrap()
-            .bucket_occupied(level_idx, bucket_idx)
+        self.index.bucket_occupied(level_idx, bucket_idx)
     }
 
     fn memory_usage(&self) -> usize {
-        self.index.lock().unwrap().memory_usage()
+        self.index.memory_usage()
     }
 }
 
-fn array2vec<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {
+fn array2vec<'py>(x: PyReadonlyArray1<'py, u16>) -> Vec<half::f16> {
+    let slice: &[u16] = x.as_slice().unwrap();
+    // SAFETY: f16 is repr(transparent) over u16 — identical layout, same alignment
+    let f16_slice: &[half::f16] =
+        unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const half::f16, slice.len()) };
+    f16_slice.to_vec()
+}
+
+fn array2vec_f32<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {
     x.as_array().iter().copied().collect()
+}
+
+fn f16tou16_vec(x: Vec<half::f16>) -> Vec<u16> {
+    let mut x = std::mem::ManuallyDrop::new(x);
+    unsafe { Vec::from_raw_parts(x.as_mut_ptr() as *mut u16, x.len(), x.capacity()) }
 }
 
 #[pyfunction]
@@ -399,11 +413,134 @@ fn log_init(target: &Bound<'_, PyAny>, level: &str) -> PyResult<()> {
     Ok(())
 }
 
+#[pyclass]
+struct _DynamicLearnedIndexBuilderF32 {
+    builder: IndexBuilder<f32>,
+}
+
+#[pymethods]
+impl _DynamicLearnedIndexBuilderF32 {
+    #[new]
+    fn new() -> PyResult<Self> {
+        let builder = IndexBuilder::<f32>::default();
+        Ok(_DynamicLearnedIndexBuilderF32 { builder })
+    }
+
+    #[staticmethod]
+    fn from_config(config: &Bound<'_, PyDict>) -> PyResult<Self> {
+        let builder = IndexBuilder::<f32>::default();
+        let builder = apply_config(builder, config)?;
+        Ok(_DynamicLearnedIndexBuilderF32 { builder })
+    }
+
+    fn build(&self) -> PyResult<_DynamicLearnedIndexF32> {
+        let index = self.builder.clone().build()?;
+        Ok(_DynamicLearnedIndexF32 { index })
+    }
+}
+
+#[pyclass]
+struct _DynamicLearnedIndexF32 {
+    index: dynamic_learned_index::Index<f32>,
+}
+
+#[pymethods]
+impl _DynamicLearnedIndexF32 {
+    #[new]
+    fn new() -> PyResult<Self> {
+        let index = IndexBuilder::default().build()?;
+        Ok(_DynamicLearnedIndexF32 { index })
+    }
+
+    fn search<'py>(
+        &self,
+        py: Python<'py>,
+        query: PyReadonlyArray1<'py, f32>,
+        k: usize,
+        py_kwargs: Option<&Bound<'_, PyDict>>,
+    ) -> PyResult<Bound<'py, PyArray1<u32>>> {
+        let query = array2vec_f32(query);
+        let search_params = parse_search_kwargs(py_kwargs, k)?;
+        let result = self.index.search(&query, search_params);
+        Ok(result?.into_pyarray(py))
+    }
+
+    fn insert(&mut self, record: PyReadonlyArray1<'_, f32>, id: u32) -> PyResult<()> {
+        let record = array2vec_f32(record);
+        self.index
+            .insert(record, id)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+    }
+
+    fn delete(&mut self, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
+        let deleted = self
+            .index
+            .delete(id)
+            .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
+        if let Some((vec, id)) = deleted {
+            Ok(Some((vec, id)))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn n_buckets(&self) -> usize {
+        self.index.n_buckets()
+    }
+
+    fn n_levels(&self) -> usize {
+        self.index.n_levels()
+    }
+
+    fn occupied(&self) -> usize {
+        self.index.occupied()
+    }
+
+    fn n_empty_buckets(&self) -> usize {
+        self.index.n_empty_buckets()
+    }
+
+    fn dump(&self, working_dir: &str) -> PyResult<()> {
+        self.index.dump(Path::new(working_dir))?;
+        Ok(())
+    }
+
+    fn buffer_occupied(&self) -> usize {
+        self.index.buffer_occupied()
+    }
+
+    fn level_occupied(&self, level_idx: usize) -> usize {
+        self.index.level_occupied(level_idx)
+    }
+
+    fn level_n_buckets(&self, level_idx: usize) -> usize {
+        self.index.level_n_buckets(level_idx)
+    }
+
+    fn level_total_size(&self, level_idx: usize) -> usize {
+        self.index.level_total_size(level_idx)
+    }
+
+    fn level_n_empty_buckets(&self, level_idx: usize) -> usize {
+        self.index.level_n_empty_buckets(level_idx)
+    }
+
+    fn bucket_occupied(&self, level_idx: usize, bucket_idx: usize) -> usize {
+        self.index.bucket_occupied(level_idx, bucket_idx)
+    }
+
+    fn memory_usage(&self) -> usize {
+        self.index.memory_usage()
+    }
+}
+
 #[pymodule(crate = "pyo3")]
-fn py_dynamic_learned_index(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn _pydli(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
-    m.add_class::<DynamicLearnedIndex>()?;
-    m.add_class::<DynamicLearnedIndexBuilder>()?;
+    m.add_class::<_DynamicLearnedIndexF16>()?;
+    m.add_class::<_DynamicIndexBuilderF16>()?;
+    m.add_class::<_DynamicLearnedIndexF32>()?;
+    m.add_class::<_DynamicLearnedIndexBuilderF32>()?;
     m.add_function(wrap_pyfunction!(log_init, m)?)?;
     Ok(())
 }

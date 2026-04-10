@@ -1,19 +1,28 @@
 import io
+import os
 import shutil
 from pathlib import Path
 
 import numpy as np
+
 from py_dynamic_learned_index import (
     DynamicLearnedIndex,
     DynamicLearnedIndexBuilder,
     log_init,
 )
 
+# import py_dynamic_learned_index as rust
+
+# log_init = rust.log_init
+
+# DTYPE can be "f16" or "f32", default "f16", override with env DLI_DTYPE
+DTYPE = os.getenv("DLI_DTYPE", "f16")
+
 # Initialize Rust logger to write to a buffer
 log_buffer = io.StringIO()
 log_init(log_buffer, "debug")
 
-builder = DynamicLearnedIndexBuilder()
+builder = DynamicLearnedIndexBuilder(dtype=DTYPE)
 input_shape = 768
 builder = (
     builder.buffer_size(100)  # size of the buffer
@@ -26,8 +35,8 @@ builder = (
     )  # type of levelling used to construct new levels of tree;
     .delete_method("oid_to_bucket")
     # MODEL SPECIFICATIONS
-    .linear_model_layer(256)
-    .relu_layer()
+    .add_linear_layer(256)
+    .add_relu_layer()
     .train_batch_size(8)
     .train_epochs(3)
     .train_threshold_samples(100)
@@ -52,7 +61,10 @@ index: DynamicLearnedIndex = builder.build()
 # ).build()
 
 
-queries = [np.random.rand(input_shape).astype(np.float32) for _ in range(1000)]
+if DTYPE == "f16":
+    queries = [np.random.rand(input_shape).astype(np.float16).view(np.uint16) for _ in range(1000)]
+else:
+    queries = [np.random.rand(input_shape).astype(np.float32) for _ in range(1000)]
 for i, query in enumerate(queries):
     index.insert(query, i)
 
@@ -95,10 +107,10 @@ print()
 id_to_delete = 0
 deleted_query, deleted_id = index.delete(id_to_delete)
 
-print(f"""delete: 
-      deleted_query is same as inserted query: 
-      {(deleted_query == queries[id_to_delete]).all()}, 
-      {id_to_delete=}, 
+print(f"""delete:
+      deleted_query is same as inserted query:
+      {(deleted_query == queries[id_to_delete]).all()},
+      {id_to_delete=},
       {deleted_id=}""")
 print()
 
@@ -123,7 +135,7 @@ print()
 
 # load index from disk
 
-loaded_index = DynamicLearnedIndexBuilder.from_disk(str(working_dir)).build()
+loaded_index = DynamicLearnedIndexBuilder.from_disk(str(working_dir))
 assert index.n_buckets() == loaded_index.n_buckets()
 assert index.n_levels() == loaded_index.n_levels()
 assert index.occupied() == loaded_index.occupied()

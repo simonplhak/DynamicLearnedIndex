@@ -70,7 +70,7 @@ struct ExperimentConfig {
     #[arg(long, default_value = "file")]
     log_output: LogOuptut,
     /// Validates index on inserted queries after n insterted queries
-    #[arg(long, default_value = "10000")]
+    #[arg(long, default_value = "50000")]
     validate_after_n: usize,
     /// Into validation dataset is included each n-th value
     #[arg(long, default_value = "1000")]
@@ -200,7 +200,7 @@ fn test() -> Result<()> {
         .init();
     let index_builder = IndexBuilder::from_yaml(Path::new("configs/example.yaml"))?;
     let mut index = index_builder.build()?;
-    let dataset_config = load_dataset_config(&PathBuf::from("data/k300"))?;
+    let dataset_config = load_dataset_config(&PathBuf::from("data/example"))?;
     let (queries, _, _) = dataset_config.load()?;
     let validation_options = eval::ValidationOptions {
         validate_after_n: 100,
@@ -209,7 +209,7 @@ fn test() -> Result<()> {
     insert_all_data(
         &mut index,
         queries,
-        Some(240),
+        Some(100),
         Some(validation_options),
         true,
         Default::default(),
