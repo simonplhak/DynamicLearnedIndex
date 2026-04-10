@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Mutex;
 
 use log::debug;
 use tch::{
@@ -76,7 +77,7 @@ impl crate::model::BaseModelBuilder<TchBackend> {
         }
         let train_params = self.train_params.unwrap_or_default();
         let model = Model {
-            model: Box::new(model),
+            model: Mutex::new(Box::new(model)),
             vs,
             labels,
             device,
@@ -92,7 +93,7 @@ impl crate::model::BaseModelBuilder<TchBackend> {
 // todo reset model after flush
 #[derive(Debug)]
 pub struct Model {
-    model: Box<dyn nn::Module>,
+    model: Mutex<Box<dyn nn::Module>>,
     vs: nn::VarStore,
     labels: usize,
     device: Device,
@@ -110,7 +111,7 @@ impl crate::model::ModelInterface for Model {
             Device::Cpu => xs.shallow_clone(),
             _ => xs.to_device(self.device),
         };
-        let predictions = tensor2vec(&self.model.forward(&xs).softmax(-1, tch::Kind::Float));
+        let predictions = tensor2vec(&self.model.lock().unwrap().forward(&xs).softmax(-1, tch::Kind::Float));
         let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
         predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         assert!(predictions.len() <= self.labels);
@@ -123,7 +124,7 @@ impl crate::model::ModelInterface for Model {
             (xs.len() / self.input_shape) as i64,
             self.input_shape as i64,
         ));
-        let labels = self.model.forward(&xs_tensor).argmax(1, false);
+        let labels = self.model.lock().unwrap().forward(&xs_tensor).argmax(1, false);
         Ok(tensor2vec_usize(&labels))
     }
 
@@ -150,7 +151,7 @@ impl crate::model::ModelInterface for Model {
                 .train_iter(self.train_params.batch_size as i64)
                 .shuffle()
             {
-                let loss = self.model.forward(&xs).cross_entropy_for_logits(&ys);
+                let loss = self.model.lock().unwrap().forward(&xs).cross_entropy_for_logits(&ys);
                 opt.backward_step(&loss);
             }
         }
