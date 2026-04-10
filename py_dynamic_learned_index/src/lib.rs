@@ -212,7 +212,7 @@ impl _DynamicIndexBuilderF16 {
     }
 }
 
-#[pyclass]
+#[pyclass(unsendable)]
 struct _DynamicLearnedIndexF16 {
     index: dynamic_learned_index::Index<f16>,
 }
@@ -439,7 +439,7 @@ impl _DynamicLearnedIndexBuilderF32 {
     }
 }
 
-#[pyclass]
+#[pyclass(unsendable)]
 struct _DynamicLearnedIndexF32 {
     index: dynamic_learned_index::Index<f32>,
 }
