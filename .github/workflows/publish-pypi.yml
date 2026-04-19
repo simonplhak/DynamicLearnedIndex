@@ -63,7 +63,7 @@ jobs:
             TARGET="aarch64-apple-darwin"
           fi
           rustup target add $TARGET
-          maturin build --target $TARGET --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features
+          maturin build --target $TARGET --release --features ${{ github.event.inputs.features || 'measure_time,mix' }} --strip --no-default-features
 
       - name: Build wheels
         if: runner.os == 'Linux'
@@ -79,7 +79,7 @@ jobs:
           else
             export RUSTFLAGS="-C target-cpu=generic"
           fi
-          maturin build --release --features ${{ github.event.inputs.features || 'measure_time,tch' }} --strip --no-default-features --skip-auditwheel
+          maturin build --release --features ${{ github.event.inputs.features || 'measure_time,mix' }} --strip --no-default-features --skip-auditwheel
 
       - name: Manually repair wheels (Linux only)
         if: runner.os == 'Linux'
