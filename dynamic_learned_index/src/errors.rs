@@ -14,7 +14,7 @@ pub enum DliError {
     #[error("Invalid JSON config: {0}")]
     JsonError(#[from] serde_json::Error),
 
-    #[cfg(feature = "candle")]
+    #[cfg(any(feature = "candle", feature = "mix"))]
     #[error("Candle error: {0}")]
     Candle(#[from] candle_core::Error),
 
@@ -25,7 +25,7 @@ pub enum DliError {
 pub type DliResult<T> = Result<T, DliError>;
 
 // tch-rs integration: automatic error conversion
-#[cfg(feature = "tch")]
+#[cfg(any(feature = "tch", feature = "mix"))]
 impl From<tch::TchError> for DliError {
     fn from(err: tch::TchError) -> Self {
         DliError::ModelCreation(Box::leak(err.to_string().into_boxed_str()))

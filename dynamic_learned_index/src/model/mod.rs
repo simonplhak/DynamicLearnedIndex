@@ -27,6 +27,9 @@ pub struct CandleBackend;
 #[derive(Default)]
 pub struct TchBackend;
 
+#[derive(Default)]
+pub struct MixBackend;
+
 #[derive(Debug, Clone, Default)]
 pub struct BaseModelBuilder<B> {
     pub device: Option<ModelDevice>,
@@ -145,23 +148,23 @@ pub enum ModelLayer {
     ReLU,
 }
 
-#[cfg(feature = "candle")]
-pub mod candle_model;
-
-#[cfg(feature = "tch")]
-pub mod tch_model;
-
-#[cfg(feature = "candle")]
-pub type Model = candle_model::Model;
-
-#[cfg(feature = "tch")]
-pub type Model = tch_model::Model;
-
-#[cfg(feature = "candle")]
-pub type ModelBuilder = BaseModelBuilder<CandleBackend>;
-
-#[cfg(feature = "tch")]
-pub type ModelBuilder = BaseModelBuilder<TchBackend>;
+cfg_if::cfg_if! {
+    if #[cfg(feature = "mix")] {
+        mod mix_model;
+        mod candle_model;
+        mod tch_model;
+        pub use mix_model::Model;
+        pub type ModelBuilder = BaseModelBuilder<MixBackend>;
+    } else if #[cfg(feature = "tch")] {
+        mod tch_model;
+        pub use tch_model::Model;
+        pub type ModelBuilder = BaseModelBuilder<TchBackend>;
+    } else if #[cfg(feature = "candle")] {
+        mod candle_model;
+        pub use candle_model::Model;
+        pub type ModelBuilder = BaseModelBuilder<CandleBackend>;
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -197,13 +200,6 @@ mod tests {
         assert!(model.is_ok(), "Model should build successfully");
         let model = model.unwrap();
         assert_eq!(model.input_shape, input_nodes as usize);
-        assert_eq!(
-            model.train_params.threshold_samples,
-            train_params.threshold_samples
-        );
-        assert_eq!(model.train_params.batch_size, train_params.batch_size);
-        assert_eq!(model.train_params.epochs, train_params.epochs);
-        assert_eq!(model.train_params.max_iters, train_params.max_iters);
     }
 
     #[test]

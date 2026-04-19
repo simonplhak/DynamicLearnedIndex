@@ -790,6 +790,7 @@ dependencies = [
  "bytemuck",
  "candle-core",
  "candle-nn",
+ "cfg-if",
  "dotenvy",
  "flat-knn",
  "half",

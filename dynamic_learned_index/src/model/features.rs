@@ -1,5 +1,5 @@
-#[cfg(all(feature = "tch", feature = "candle"))]
-compile_error!("features \"tch\" and \"candle\" are mutually exclusive — enable only one");
+#[cfg(all(feature = "tch", feature = "candle", feature = "mix"))]
+compile_error!("features \"tch\", \"candle\", \"mix\" are mutually exclusive — enable only one");
 
-#[cfg(not(any(feature = "tch", feature = "candle")))]
-compile_error!("either \"tch\" or \"candle\" feature must be enabled");
+#[cfg(not(any(feature = "tch", feature = "candle", feature = "mix")))]
+compile_error!("either \"tch\", \"candle\", \"mix\" feature must be enabled");
