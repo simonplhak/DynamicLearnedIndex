@@ -6,14 +6,15 @@ use crate::model::BaseModelBuilder;
 use crate::model::CandleBackend;
 use crate::model::ModelInterface as _;
 use crate::model::TchBackend;
+use crate::structs::FloatElement;
 use crate::DliError;
 use candle_core::Tensor;
 use rand::Rng as _;
 
 use crate::{model::MixBackend, ArraySlice, DliResult, ModelConfig};
 
-impl crate::model::BaseModelBuilder<MixBackend> {
-    pub fn build(&self) -> DliResult<Model> {
+impl<F: FloatElement> crate::model::BaseModelBuilder<MixBackend, F> {
+    pub fn build(&self) -> DliResult<Model<F>> {
         let device = self.device.ok_or(DliError::MissingAttribute("device"))?;
         let input_nodes = self
             .input_nodes
@@ -23,7 +24,7 @@ impl crate::model::BaseModelBuilder<MixBackend> {
         let label_method = self
             .label_method
             .ok_or(DliError::MissingAttribute("label_method"))?;
-        let mut tch_builder = BaseModelBuilder::<TchBackend>::default();
+        let mut tch_builder = BaseModelBuilder::<TchBackend, F>::default();
         tch_builder
             .device(device)
             .input_nodes(input_nodes)
@@ -31,18 +32,18 @@ impl crate::model::BaseModelBuilder<MixBackend> {
             .train_params(train_params)
             .label_method(label_method)
             .layers(self.layers.clone());
-        let mut candle_builder = BaseModelBuilder::<CandleBackend>::default();
+        let mut candle_builder = BaseModelBuilder::<CandleBackend, F>::default();
         candle_builder
             .device(device)
             .input_nodes(input_nodes)
             .labels(labels)
             .train_params(train_params)
             .label_method(label_method)
+            .quantize(self.quantize)
             .layers(self.layers.clone());
         if let Some(weights_path) = self.weights_path.clone() {
             tch_builder.weights_path(weights_path.clone());
         }
-
         let mut model = Model {
             tch_model: tch_builder.build()?,
             candle_model: candle_builder.build()?,
@@ -54,21 +55,21 @@ impl crate::model::BaseModelBuilder<MixBackend> {
     }
 }
 
-pub struct Model {
-    tch_model: tch_model::Model,
-    candle_model: candle_model::Model,
-    candle_builder: BaseModelBuilder<CandleBackend>,
+pub struct Model<F: FloatElement> {
+    tch_model: tch_model::Model<F>,
+    candle_model: candle_model::Model<F>,
+    candle_builder: BaseModelBuilder<CandleBackend, F>,
     pub input_shape: usize,
 }
 
-impl crate::model::ModelInterface for Model {
+impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
     type TensorType = Tensor;
 
     fn predict(&self, xs: &Self::TensorType) -> DliResult<Vec<(usize, f32)>> {
         self.candle_model.predict(xs)
     }
 
-    fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
+    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>> {
         self.candle_model.predict_many(xs)
     }
 
@@ -95,7 +96,7 @@ impl crate::model::ModelInterface for Model {
     }
 }
 
-impl Model {
+impl<F: FloatElement> Model<F> {
     pub fn sync_weights_from_tch_to_candle(&mut self) -> DliResult<()> {
         let random_id = rand::rng().random::<u64>();
         let weights_path = std::path::PathBuf::from("/tmp")

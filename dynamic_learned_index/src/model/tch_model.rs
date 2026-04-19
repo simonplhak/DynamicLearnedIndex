@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use std::sync::Mutex;
+use std::{marker::PhantomData, path::PathBuf};
 
 use log::debug;
 use tch::{
@@ -13,7 +13,7 @@ use crate::{
     errors::{DliError, DliResult},
     model::{ModelDevice, ModelLayer, RetrainStrategy, TchBackend, TrainParams},
     sampling,
-    structs::LabelMethod,
+    structs::{FloatElement, LabelMethod},
     types::ArraySlice,
     ModelConfig,
 };
@@ -25,8 +25,13 @@ fn to_tch_device(device: ModelDevice) -> Device {
     }
 }
 
-impl crate::model::BaseModelBuilder<TchBackend> {
-    pub fn build(&self) -> DliResult<Model> {
+impl<F: FloatElement> crate::model::BaseModelBuilder<TchBackend, F> {
+    pub fn build(&self) -> DliResult<Model<F>> {
+        if self.quantize {
+            return DliResult::Err(DliError::ModelCreation(
+                "Quantization is not supported for TchBackend",
+            ));
+        }
         let device_mdl = self
             .device
             .as_ref()
@@ -59,6 +64,7 @@ impl crate::model::BaseModelBuilder<TchBackend> {
             input_shape: input_nodes as usize,
             label_method,
             layers: self.layers.clone(),
+            _marker: PhantomData,
         };
         Ok(model)
     }
@@ -111,7 +117,7 @@ impl crate::model::BaseModelBuilder<TchBackend> {
 
 // todo reset model after flush
 #[derive(Debug)]
-pub struct Model {
+pub struct Model<F: FloatElement> {
     model: Mutex<Box<dyn nn::Module>>,
     vs: nn::VarStore,
     labels: usize,
@@ -120,9 +126,10 @@ pub struct Model {
     pub train_params: TrainParams,
     label_method: LabelMethod,
     layers: Vec<ModelLayer>,
+    _marker: PhantomData<F>,
 }
 
-impl crate::model::ModelInterface for Model {
+impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
     type TensorType = Tensor;
 
     fn predict(&self, xs: &Tensor) -> DliResult<Vec<(usize, f32)>> {
@@ -144,7 +151,7 @@ impl crate::model::ModelInterface for Model {
         Ok(predictions)
     }
 
-    fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
+    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>> {
         let xs_tensor = Tensor::from_slice(xs);
         let xs_tensor = xs_tensor.view((
             (xs.len() / self.input_shape) as i64,
@@ -213,6 +220,7 @@ impl crate::model::ModelInterface for Model {
             train_params: self.train_params,
             weights_path: Some(weights_filename),
             layers: self.layers.clone(),
+            quantize: false,
         })
     }
 
@@ -237,14 +245,14 @@ impl crate::model::ModelInterface for Model {
     }
 
     fn vec2tensor(&self, xs: &[f32]) -> DliResult<Tensor> {
-        Ok(vec2tensor(xs))
+        Ok(tch::Tensor::from_slice(xs))
     }
 }
 
-impl Model {
+impl<F: FloatElement> Model<F> {
     pub fn reset_model(&mut self) -> DliResult<()> {
         let (new_vs, new_model) =
-            crate::model::BaseModelBuilder::<TchBackend>::build_varstore_and_model(
+            crate::model::BaseModelBuilder::<TchBackend, F>::build_varstore_and_model(
                 self.device,
                 self.input_shape as i64,
                 self.labels,
@@ -301,10 +309,6 @@ fn tensor2vec(tensor: &tch::Tensor) -> Vec<f32> {
 fn tensor2vec_usize(tensor: &tch::Tensor) -> Vec<usize> {
     let x: Vec<i64> = tensor.try_into().unwrap();
     x.iter().map(|&v| v as usize).collect()
-}
-
-fn vec2tensor(vec: &ArraySlice) -> tch::Tensor {
-    tch::Tensor::from_slice(vec)
 }
 
 #[cfg(test)]

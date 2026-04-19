@@ -4,6 +4,7 @@ import shutil
 from pathlib import Path
 
 import numpy as np
+import torch
 
 from py_dynamic_learned_index import (
     DynamicLearnedIndex,
@@ -40,6 +41,7 @@ builder = (
     .train_batch_size(8)
     .train_epochs(3)
     .train_threshold_samples(100)
+    .quantize(True)
     .retrain_strategy("from_scratch")  # possible values: no_retrain, from_scratch
 )
 # options for compaction strategy:

@@ -611,9 +611,7 @@ impl<F: FloatElement> IndexBuilder<F> {
 
     pub fn from_disk(working_dir: &Path) -> DliResult<Self> {
         let meta_path = working_dir.join("meta.json");
-        println!("Loading index metadata from {:?}", meta_path);
         let meta_file = File::open(meta_path)?;
-        println!("Deserializing index metadata...");
         let disk_index: DiskIndex = serde_json::from_reader(meta_file)?;
         Ok(Self {
             compaction_strategy: Some(disk_index.compaction_strategy),
@@ -698,6 +696,11 @@ impl<F: FloatElement> IndexBuilder<F> {
                 self.model_layers = Some(vec![layer]);
             }
         };
+        self
+    }
+
+    pub fn quantize(mut self, quantize: bool) -> Self {
+        self.levels_config.model.quantize = quantize;
         self
     }
 
@@ -883,6 +886,7 @@ mod tests {
               batch_size: 4
               epochs: 2
               retrain_strategy: no_retrain
+            quantize: false
           bucket_size: 100
         buffer_size: 50
         input_shape: 10

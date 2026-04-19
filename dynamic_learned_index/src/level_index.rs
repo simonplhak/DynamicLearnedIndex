@@ -127,7 +127,7 @@ impl<F: FloatElement> LevelIndexBuilder<F> {
             .model_config
             .as_ref()
             .ok_or(DliError::MissingAttribute("model_config"))?;
-        let mut model_builder = ModelBuilder::default();
+        let mut model_builder = ModelBuilder::<F>::default();
         model_builder
             .device(self.model_device)
             .input_nodes(input_shape as i64)
@@ -148,13 +148,13 @@ impl<F: FloatElement> LevelIndexBuilder<F> {
 }
 
 pub struct LevelIndex<F: FloatElement> {
-    model: Model,
+    model: Model<F>,
     buckets: Vec<Bucket<F>>,
     ids_map: HashMap<Id, (usize, usize)>, // Id -> (bucket_idx, record_idx)
 }
 
 impl<F: FloatElement> LevelIndex<F> {
-    fn new(model: Model, buckets: Vec<Bucket<F>>) -> Self {
+    fn new(model: Model<F>, buckets: Vec<Bucket<F>>) -> Self {
         Self {
             model,
             buckets,
@@ -246,7 +246,7 @@ impl<F: FloatElement> LevelIndex<F> {
 
         let mut flat_queries = Vec::new();
         for query in queries {
-            flat_queries.extend_from_slice(&F::to_f32_slice(query));
+            flat_queries.extend_from_slice(&query);
         }
 
         // Get batch predictions (bucket assignments) using predict_many
@@ -283,9 +283,8 @@ impl<F: FloatElement> LevelIndex<F> {
         if records.is_empty() {
             return Ok(());
         }
-        let xs = F::to_f32_slice(&records);
-        println!("xs={}, {}, {}", xs.len(), xs.len() / input_shape, ids.len());
-        let assignments = self.model.predict_many(&xs)?;
+        // let xs = F::to_f32_slice(&records);
+        let assignments = self.model.predict_many(&records)?;
         assert!(assignments.len() == ids.len());
         // Calculate frequency of each bucket index in assignments
         let mut frequencies = vec![0; self.buckets.len()];
@@ -493,6 +492,7 @@ mod tests {
                 retrain_strategy: RetrainStrategy::NoRetrain,
             },
             weights_path: None,
+            quantize: false,
         };
 
         let level_custom = LevelIndexBuilder::<f32>::default()

@@ -39,7 +39,7 @@ fn run_performance_test(
     info!("Data generation took: {:?}", data_gen_time);
 
     let model_build_start = std::time::Instant::now();
-    let mut model = ModelBuilder::default()
+    let mut model = ModelBuilder::<f32>::default()
         .device(ModelDevice::Cpu)
         .input_nodes(input_dim as i64)
         .add_layer(ModelLayer::Linear(128))

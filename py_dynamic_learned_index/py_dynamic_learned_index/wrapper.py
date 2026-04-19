@@ -100,6 +100,11 @@ class DynamicLearnedIndexBuilder:
         self.layers.append({"type": "relu"})
         return self
 
+    def quantize(self, quantize: bool) -> 'DynamicLearnedIndexBuilder':
+        """Set whether to quantize the model."""
+        self.config["quantize"] = quantize
+        return self
+
     def build(self) -> 'DynamicLearnedIndex':
         """Build the index."""
         self.config["layers"] = self.layers

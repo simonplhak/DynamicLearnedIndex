@@ -197,29 +197,52 @@ impl Default for SearchStrategy {
     }
 }
 
-pub trait FloatElement: bytemuck::Pod + Default {
-    fn zero() -> Self;
+#[cfg(any(feature = "candle", feature = "mix"))]
+pub trait CandleFloat: candle_core::WithDType {}
+#[cfg(not(any(feature = "candle", feature = "mix")))]
+pub trait CandleFloat {}
+
+// Blanket impls
+#[cfg(any(feature = "candle", feature = "mix"))]
+impl<T: candle_core::WithDType> CandleFloat for T {}
+#[cfg(not(any(feature = "candle", feature = "mix")))]
+impl<T> CandleFloat for T {}
+
+#[cfg(any(feature = "tch", feature = "mix"))]
+pub trait TchFloat: tch::kind::Element {}
+#[cfg(not(any(feature = "tch", feature = "mix")))]
+pub trait TchFloat {}
+
+#[cfg(any(feature = "tch", feature = "mix"))]
+impl<T: tch::kind::Element> TchFloat for T {}
+#[cfg(not(any(feature = "tch", feature = "mix")))]
+impl<T> TchFloat for T {}
+
+pub trait FloatElement: bytemuck::Pod + Default + CandleFloat + TchFloat {
     fn to_f32_slice(slice: &[Self]) -> Cow<'_, [f32]>;
+    fn to_candle_dtype() -> candle_core::DType;
 }
 
 impl FloatElement for f32 {
-    fn zero() -> Self {
-        0.0f32
-    }
     fn to_f32_slice(slice: &[Self]) -> Cow<'_, [f32]> {
         Cow::Borrowed(slice)
+    }
+
+    fn to_candle_dtype() -> candle_core::DType {
+        candle_core::DType::F32
     }
 }
 
 impl FloatElement for f16 {
-    fn zero() -> Self {
-        f16::ZERO
-    }
     fn to_f32_slice(slice: &[Self]) -> Cow<'_, [f32]> {
         // HalfFloatVecExt::to_f32_slice is not zero-copy, it allocates a new Vec<f32> and converts each f16 to f32
         let mut v = Vec::with_capacity(slice.len());
         v.extend(slice.iter().map(|x| x.to_f32()));
         Cow::Owned(v)
+    }
+
+    fn to_candle_dtype() -> candle_core::DType {
+        candle_core::DType::F16
     }
 }
 

@@ -25,7 +25,7 @@ fn generate_random_data(size: usize, dim: usize) -> Vec<f32> {
         .collect()
 }
 
-fn model() -> Model {
+fn model() -> Model<f32> {
     ModelBuilder::default()
         .device(ModelDevice::Cpu)
         .input_nodes(VECTOR_DIM as i64)

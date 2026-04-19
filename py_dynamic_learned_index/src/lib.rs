@@ -138,6 +138,11 @@ where
             }
         }
     }
+    if let Some(quantize) = config.get_item("quantize").ok().flatten() {
+        if let Ok(quantize) = quantize.extract::<bool>() {
+            builder = builder.quantize(quantize);
+        }
+    }
     Ok(builder)
 }
 

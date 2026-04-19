@@ -5,13 +5,13 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::errors::DliResult;
-use crate::structs::LabelMethod;
+use crate::structs::{FloatElement, LabelMethod};
 use crate::types::ArraySlice;
 use std::marker::PhantomData;
 
-pub trait ModelInterface {
+pub trait ModelInterface<F: FloatElement> {
     fn predict(&self, xs: &Self::TensorType) -> DliResult<Vec<(usize, f32)>>;
-    fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>>;
+    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>>;
     fn train(&mut self, xs: &ArraySlice) -> DliResult<()>;
     fn retrain(&mut self, xs: &ArraySlice) -> DliResult<()>;
     fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig>;
@@ -31,7 +31,7 @@ pub struct TchBackend;
 pub struct MixBackend;
 
 #[derive(Debug, Clone, Default)]
-pub struct BaseModelBuilder<B> {
+pub struct BaseModelBuilder<B, F: FloatElement> {
     pub device: Option<ModelDevice>,
     pub input_nodes: Option<i64>,
     pub layers: Vec<ModelLayer>,
@@ -39,10 +39,12 @@ pub struct BaseModelBuilder<B> {
     pub train_params: Option<TrainParams>,
     pub label_method: Option<LabelMethod>,
     pub weights_path: Option<PathBuf>,
+    pub quantize: bool,
     _backend: PhantomData<B>,
+    _marker: PhantomData<F>,
 }
 
-impl<B> BaseModelBuilder<B> {
+impl<B, F: FloatElement> BaseModelBuilder<B, F> {
     pub fn device(&mut self, device: ModelDevice) -> &mut Self {
         self.device = Some(device);
         self
@@ -80,6 +82,11 @@ impl<B> BaseModelBuilder<B> {
 
     pub fn weights_path(&mut self, weights_path: PathBuf) -> &mut Self {
         self.weights_path = Some(weights_path);
+        self
+    }
+
+    pub fn quantize(&mut self, quantize: bool) -> &mut Self {
+        self.quantize = quantize;
         self
     }
 }
@@ -127,6 +134,7 @@ pub struct ModelConfig {
     pub layers: Vec<ModelLayer>,
     pub train_params: TrainParams,
     pub weights_path: Option<PathBuf>,
+    pub quantize: bool,
 }
 
 impl Default for ModelConfig {
@@ -135,6 +143,7 @@ impl Default for ModelConfig {
             layers: vec![ModelLayer::Linear(128), ModelLayer::ReLU],
             train_params: Default::default(),
             weights_path: None,
+            quantize: false,
         }
     }
 }
@@ -154,15 +163,15 @@ cfg_if::cfg_if! {
         mod candle_model;
         mod tch_model;
         pub use mix_model::Model;
-        pub type ModelBuilder = BaseModelBuilder<MixBackend>;
+        pub type ModelBuilder<F> = BaseModelBuilder<MixBackend, F>;
     } else if #[cfg(feature = "tch")] {
         mod tch_model;
         pub use tch_model::Model;
-        pub type ModelBuilder = BaseModelBuilder<TchBackend>;
+        pub type ModelBuilder<F> = BaseModelBuilder<TchBackend, F>;
     } else if #[cfg(feature = "candle")] {
         mod candle_model;
         pub use candle_model::Model;
-        pub type ModelBuilder = BaseModelBuilder<CandleBackend>;
+        pub type ModelBuilder<F> = BaseModelBuilder<CandleBackend, F>;
     }
 }
 
@@ -184,7 +193,7 @@ mod tests {
         };
 
         // Act
-        let model = ModelBuilder::default()
+        let model = ModelBuilder::<f32>::default()
             .device(ModelDevice::Cpu)
             .input_nodes(input_nodes)
             .add_layer(ModelLayer::Linear(256))
@@ -207,7 +216,7 @@ mod tests {
         use tempfile::TempDir;
 
         // Create and train a model
-        let mut builder = ModelBuilder::default();
+        let mut builder = ModelBuilder::<f32>::default();
         let mut model = builder
             .device(ModelDevice::Cpu)
             .input_nodes(10)
@@ -251,7 +260,7 @@ mod tests {
         model.dump(weights_path.clone()).unwrap();
 
         // Load model from weights
-        let mut loaded_builder = ModelBuilder::default();
+        let mut loaded_builder = ModelBuilder::<f32>::default();
         let loaded_model = loaded_builder
             .device(ModelDevice::Cpu)
             .input_nodes(10)
@@ -362,7 +371,7 @@ mod tests {
         // Arrange
         let input_nodes = 2;
         let labels = 2;
-        let mut builder = ModelBuilder::default();
+        let mut builder = ModelBuilder::<f32>::default();
         let mut model = builder
             .device(ModelDevice::Cpu)
             .input_nodes(input_nodes)
@@ -377,6 +386,80 @@ mod tests {
                 retrain_strategy: RetrainStrategy::NoRetrain,
             })
             .label_method(LabelMethod::KMeans)
+            .build()
+            .unwrap();
+
+        // Create two distinct clusters
+        let mut training_data = Vec::new();
+        // Cluster 1: around 0.2
+        for _ in 0..50 {
+            training_data.push(0.2 + rand::random::<f32>() * 0.0001);
+            training_data.push(0.2 + rand::random::<f32>() * 0.0001);
+        }
+        // Cluster 2: around 0.8
+        for _ in 0..50 {
+            training_data.push(0.8 + rand::random::<f32>() * 0.0001);
+            training_data.push(0.8 + rand::random::<f32>() * 0.0001);
+        }
+
+        // Act
+        model.train(&training_data).unwrap();
+
+        // Assert
+        // Check predictions for representative points
+        let p1 = model.vec2tensor(&[0.2, 0.2]).unwrap();
+        let p2 = model.vec2tensor(&[0.8, 0.8]).unwrap();
+
+        let res1 = model.predict(&p1).unwrap();
+        let res2 = model.predict(&p2).unwrap();
+
+        let label1 = res1[0].0;
+        let label2 = res2[0].0;
+
+        assert_ne!(
+            label1, label2,
+            "Model should assign different labels to distinct clusters"
+        );
+
+        // Verify consistency within clusters
+        let p1_b = model.vec2tensor(&[0.21, 0.19]).unwrap();
+        let res1_b = model.predict(&p1_b).unwrap();
+        assert_eq!(
+            res1_b[0].0, label1,
+            "Model should be consistent within cluster 1"
+        );
+
+        let p2_b = model.vec2tensor(&[0.79, 0.81]).unwrap();
+        let res2_b = model.predict(&p2_b).unwrap();
+        assert_eq!(
+            res2_b[0].0, label2,
+            "Model should be consistent within cluster 2"
+        );
+    }
+
+    #[cfg(any(feature = "candle", feature = "mix"))]
+    #[test]
+    fn test_basic_learning_capability_qantitized() {
+        use half::f16;
+        // Arrange
+        let input_nodes = 2;
+        let labels = 2;
+        let mut builder = ModelBuilder::<f16>::default();
+        let mut model = builder
+            .device(ModelDevice::Cpu)
+            .input_nodes(input_nodes)
+            .add_layer(ModelLayer::Linear(16))
+            .add_layer(ModelLayer::ReLU)
+            .labels(labels)
+            .train_params(TrainParams {
+                epochs: 50,
+                batch_size: 10,
+                threshold_samples: 200,
+                max_iters: 10,
+                retrain_strategy: RetrainStrategy::NoRetrain,
+            })
+            .label_method(LabelMethod::KMeans)
+            .quantize(true)
             .build()
             .unwrap();
 

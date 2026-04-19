@@ -1,5 +1,4 @@
-use std::path::PathBuf;
-
+use candle_core::quantized::{GgmlDType, QMatMul, QTensor};
 use candle_core::{DType, IndexOp as _, Tensor, D};
 use candle_core::{Device, Result as CandleResult};
 use candle_nn::{linear, Module, Optimizer, Sequential, VarBuilder, VarMap};
@@ -10,15 +9,16 @@ use rand::distr::weighted::WeightedIndex;
 use rand::distr::Distribution;
 use rand::rng;
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use crate::errors::{DliError, DliResult};
 use crate::model::{CandleBackend, ModelDevice, ModelLayer, RetrainStrategy, TrainParams};
-use crate::structs::LabelMethod;
+use crate::structs::{FloatElement, LabelMethod};
 use crate::types::ArraySlice;
 use crate::{clustering, sampling, ModelConfig};
 
-impl crate::model::BaseModelBuilder<CandleBackend> {
-    pub fn build(&self) -> DliResult<Model> {
+impl<F: FloatElement> crate::model::BaseModelBuilder<CandleBackend, F> {
+    pub fn build(&self) -> DliResult<Model<F>> {
         let device = self
             .device
             .as_ref()
@@ -67,7 +67,7 @@ impl crate::model::BaseModelBuilder<CandleBackend> {
             varmap.load(weights_path)?;
         }
 
-        let model = Model {
+        let mut model = Model {
             model: seq,
             varmap,
             labels,
@@ -76,12 +76,17 @@ impl crate::model::BaseModelBuilder<CandleBackend> {
             input_shape: input_nodes,
             label_method,
             layers: self.layers.clone(),
+            use_quantization: self.quantize,
+            _marker: std::marker::PhantomData,
         };
+        if self.quantize && self.weights_path.is_some() {
+            model.quantize()?;
+        }
         Ok(model)
     }
 }
 
-pub struct Model {
+pub struct Model<F: FloatElement> {
     model: Sequential,
     varmap: VarMap,
     pub labels: usize,
@@ -90,15 +95,17 @@ pub struct Model {
     pub train_params: TrainParams,
     label_method: LabelMethod,
     layers: Vec<ModelLayer>,
+    use_quantization: bool,
+    _marker: std::marker::PhantomData<F>,
 }
 
 // UNSAFE: TODO
-unsafe impl Send for Model {}
+unsafe impl<F: FloatElement> Send for Model<F> {}
 
 // UNSAFE: TODO
-unsafe impl Sync for Model {}
+unsafe impl<F: FloatElement> Sync for Model<F> {}
 
-impl crate::model::ModelInterface for Model {
+impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
     type TensorType = Tensor;
 
     fn predict(&self, xs: &Tensor) -> DliResult<Vec<(usize, f32)>> {
@@ -111,7 +118,7 @@ impl crate::model::ModelInterface for Model {
         Ok(predictions)
     }
 
-    fn predict_many(&self, xs: &ArraySlice) -> DliResult<Vec<usize>> {
+    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>> {
         let dim = xs.len() / self.input_shape;
         let batch_size = 4096;
 
@@ -119,7 +126,8 @@ impl crate::model::ModelInterface for Model {
 
         for chunk in xs.chunks(batch_size * self.input_shape) {
             let chunk_dim = chunk.len() / self.input_shape;
-            let dataset = Tensor::from_slice(chunk, (chunk_dim, self.input_shape), &self.device)?;
+            let dataset = Tensor::from_slice(chunk, (chunk_dim, self.input_shape), &self.device)?
+                .to_dtype(DType::F32)?;
             let rs = self.model.forward(&dataset)?.argmax(1)?.to_vec1::<u32>()?;
             predictions.extend(rs.into_iter().map(|v| v as usize));
         }
@@ -150,6 +158,9 @@ impl crate::model::ModelInterface for Model {
         };
         let mut opt = candle_nn::AdamW::new(self.varmap.all_vars(), optim_config)?;
         self._train(&xs, &ys, &mut opt)?;
+        if self.use_quantization {
+            self.quantize()?;
+        }
         Ok(())
     }
 
@@ -173,6 +184,7 @@ impl crate::model::ModelInterface for Model {
             layers: self.layers.clone(),
             train_params: self.train_params,
             weights_path: Some(weights_filename),
+            quantize: self.use_quantization,
         })
     }
 
@@ -202,7 +214,7 @@ impl crate::model::ModelInterface for Model {
     }
 }
 
-impl Model {
+impl<F: FloatElement> Model<F> {
     #[log_time]
     fn _train(&mut self, xs: &ArraySlice, ys: &[i64], opt: &mut candle_nn::AdamW) -> DliResult<()> {
         let weighted_index = Self::weighted_index(ys)?;
@@ -263,6 +275,54 @@ impl Model {
 
         WeightedIndex::new(&weights)
             .map_err(|_| DliError::ModelCreation("Failed to create WeightedIndex"))
+    }
+
+    pub fn quantize(&mut self) -> DliResult<()> {
+        let mut quantized_seq = candle_nn::seq();
+        let vars = self.varmap.data().lock().unwrap();
+        let mut linear_idx = 0;
+        let load_linear = |linear_idx| -> DliResult<QuantizedLinear> {
+            let weight_name = format!("{}.weight", linear_idx * 2);
+            let bias_name = format!("{}.bias", linear_idx * 2);
+            let weight_var = vars
+                .get(&weight_name)
+                .unwrap_or_else(|| panic!("Weight tensor '{}' not found in VarMap", weight_name));
+            let weight = weight_var.as_tensor();
+            let q_weight = QTensor::quantize(weight, GgmlDType::F16)?;
+            let q_matmul = QMatMul::from_qtensor(q_weight)?;
+            let bias = vars.get(&bias_name).map(|v| v.as_tensor().clone()).unwrap();
+            Ok(QuantizedLinear { q_matmul, bias })
+        };
+
+        for layer in &self.layers {
+            match layer {
+                ModelLayer::Linear(_out_features) => {
+                    let q_linear = load_linear(linear_idx)?;
+                    quantized_seq = quantized_seq.add(q_linear);
+                    linear_idx += 1;
+                }
+                ModelLayer::ReLU => {
+                    quantized_seq = quantized_seq.add(candle_nn::Activation::Relu);
+                }
+            }
+        }
+        let q_linear = load_linear(linear_idx)?;
+        quantized_seq = quantized_seq.add(q_linear);
+        self.model = quantized_seq;
+        Ok(())
+    }
+}
+
+#[derive(Debug)]
+pub struct QuantizedLinear {
+    pub q_matmul: QMatMul,
+    pub bias: Tensor,
+}
+
+impl Module for QuantizedLinear {
+    fn forward(&self, xs: &Tensor) -> CandleResult<Tensor> {
+        let out = self.q_matmul.forward(xs)?;
+        out.broadcast_add(&self.bias)
     }
 }
 
