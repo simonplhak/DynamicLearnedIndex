@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use candle_core::{DType, IndexOp as _, Tensor, D};
 use candle_core::{Device, Result as CandleResult};
-use candle_nn::{linear, Linear, Module, Optimizer, VarBuilder, VarMap};
+use candle_nn::{linear, Module, Optimizer, Sequential, VarBuilder, VarMap};
 use candle_nn::{loss, ops};
 use log::debug;
 use measure_time_macro::log_time;
@@ -30,13 +30,8 @@ impl crate::model::BaseModelBuilder<CandleBackend> {
         let label_method = self
             .label_method
             .ok_or(DliError::MissingAttribute("label_method"))?;
-        let varmap = VarMap::new();
-        let vs = match &self.weights_path {
-            Some(weights_path) => unsafe {
-                VarBuilder::from_mmaped_safetensors(&[weights_path], DType::F32, &device)?
-            },
-            None => VarBuilder::from_varmap(&varmap, DType::F32, &device),
-        };
+        let mut varmap = VarMap::new();
+        let vs = VarBuilder::from_varmap(&varmap, DType::F32, &device);
         let input_nodes = self
             .input_nodes
             .ok_or(DliError::MissingAttribute("input_nodes"))? as usize;
@@ -44,49 +39,64 @@ impl crate::model::BaseModelBuilder<CandleBackend> {
         assert!(labels > 0, "labels must be greater than 0");
         let train_params = self.train_params.unwrap_or_default();
         let mut i = 0;
-        let (mut layers, in_nodes) = self.layers.iter().try_fold(
-            (Vec::<CandleModelLayer>::new(), input_nodes),
-            |(mut layers, input_nodes), layer| -> DliResult<(Vec<CandleModelLayer>, usize)> {
+        let (seq, in_nodes) = self.layers.iter().try_fold(
+            (candle_nn::seq(), input_nodes),
+            |(seq, input_nodes), layer| -> DliResult<(Sequential, usize)> {
                 let (layers, output_nodes) = match layer {
                     ModelLayer::Linear(nodes) => {
-                        let lin = linear(input_nodes, *nodes, vs.pp(format!("{i}", i = 2 * i)))?;
+                        let seq = seq.add(linear(
+                            input_nodes,
+                            *nodes,
+                            vs.pp(format!("{i}", i = 2 * i)),
+                        )?);
                         i += 1;
-                        layers.push(CandleModelLayer::Linear(lin));
-                        (layers, *nodes)
+
+                        (seq, *nodes)
                     }
                     ModelLayer::ReLU => {
-                        layers.push(CandleModelLayer::ReLU);
-                        (layers, input_nodes)
+                        let seq = seq.add_fn(|xs| xs.relu());
+                        (seq, input_nodes)
                     }
                 };
                 Ok((layers, output_nodes))
             },
         )?;
-        let lin = linear(in_nodes, labels, vs.pp(format!("{i}", i = 2 * i)))?;
-        layers.push(CandleModelLayer::Linear(lin));
-        let model = CandleModel { layers };
+        let seq = seq.add(linear(in_nodes, labels, vs.pp(format!("{i}", i = 2 * i)))?);
+
+        if let Some(weights_path) = &self.weights_path {
+            varmap.load(weights_path)?;
+        }
+
         let model = Model {
-            model,
+            model: seq,
             varmap,
             labels,
             device,
             train_params,
             input_shape: input_nodes,
             label_method,
+            layers: self.layers.clone(),
         };
         Ok(model)
     }
 }
 
 pub struct Model {
-    model: CandleModel,
+    model: Sequential,
     varmap: VarMap,
     pub labels: usize,
     device: Device,
     pub input_shape: usize,
     pub train_params: TrainParams,
     label_method: LabelMethod,
+    layers: Vec<ModelLayer>,
 }
+
+// UNSAFE: TODO
+unsafe impl Send for Model {}
+
+// UNSAFE: TODO
+unsafe impl Sync for Model {}
 
 impl crate::model::ModelInterface for Model {
     type TensorType = Tensor;
@@ -158,17 +168,9 @@ impl crate::model::ModelInterface for Model {
 
     fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig> {
         self.varmap.save(&weights_filename)?;
+
         Ok(ModelConfig {
-            layers: self
-                .model
-                .layers
-                .iter()
-                .take(self.model.layers.len() - 1)
-                .map(|layer| match layer {
-                    CandleModelLayer::Linear(lin) => ModelLayer::Linear(lin.weight().dims()[0]),
-                    CandleModelLayer::ReLU => ModelLayer::ReLU,
-                })
-                .collect(),
+            layers: self.layers.clone(),
             train_params: self.train_params,
             weights_path: Some(weights_filename),
         })
@@ -177,6 +179,7 @@ impl crate::model::ModelInterface for Model {
     fn memory_usage(&self) -> usize {
         let mut total = std::mem::size_of::<Self>();
 
+        // Calculate memory used by all variables in varmap (weights and biases)
         let varmap_size: usize = self
             .varmap
             .all_vars()
@@ -184,21 +187,7 @@ impl crate::model::ModelInterface for Model {
             .map(|var| var.elem_count() * var.dtype().size_in_bytes())
             .sum();
 
-        if varmap_size > 0 {
-            total += varmap_size;
-        } else {
-            for layer in &self.model.layers {
-                match layer {
-                    CandleModelLayer::Linear(lin) => {
-                        total += lin.weight().elem_count() * lin.weight().dtype().size_in_bytes();
-                        if let Some(bias) = lin.bias() {
-                            total += bias.elem_count() * bias.dtype().size_in_bytes();
-                        }
-                    }
-                    CandleModelLayer::ReLU => {}
-                }
-            }
-        }
+        total += varmap_size;
         total
     }
 
@@ -274,30 +263,6 @@ impl Model {
 
         WeightedIndex::new(&weights)
             .map_err(|_| DliError::ModelCreation("Failed to create WeightedIndex"))
-    }
-}
-
-enum CandleModelLayer {
-    Linear(Linear),
-    ReLU,
-}
-struct CandleModel {
-    layers: Vec<CandleModelLayer>,
-}
-
-impl Module for CandleModel {
-    fn forward(&self, xs: &Tensor) -> CandleResult<Tensor> {
-        let mut current = match &self.layers[0] {
-            CandleModelLayer::Linear(lin) => lin.forward(xs)?,
-            CandleModelLayer::ReLU => xs.relu()?,
-        };
-        for layer in &self.layers[1..] {
-            current = match layer {
-                CandleModelLayer::Linear(lin) => lin.forward(&current)?,
-                CandleModelLayer::ReLU => current.relu()?,
-            };
-        }
-        Ok(current)
     }
 }
 
