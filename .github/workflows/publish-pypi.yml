@@ -6,7 +6,7 @@ on:
       features:
         description: "Features to enable when building"
         required: false
-        default: "measure_time,tch"
+        default: "measure_time,mix"
         type: string
 
 jobs:
