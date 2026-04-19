@@ -208,7 +208,7 @@ mod tests {
 
     #[test]
     fn test_model_save_and_load_weights() {
-        use tempfile::NamedTempFile;
+        use tempfile::TempDir;
 
         // Create and train a model
         let mut builder = ModelBuilder::default();
@@ -249,9 +249,9 @@ mod tests {
             .map(|query| model.predict(&model.vec2tensor(query).unwrap()).unwrap())
             .collect::<Vec<_>>();
 
-        // Save model to temporary file
-        let temp_file = NamedTempFile::new().expect("Failed to create temp file");
-        let weights_path = temp_file.path().to_path_buf();
+        // Save model to temporary directory with proper .pt extension
+        let temp_dir = TempDir::new().expect("Failed to create temp directory");
+        let weights_path = temp_dir.path().join("model.ot");
         model.dump(weights_path.clone()).unwrap();
 
         // Load model from weights
