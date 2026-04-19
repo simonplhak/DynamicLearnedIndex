@@ -292,35 +292,6 @@ impl Model {
             labels: self.labels as i64,
         }
     }
-
-    pub fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig> {
-        self.vs.save(&weights_filename)?;
-        Ok(ModelConfig {
-            train_params: self.train_params,
-            weights_path: Some(weights_filename),
-            layers: self.layers.clone(),
-        })
-    }
-
-    pub fn memory_usage(&self) -> usize {
-        std::mem::size_of::<Self>()
-            + (self
-                .vs
-                .variables()
-                .into_values()
-                .map(|tensor| {
-                    let numel = tensor.size().iter().product::<i64>() as u64;
-                    let element_size = match tensor.kind() {
-                        tch::Kind::Float => 4,
-                        tch::Kind::Double => 8,
-                        tch::Kind::Int64 => 8,
-                        tch::Kind::Int => 4,
-                        _ => 4, // default to 4 bytes
-                    };
-                    numel * element_size
-                })
-                .sum::<u64>() as usize)
-    }
 }
 
 fn tensor2vec(tensor: &tch::Tensor) -> Vec<f32> {
