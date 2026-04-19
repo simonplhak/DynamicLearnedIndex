@@ -11,7 +11,7 @@ use tch::{
 use crate::{
     clustering::{self},
     errors::{DliError, DliResult},
-    model::{ModelDevice, ModelLayer, TchBackend, TrainParams},
+    model::{ModelDevice, ModelLayer, RetrainStrategy, TchBackend, TrainParams},
     sampling,
     structs::LabelMethod,
     types::ArraySlice,
@@ -35,16 +35,46 @@ impl crate::model::BaseModelBuilder<TchBackend> {
         let label_method = self
             .label_method
             .ok_or(DliError::MissingAttribute("label_method"))?;
-        let mut vs = nn::VarStore::new(device);
-        let vs_root = vs.root();
         let input_nodes = self
             .input_nodes
             .ok_or(DliError::MissingAttribute("input_nodes"))?;
         let labels = self.labels.ok_or(DliError::MissingAttribute("labels"))?;
         assert!(labels > 0, "labels must be greater than 0");
+        let train_params = self.train_params.unwrap_or_default();
+
+        let (vs, model) = Self::build_varstore_and_model(
+            device,
+            input_nodes,
+            labels,
+            &self.layers,
+            &self.weights_path,
+        )?;
+
+        let model = Model {
+            model: Mutex::new(Box::new(model)),
+            vs,
+            labels,
+            device,
+            train_params,
+            input_shape: input_nodes as usize,
+            label_method,
+            layers: self.layers.clone(),
+        };
+        Ok(model)
+    }
+
+    fn build_varstore_and_model(
+        device: Device,
+        input_nodes: i64,
+        labels: usize,
+        layers: &[ModelLayer],
+        weights_path: &Option<PathBuf>,
+    ) -> DliResult<(nn::VarStore, nn::Sequential)> {
+        let mut vs = nn::VarStore::new(device);
+        let vs_root = vs.root();
         let mut i = 0;
         let (mut model, output_nodes) =
-            self.layers
+            layers
                 .iter()
                 .fold((nn::seq(), input_nodes), |(model, input_nodes), layer| {
                     let (model, output_nodes) = match layer {
@@ -72,21 +102,10 @@ impl crate::model::BaseModelBuilder<TchBackend> {
             labels as i64,
             Default::default(),
         ));
-        if let Some(path) = &self.weights_path {
+        if let Some(path) = weights_path {
             vs.load(path)?;
         }
-        let train_params = self.train_params.unwrap_or_default();
-        let model = Model {
-            model: Mutex::new(Box::new(model)),
-            vs,
-            labels,
-            device,
-            train_params,
-            input_shape: input_nodes as usize,
-            label_method,
-            layers: self.layers.clone(),
-        };
-        Ok(model)
+        Ok((vs, model))
     }
 }
 
@@ -98,7 +117,7 @@ pub struct Model {
     labels: usize,
     device: Device,
     pub input_shape: usize,
-    train_params: TrainParams,
+    pub train_params: TrainParams,
     label_method: LabelMethod,
     layers: Vec<ModelLayer>,
 }
@@ -111,7 +130,14 @@ impl crate::model::ModelInterface for Model {
             Device::Cpu => xs.shallow_clone(),
             _ => xs.to_device(self.device),
         };
-        let predictions = tensor2vec(&self.model.lock().unwrap().forward(&xs).softmax(-1, tch::Kind::Float));
+        let predictions = tensor2vec(
+            &self
+                .model
+                .lock()
+                .unwrap()
+                .forward(&xs)
+                .softmax(-1, tch::Kind::Float),
+        );
         let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
         predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
         assert!(predictions.len() <= self.labels);
@@ -124,7 +150,12 @@ impl crate::model::ModelInterface for Model {
             (xs.len() / self.input_shape) as i64,
             self.input_shape as i64,
         ));
-        let labels = self.model.lock().unwrap().forward(&xs_tensor).argmax(1, false);
+        let labels = self
+            .model
+            .lock()
+            .unwrap()
+            .forward(&xs_tensor)
+            .argmax(1, false);
         Ok(tensor2vec_usize(&labels))
     }
 
@@ -151,7 +182,12 @@ impl crate::model::ModelInterface for Model {
                 .train_iter(self.train_params.batch_size as i64)
                 .shuffle()
             {
-                let loss = self.model.lock().unwrap().forward(&xs).cross_entropy_for_logits(&ys);
+                let loss = self
+                    .model
+                    .lock()
+                    .unwrap()
+                    .forward(&xs)
+                    .cross_entropy_for_logits(&ys);
                 opt.backward_step(&loss);
             }
         }
@@ -159,6 +195,15 @@ impl crate::model::ModelInterface for Model {
     }
 
     fn retrain(&mut self, _xs: &ArraySlice) -> DliResult<()> {
+        match self.train_params.retrain_strategy {
+            RetrainStrategy::NoRetrain => {
+                debug!("No retraining performed as per strategy.");
+            }
+            RetrainStrategy::FromScratch => {
+                self.reset_model()?;
+                self.train(_xs)?;
+            }
+        };
         Ok(())
     }
 
@@ -197,6 +242,20 @@ impl crate::model::ModelInterface for Model {
 }
 
 impl Model {
+    pub fn reset_model(&mut self) -> DliResult<()> {
+        let (new_vs, new_model) =
+            crate::model::BaseModelBuilder::<TchBackend>::build_varstore_and_model(
+                self.device,
+                self.input_shape as i64,
+                self.labels,
+                &self.layers,
+                &None,
+            )?;
+        self.vs = new_vs;
+        *self.model.lock().unwrap() = Box::new(new_model);
+        Ok(())
+    }
+
     pub fn dataset(&self, xs: &[f32], ys: &[i64]) -> Dataset {
         let total_queries = ys.len();
         assert!(xs.len().is_multiple_of(self.input_shape));
