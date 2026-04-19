@@ -1,6 +1,6 @@
 [package]
 name = "py_dynamic_learned_index"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -17,7 +17,7 @@ log = { version = "0.4.27", features = ["kv"] }
 half = "2.7.1"
 
 [features]
-default = ["candle"]
+default = ["mix"]
 measure_time = ["dynamic_learned_index/measure_time"]
 mkl = ["dynamic_learned_index/mkl"]
 tch = ["dynamic_learned_index/tch", "dynamic_learned_index/pyo3"]
