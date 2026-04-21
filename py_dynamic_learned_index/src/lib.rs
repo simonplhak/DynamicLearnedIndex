@@ -5,7 +5,7 @@ use dynamic_learned_index::{
     model::RetrainStrategy, IndexBuilder, ModelDevice, ModelLayer, SearchParams,
 };
 use half::f16;
-use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1};
+use numpy::{IntoPyArray, PyArray1, PyArrayDyn, PyArrayMethods, PyReadonlyArray1};
 use pyo3::{
     prelude::*,
     types::{PyBytes, PyDict},
@@ -288,7 +288,7 @@ impl _DynamicLearnedIndexF16 {
     fn search<'py>(
         &self,
         py: Python<'py>,
-        query: PyReadonlyArray1<'py, u16>,
+        query: Bound<'py, PyArrayDyn<f16>>,
         k: usize,
         py_kwargs: Option<&Bound<'_, PyDict>>,
     ) -> PyResult<Bound<'py, PyArray1<u32>>> {
@@ -298,10 +298,10 @@ impl _DynamicLearnedIndexF16 {
         Ok(result?.into_pyarray(py))
     }
 
-    fn insert(
+    fn insert<'py>(
         &mut self,
         py: Python<'_>,
-        record: PyReadonlyArray1<'_, u16>,
+        record: Bound<'py, PyArrayDyn<f16>>,
         id: u32,
     ) -> PyResult<()> {
         let record = array2vec(record);
@@ -375,12 +375,14 @@ impl _DynamicLearnedIndexF16 {
     }
 }
 
-fn array2vec<'py>(x: PyReadonlyArray1<'py, u16>) -> Vec<half::f16> {
-    let slice: &[u16] = x.as_slice().unwrap();
-    // SAFETY: f16 is repr(transparent) over u16 — identical layout, same alignment
-    let f16_slice: &[half::f16] =
-        unsafe { std::slice::from_raw_parts(slice.as_ptr() as *const half::f16, slice.len()) };
-    f16_slice.to_vec()
+fn array2vec<'py>(x: Bound<'py, PyArrayDyn<f16>>) -> Vec<half::f16> {
+    let view = x.readonly();
+    if let Ok(slice) = view.as_slice() {
+        return slice.to_vec();
+    }
+    // Fallback for non-contiguous arrays
+    let array = view.as_array();
+    array.iter().cloned().collect()
 }
 
 fn array2vec_f32<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {

@@ -39,8 +39,6 @@ mkl = ["candle-core/mkl", "candle-nn/mkl"]
 [package.metadata.cargo-feature-combinations]
 skip-combinations = [
     ["tch", "candle"],
-    ["tch", "mix"],
-    ["mix", "candle"],
 ]
 
 [dev-dependencies]

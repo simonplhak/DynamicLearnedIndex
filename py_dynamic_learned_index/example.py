@@ -64,7 +64,7 @@ index: DynamicLearnedIndex = builder.build()
 
 
 if DTYPE == "f16":
-    queries = [np.random.rand(input_shape).astype(np.float16).view(np.uint16) for _ in range(1000)]
+    queries = [np.random.rand(input_shape).astype(np.float16).view(np.float16) for _ in range(1000)]
 else:
     queries = [np.random.rand(input_shape).astype(np.float32) for _ in range(1000)]
 for i, query in enumerate(queries):
