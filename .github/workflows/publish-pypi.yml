@@ -2,12 +2,6 @@ name: Build and Publish to PyPI
 
 on:
   workflow_dispatch:
-    inputs:
-      features:
-        description: "Features to enable when building"
-        required: false
-        default: "measure_time,mix"
-        type: string
 
 jobs:
   build-wheels:
@@ -63,7 +57,7 @@ jobs:
             TARGET="aarch64-apple-darwin"
           fi
           rustup target add $TARGET
-          maturin build --target $TARGET --release --features ${{ github.event.inputs.features || 'measure_time,mix' }} --strip --no-default-features
+          maturin build --target $TARGET --release --strip
 
       - name: Build wheels
         if: runner.os == 'Linux'
@@ -79,7 +73,7 @@ jobs:
           else
             export RUSTFLAGS="-C target-cpu=generic"
           fi
-          maturin build --release --features ${{ github.event.inputs.features || 'measure_time,mix' }} --strip --no-default-features --skip-auditwheel
+          maturin build --release --strip --skip-auditwheel
 
       - name: Manually repair wheels (Linux only)
         if: runner.os == 'Linux'
