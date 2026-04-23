@@ -64,6 +64,7 @@ impl<F: FloatElement> crate::model::BaseModelBuilder<TchBackend, F> {
             input_shape: input_nodes as usize,
             label_method,
             layers: self.layers.clone(),
+            seed: self.seed,
             _marker: PhantomData,
         };
         Ok(model)
@@ -126,6 +127,7 @@ pub struct Model<F: FloatElement> {
     pub train_params: TrainParams,
     label_method: LabelMethod,
     layers: Vec<ModelLayer>,
+    seed: u64,
     _marker: PhantomData<F>,
 }
 
@@ -173,7 +175,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
             self.train_params.threshold_samples,
         );
         debug!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
-        let xs = sampling::sample(xs, sample_size, self.input_shape);
+        let xs = sampling::sample(xs, sample_size, self.input_shape, self.seed);
         let ys = clustering::compute_labels(
             &xs,
             &self.label_method,
@@ -221,6 +223,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
             weights_path: Some(weights_filename),
             layers: self.layers.clone(),
             quantize: false,
+            seed: 42,
         })
     }
 

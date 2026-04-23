@@ -143,6 +143,11 @@ where
             builder = builder.quantize(quantize);
         }
     }
+    if let Some(v) = config.get_item("seed").ok().flatten() {
+        if let Ok(seed) = v.extract::<u64>() {
+            builder = builder.seed(seed);
+        }
+    }
     Ok(builder)
 }
 

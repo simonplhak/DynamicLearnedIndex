@@ -704,6 +704,11 @@ impl<F: FloatElement> IndexBuilder<F> {
         self
     }
 
+    pub fn seed(mut self, seed: u64) -> Self {
+        self.levels_config.model.seed = seed;
+        self
+    }
+
     fn load_disk_level(
         disk_index: DiskLevelIndex,
         device: ModelDevice,

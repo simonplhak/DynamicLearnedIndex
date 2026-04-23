@@ -105,6 +105,10 @@ class DynamicLearnedIndexBuilder:
         self.config["quantize"] = quantize
         return self
 
+    def seed(self, seed: int) -> 'DynamicLearnedIndexBuilder':
+        self.config["seed"] = seed
+        return self
+
     def build(self) -> 'DynamicLearnedIndex':
         """Build the index."""
         self.config["layers"] = self.layers

@@ -77,6 +77,7 @@ impl<F: FloatElement> crate::model::BaseModelBuilder<CandleBackend, F> {
             label_method,
             layers: self.layers.clone(),
             use_quantization: self.quantize,
+            seed: self.seed,
             _marker: std::marker::PhantomData,
         };
         if self.quantize && self.weights_path.is_some() {
@@ -96,6 +97,7 @@ pub struct Model<F: FloatElement> {
     label_method: LabelMethod,
     layers: Vec<ModelLayer>,
     use_quantization: bool,
+    seed: u64,
     _marker: std::marker::PhantomData<F>,
 }
 
@@ -141,7 +143,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
             self.train_params.threshold_samples,
         );
         debug!(sample_size = sample_size, total = xs.len() / self.input_shape ; "model:train");
-        let xs = sampling::sample(xs, sample_size, self.input_shape);
+        let xs = sampling::sample(xs, sample_size, self.input_shape, self.seed);
 
         let ys = clustering::compute_labels(
             &xs,
@@ -185,6 +187,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
             train_params: self.train_params,
             weights_path: Some(weights_filename),
             quantize: self.use_quantization,
+            seed: self.seed,
         })
     }
 

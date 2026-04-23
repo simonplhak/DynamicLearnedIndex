@@ -493,6 +493,7 @@ mod tests {
             },
             weights_path: None,
             quantize: false,
+            seed: 42,
         };
 
         let level_custom = LevelIndexBuilder::<f32>::default()

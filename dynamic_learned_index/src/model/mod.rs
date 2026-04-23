@@ -40,6 +40,7 @@ pub struct BaseModelBuilder<B, F: FloatElement> {
     pub label_method: Option<LabelMethod>,
     pub weights_path: Option<PathBuf>,
     pub quantize: bool,
+    pub seed: u64,
     _backend: PhantomData<B>,
     _marker: PhantomData<F>,
 }
@@ -89,6 +90,11 @@ impl<B, F: FloatElement> BaseModelBuilder<B, F> {
         self.quantize = quantize;
         self
     }
+
+    pub fn seed(&mut self, seed: u64) -> &mut Self {
+        self.seed = seed;
+        self
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Default, Clone, Copy)]
@@ -135,6 +141,7 @@ pub struct ModelConfig {
     pub train_params: TrainParams,
     pub weights_path: Option<PathBuf>,
     pub quantize: bool,
+    pub seed: u64,
 }
 
 impl Default for ModelConfig {
@@ -144,6 +151,7 @@ impl Default for ModelConfig {
             train_params: Default::default(),
             weights_path: None,
             quantize: false,
+            seed: 0,
         }
     }
 }
