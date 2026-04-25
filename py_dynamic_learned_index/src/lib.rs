@@ -478,6 +478,7 @@ impl _DynamicLearnedIndexF32 {
         Ok(_DynamicLearnedIndexF32 { index })
     }
 
+    #[pyo3(signature = (query, k, **py_kwargs))]
     fn search<'py>(
         &self,
         py: Python<'py>,
