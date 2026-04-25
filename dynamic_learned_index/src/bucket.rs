@@ -241,7 +241,8 @@ impl<'a, B, F: FloatElement> StorageBuilder<'a, B, F> {
 
                 // Read records
                 records_file.seek(std::io::SeekFrom::Start(disk_bucket.records_offset))?;
-                let mut records = vec![F::zero(); disk_bucket.count * input_shape];
+                let mut records =
+                    vec![<F as FloatElement>::zero(); disk_bucket.count * input_shape];
                 let records_bytes: &mut [u8] = bytemuck::cast_slice_mut(&mut records);
                 records_file.read_exact(records_bytes)?;
 

@@ -221,6 +221,8 @@ impl<T> TchFloat for T {}
 pub trait FloatElement: bytemuck::Pod + Default + CandleFloat + TchFloat {
     fn to_f32_slice(slice: &[Self]) -> Cow<'_, [f32]>;
     fn to_candle_dtype() -> candle_core::DType;
+
+    fn zero() -> Self;
 }
 
 impl FloatElement for f32 {
