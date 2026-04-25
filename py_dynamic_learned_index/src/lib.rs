@@ -439,6 +439,20 @@ impl _DynamicLearnedIndexBuilderF32 {
     }
 
     #[staticmethod]
+    fn from_yaml(file: &str) -> PyResult<Self> {
+        Ok(_DynamicLearnedIndexBuilderF32 {
+            builder: IndexBuilder::from_yaml(Path::new(file))?,
+        })
+    }
+
+    #[staticmethod]
+    fn from_disk(working_dir: &str) -> PyResult<Self> {
+        Ok(_DynamicLearnedIndexBuilderF32 {
+            builder: IndexBuilder::from_disk(Path::new(working_dir))?,
+        })
+    }
+
+    #[staticmethod]
     fn from_config(config: &Bound<'_, PyDict>) -> PyResult<Self> {
         let builder = IndexBuilder::<f32>::default();
         let builder = apply_config(builder, config)?;
