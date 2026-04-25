@@ -220,6 +220,8 @@ impl<T> TchFloat for T {}
 
 pub trait FloatElement: bytemuck::Pod + Default + CandleFloat + TchFloat {
     fn to_f32_slice(slice: &[Self]) -> Cow<'_, [f32]>;
+
+    #[cfg(any(feature = "candle", feature = "mix"))]
     fn to_candle_dtype() -> candle_core::DType;
 
     fn zero() -> Self;
@@ -230,8 +232,13 @@ impl FloatElement for f32 {
         Cow::Borrowed(slice)
     }
 
+    #[cfg(any(feature = "candle", feature = "mix"))]
     fn to_candle_dtype() -> candle_core::DType {
         candle_core::DType::F32
+    }
+
+    fn zero() -> Self {
+        0.0_f32
     }
 }
 
@@ -243,8 +250,13 @@ impl FloatElement for f16 {
         Cow::Owned(v)
     }
 
+    #[cfg(any(feature = "candle", feature = "mix"))]
     fn to_candle_dtype() -> candle_core::DType {
         candle_core::DType::F16
+    }
+
+    fn zero() -> Self {
+        f16::from_f32(0.0)
     }
 }
 
