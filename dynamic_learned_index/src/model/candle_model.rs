@@ -79,6 +79,7 @@ impl<F: FloatElement> crate::model::BaseModelBuilder<CandleBackend, F> {
             use_quantization: self.quantize,
             seed: self.seed,
             _marker: std::marker::PhantomData,
+            quant_model: None,
         };
         if self.quantize && self.weights_path.is_some() {
             model.quantize()?;
@@ -98,6 +99,7 @@ pub struct Model<F: FloatElement> {
     layers: Vec<ModelLayer>,
     use_quantization: bool,
     seed: u64,
+    quant_model: Option<Sequential>,
     _marker: std::marker::PhantomData<F>,
 }
 
@@ -111,7 +113,10 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
     type TensorType = Tensor;
 
     fn predict(&self, xs: &Tensor) -> DliResult<Vec<(usize, f32)>> {
-        let logits = self.model.forward(xs)?;
+        let logits = match self.use_quantization {
+            true => self.quant_model.as_ref().unwrap().forward(xs)?,
+            false => self.model.forward(xs)?,
+        };
         let final_result = ops::softmax(&logits, D::Minus1)?;
         let predictions = final_result.squeeze(0)?.to_vec1::<f32>()?;
         let predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
@@ -129,7 +134,16 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
             let chunk_dim = chunk.len() / self.input_shape;
             let dataset = Tensor::from_slice(chunk, (chunk_dim, self.input_shape), &self.device)?
                 .to_dtype(DType::F32)?;
-            let rs = self.model.forward(&dataset)?.argmax(1)?.to_vec1::<u32>()?;
+            let rs = match self.use_quantization {
+                true => self
+                    .quant_model
+                    .as_ref()
+                    .unwrap()
+                    .forward(&dataset)?
+                    .argmax(1)?
+                    .to_vec1::<u32>()?,
+                false => self.model.forward(&dataset)?.argmax(1)?.to_vec1::<u32>()?,
+            };
             predictions.extend(rs.into_iter().map(|v| v as usize));
         }
         Ok(predictions)
@@ -310,7 +324,7 @@ impl<F: FloatElement> Model<F> {
         }
         let q_linear = load_linear(linear_idx)?;
         quantized_seq = quantized_seq.add(q_linear);
-        self.model = quantized_seq;
+        self.quant_model = Some(quantized_seq);
         Ok(())
     }
 }

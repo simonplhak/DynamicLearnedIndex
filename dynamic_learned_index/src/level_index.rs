@@ -238,7 +238,7 @@ impl<F: FloatElement> LevelIndex<F> {
 
         let mut flat_queries = Vec::new();
         for query in queries {
-            flat_queries.extend_from_slice(&query);
+            flat_queries.extend_from_slice(query);
         }
 
         // Get batch predictions (bucket assignments) using predict_many

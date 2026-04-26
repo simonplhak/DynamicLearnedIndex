@@ -892,6 +892,7 @@ mod tests {
               epochs: 2
               retrain_strategy: no_retrain
             quantize: false
+            seed: 42
           bucket_size: 100
         buffer_size: 50
         input_shape: 10

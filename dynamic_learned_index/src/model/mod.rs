@@ -346,8 +346,7 @@ mod tests {
             let start = i * input_nodes as usize;
             let end = start + input_nodes as usize;
             let query = &test_data[start..end];
-            let result = model.predict(&model.vec2tensor(query).unwrap()).unwrap();
-            // predict returns sorted (label, prob), so first one is top-1
+            let result = _sorted_predictions(&model, query);
             individual_predictions.push(result[0].0);
         }
 
@@ -415,11 +414,8 @@ mod tests {
 
         // Assert
         // Check predictions for representative points
-        let p1 = model.vec2tensor(&[0.2, 0.2]).unwrap();
-        let p2 = model.vec2tensor(&[0.8, 0.8]).unwrap();
-
-        let res1 = model.predict(&p1).unwrap();
-        let res2 = model.predict(&p2).unwrap();
+        let res1 = _sorted_predictions(&model, &[0.2, 0.2]);
+        let res2 = _sorted_predictions(&model, &[0.8, 0.8]);
 
         let label1 = res1[0].0;
         let label2 = res2[0].0;
@@ -430,24 +426,29 @@ mod tests {
         );
 
         // Verify consistency within clusters
-        let p1_b = model.vec2tensor(&[0.21, 0.19]).unwrap();
-        let res1_b = model.predict(&p1_b).unwrap();
+        let res1_b = _sorted_predictions(&model, &[0.21, 0.19]);
         assert_eq!(
             res1_b[0].0, label1,
             "Model should be consistent within cluster 1"
         );
 
-        let p2_b = model.vec2tensor(&[0.79, 0.81]).unwrap();
-        let res2_b = model.predict(&p2_b).unwrap();
+        let res2_b = _sorted_predictions(&model, &[0.79, 0.81]);
         assert_eq!(
             res2_b[0].0, label2,
             "Model should be consistent within cluster 2"
         );
     }
 
+    fn _sorted_predictions<F: FloatElement>(model: &Model<F>, query: &[f32]) -> Vec<(usize, f32)> {
+        let query = model.vec2tensor(query).unwrap();
+        let mut predictions = model.predict(&query).unwrap();
+        predictions.sort_by(|(_, a), (_, b)| b.total_cmp(a));
+        predictions
+    }
+
     #[cfg(any(feature = "candle", feature = "mix"))]
     #[test]
-    fn test_basic_learning_capability_qantitized() {
+    fn test_basic_learning_capability_quantitized() {
         use half::f16;
         // Arrange
         let input_nodes = 2;
@@ -489,11 +490,9 @@ mod tests {
 
         // Assert
         // Check predictions for representative points
-        let p1 = model.vec2tensor(&[0.2, 0.2]).unwrap();
-        let p2 = model.vec2tensor(&[0.8, 0.8]).unwrap();
 
-        let res1 = model.predict(&p1).unwrap();
-        let res2 = model.predict(&p2).unwrap();
+        let res1 = _sorted_predictions(&model, &[0.2, 0.2]);
+        let res2 = _sorted_predictions(&model, &[0.8, 0.8]);
 
         let label1 = res1[0].0;
         let label2 = res2[0].0;
@@ -504,15 +503,13 @@ mod tests {
         );
 
         // Verify consistency within clusters
-        let p1_b = model.vec2tensor(&[0.21, 0.19]).unwrap();
-        let res1_b = model.predict(&p1_b).unwrap();
+        let res1_b = _sorted_predictions(&model, &[0.21, 0.19]);
         assert_eq!(
             res1_b[0].0, label1,
             "Model should be consistent within cluster 1"
         );
 
-        let p2_b = model.vec2tensor(&[0.79, 0.81]).unwrap();
-        let res2_b = model.predict(&p2_b).unwrap();
+        let res2_b = _sorted_predictions(&model, &[0.79, 0.81]);
         assert_eq!(
             res2_b[0].0, label2,
             "Model should be consistent within cluster 2"
