@@ -114,8 +114,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
         let logits = self.model.forward(xs)?;
         let final_result = ops::softmax(&logits, D::Minus1)?;
         let predictions = final_result.squeeze(0)?.to_vec1::<f32>()?;
-        let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
-        predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
         assert!(predictions.len() <= self.labels);
         Ok(predictions)
     }

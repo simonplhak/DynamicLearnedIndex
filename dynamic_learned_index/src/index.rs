@@ -96,7 +96,7 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
     #[log_time]
     fn records2visit(
         &'_ self,
-        predictions: Vec<Vec<(usize, f32, usize)>>,
+        predictions: Vec<Vec<(usize, f32)>>,
         search_strategy: SearchStrategy,
     ) -> Records2Visit<'_, F> {
         match search_strategy {
@@ -108,30 +108,31 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
                 let levels = predictions.len();
                 let mut buckets2visit = Vec::with_capacity(self.n_buckets() + 1);
                 for (level_idx, level_predictions) in predictions.iter().enumerate() {
-                    for (bucket_id, prob, occupied) in level_predictions {
+                    for (bucket_id, prob) in level_predictions {
                         buckets2visit.push((
                             level_idx,
                             *bucket_id,
                             normalize_probability(*prob, level_idx as u32),
-                            *occupied,
                         ));
                     }
                 }
                 // add buffer as a special "bucket"
-                buckets2visit.push((levels, self.n_buckets(), 1.0, self.buffer.occupied()));
+                buckets2visit.push((levels, 1, 1.0));
                 buckets2visit.sort_by(|a, b| b.2.total_cmp(&a.2));
                 let mut records = Vec::new();
                 let mut ids = Vec::new();
                 let mut total_occupied = 0;
                 let mut visited_buckets = 0;
-                for (level_idx, bucket_id, _prob, occupied) in buckets2visit {
-                    if occupied > 0 && total_occupied < ncandidates {
+                for (level_idx, bucket_id, _prob) in buckets2visit {
+                    if total_occupied < ncandidates {
                         if level_idx == levels {
                             // buffer
-                            for i in 0..self.buffer.occupied() {
+                            let occupied = self.buffer.occupied();
+                            for i in 0..occupied {
                                 records.push(self.buffer.record(i));
                                 ids.push(self.buffer.ids[i]);
                             }
+                            total_occupied += occupied;
                         } else {
                             let level = &self.levels[level_idx];
                             let bucket = &level.bucket(bucket_id);
@@ -140,11 +141,10 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
                                 records.push(bucket.record(i));
                                 ids.push(bucket.ids[i]);
                             }
+                            total_occupied += occupied;
                         }
-                        total_occupied += occupied;
                         visited_buckets += 1;
-                    }
-                    if total_occupied >= ncandidates {
+                    } else {
                         break;
                     }
                 }
@@ -279,7 +279,7 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
     }
 
     #[log_time]
-    fn bucket_selection(&self, query: &[F]) -> DliResult<Vec<Vec<(usize, f32, usize)>>> {
+    fn bucket_selection(&self, query: &[F]) -> DliResult<Vec<Vec<(usize, f32)>>> {
         self.levels
             .iter()
             .map(|level| level.buckets2visit_predictions(query))
@@ -1341,8 +1341,8 @@ mod tests {
         // Create mock predictions with controlled probabilities
         // Bucket 0 has higher probability (0.8) than bucket 1 (0.2)
         let predictions = vec![vec![
-            (0, 0.8, 4), // bucket 0, high prob, 4 records
-            (1, 0.2, 2), // bucket 1, low prob, 2 records
+            (0, 0.8), // bucket 0, high prob, 4 records
+            (1, 0.2), // bucket 1, low prob, 2 records
         ]];
 
         // Test 1: with ncandidates = 5

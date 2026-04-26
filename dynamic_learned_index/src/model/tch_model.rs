@@ -147,8 +147,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
                 .forward(&xs)
                 .softmax(-1, tch::Kind::Float),
         );
-        let mut predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
-        predictions.sort_unstable_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let predictions = predictions.into_iter().enumerate().collect::<Vec<_>>();
         assert!(predictions.len() <= self.labels);
         Ok(predictions)
     }

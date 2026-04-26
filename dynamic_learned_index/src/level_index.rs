@@ -208,38 +208,30 @@ impl<F: FloatElement> LevelIndex<F> {
         std::mem::size_of::<Self>() + self.model.memory_usage() + buckets_size + map_size
     }
 
-    pub(crate) fn buckets2visit_predictions(
-        &self,
-        query: &[F],
-    ) -> DliResult<Vec<(usize, f32, usize)>> {
+    pub(crate) fn buckets2visit_predictions(&self, query: &[F]) -> DliResult<Vec<(usize, f32)>> {
         if self.occupied() == 0 {
             return Ok(self
                 .buckets
                 .iter()
                 .enumerate()
-                .map(|(bucket_id, _)| (bucket_id, 0.0, 0))
+                .map(|(bucket_id, _)| (bucket_id, 0.0))
                 .collect());
         }
         let query = self.model.vec2tensor(&F::to_f32_slice(query))?;
-        let preds = self
-            .model
-            .predict(&query)?
-            .into_iter()
-            .map(|(bucket_id, prob)| (bucket_id, prob, self.buckets[bucket_id].occupied()))
-            .collect();
+        let preds = self.model.predict(&query)?;
         Ok(preds)
     }
 
     pub(crate) fn buckets2visit_predictions_many(
         &self,
         queries: &[&[F]],
-    ) -> DliResult<Vec<Vec<(usize, f32, usize)>>> {
+    ) -> DliResult<Vec<Vec<(usize, f32)>>> {
         if self.occupied() == 0 {
             let empty_predictions = self
                 .buckets
                 .iter()
                 .enumerate()
-                .map(|(bucket_id, _)| (bucket_id, 0.0, 0))
+                .map(|(bucket_id, _)| (bucket_id, 0.0))
                 .collect::<Vec<_>>();
             return Ok(vec![empty_predictions; queries.len()]);
         }
@@ -256,9 +248,8 @@ impl<F: FloatElement> LevelIndex<F> {
         let mut results = vec![Vec::new(); queries.len()];
         for (assignment_idx, &bucket_idx) in assignments.iter().enumerate() {
             let query_idx = assignment_idx;
-            let bucket = &self.buckets[bucket_idx];
-            // (bucket_idx, probability=0.0, occupied_count)
-            results[query_idx].push((bucket_idx, 0.0, bucket.occupied()));
+            // (bucket_idx, probability=0.0)
+            results[query_idx].push((bucket_idx, 0.0));
         }
 
         Ok(results)
@@ -596,11 +587,10 @@ mod tests {
         assert_eq!(original_predictions.len(), loaded_predictions.len());
         for (original, loaded) in original_predictions.iter().zip(loaded_predictions.iter()) {
             assert_eq!(original.len(), loaded.len());
-            for ((orig_bucket, orig_prob, orig_count), (load_bucket, load_prob, load_count)) in
+            for ((orig_bucket, orig_prob), (load_bucket, load_prob)) in
                 original.iter().zip(loaded.iter())
             {
                 assert_eq!(orig_bucket, load_bucket, "Bucket indices should match");
-                assert_eq!(orig_count, load_count, "Bucket counts should match");
                 assert!(
                     (orig_prob - load_prob).abs() < 1e-5,
                     "Probabilities should match (original: {orig_prob}, loaded: {load_prob})"
