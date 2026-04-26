@@ -495,7 +495,7 @@ impl _DynamicLearnedIndexF32 {
     fn insert<'py>(
         &mut self,
         py: Python<'_>,
-        record: PyReadonlyArray1<'_, f32>,
+        record: PyReadonlyArray1<'py, f32>,
         id: u32,
     ) -> PyResult<()> {
         let record = array2vec_f32(record);
