@@ -133,7 +133,8 @@ impl<F: FloatElement> LevelIndexBuilder<F> {
             .input_nodes(input_shape as i64)
             .train_params(model_config.train_params)
             .labels(n_buckets)
-            .label_method(distance_fn.into());
+            .label_method(distance_fn.into())
+            .quantize(model_config.quantize);
         if let Some(weights_path) = &model_config.weights_path {
             model_builder.weights_path(weights_path.clone());
         }
