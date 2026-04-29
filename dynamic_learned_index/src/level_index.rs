@@ -152,14 +152,17 @@ pub struct LevelIndex<F: FloatElement> {
     model: Model<F>,
     buckets: Vec<Bucket<F>>,
     ids_map: HashMap<Id, (usize, usize)>, // Id -> (bucket_idx, record_idx)
+    record_count: usize,                  // Track current number of records
 }
 
 impl<F: FloatElement> LevelIndex<F> {
     fn new(model: Model<F>, buckets: Vec<Bucket<F>>) -> Self {
+        let record_count = buckets.iter().map(|bucket| bucket.occupied()).sum();
         Self {
             model,
             buckets,
             ids_map: HashMap::new(),
+            record_count,
         }
     }
 
@@ -172,7 +175,7 @@ impl<F: FloatElement> LevelIndex<F> {
     }
 
     pub(crate) fn occupied(&self) -> usize {
-        self.buckets.iter().map(|bucket| bucket.occupied()).sum()
+        self.record_count
     }
 
     pub(crate) fn free_space(&self) -> usize {
@@ -272,6 +275,7 @@ impl<F: FloatElement> LevelIndex<F> {
     pub(crate) fn insert_many(&mut self, records: Vec<F>, ids: Vec<Id>) -> DliResult<()> {
         let input_shape = self.model.input_shape;
         assert!(records.len() / input_shape == ids.len());
+        let num_records = ids.len();
         if records.is_empty() {
             return Ok(());
         }
@@ -306,11 +310,13 @@ impl<F: FloatElement> LevelIndex<F> {
             assert!(ids.is_empty());
             assert!(records.is_empty());
         }
+        self.record_count += num_records;
         Ok(())
     }
 
     pub(crate) fn get_data(&mut self) -> (Vec<F>, Vec<Id>) {
         self.ids_map.clear(); // clear existing id mappings
+        self.record_count = 0; // reset record count
         let (data, ids): (Vec<_>, Vec<Vec<Id>>) = self
             .buckets
             .iter_mut()
@@ -340,6 +346,7 @@ impl<F: FloatElement> LevelIndex<F> {
                 self.ids_map
                     .insert(swapped_id, (bucket_idx, swapped_new_idx));
             }
+            self.record_count -= 1;
             return Some(deleted);
         }
         None
@@ -400,6 +407,7 @@ mod tests {
             level
                 .ids_map
                 .insert(id, (0, level.buckets[0].occupied() - 1));
+            level.record_count += 1;
         }
         level
     }
@@ -922,6 +930,7 @@ mod tests {
         let id1 = 1u32;
         level.buckets[0].insert(rec1.clone(), id1);
         level.ids_map.insert(id1, (0, 0));
+        level.record_count += 1;
 
         assert_eq!(level.size(), 20);
         assert_eq!(level.occupied(), 1);
@@ -933,6 +942,7 @@ mod tests {
         let id2 = 2u32;
         level.buckets[1].insert(rec2.clone(), id2);
         level.ids_map.insert(id2, (1, 0));
+        level.record_count += 1;
 
         assert_eq!(level.occupied(), 2);
         assert_eq!(level.free_space(), 18);
@@ -943,6 +953,7 @@ mod tests {
         let id3 = 3u32;
         level.buckets[0].insert(rec3.clone(), id3);
         level.ids_map.insert(id3, (0, 1));
+        level.record_count += 1;
 
         assert_eq!(level.occupied(), 3);
         assert_eq!(level.free_space(), 17);
@@ -954,6 +965,281 @@ mod tests {
         assert_eq!(level.occupied(), 2);
         assert_eq!(level.free_space(), 18);
         assert_eq!(level.n_empty_buckets(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_count_initialization_empty() {
+        let level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(2)
+            .input_shape(3)
+            .bucket_size(10)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()
+            .expect("Failed to build LevelIndex");
+
+        assert_eq!(level.record_count, 0);
+        assert_eq!(level.occupied(), 0);
+    }
+
+    #[test]
+    fn test_record_count_initialization_with_data() -> DliResult<()> {
+        let input_shape = 2;
+        let bucket_size = 10;
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(bucket_size)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        let records = vec![vec![1.0, 2.0], vec![3.0, 4.0], vec![5.0, 6.0]];
+        let ids = vec![1u32, 2u32, 3u32];
+
+        level.insert_many(records.iter().flatten().copied().collect(), ids.clone())?;
+
+        assert_eq!(level.record_count, 3);
+        assert_eq!(level.occupied(), 3);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_count_insert_single() -> DliResult<()> {
+        let input_shape = 2;
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(20)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        assert_eq!(level.record_count, 0);
+        assert_eq!(level.occupied(), 0);
+
+        let rec1 = vec![1.0, 2.0];
+        level.insert_many(rec1, vec![1u32])?;
+
+        assert_eq!(level.record_count, 1);
+        assert_eq!(level.occupied(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_count_insert_multiple() -> DliResult<()> {
+        let input_shape = 3;
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        assert_eq!(level.record_count, 0);
+
+        let records = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let ids = vec![1u32, 2u32];
+        level.insert_many(records, ids)?;
+
+        assert_eq!(level.record_count, 2);
+        assert_eq!(level.occupied(), 2);
+
+        let records = vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
+        let ids = vec![3u32, 4u32, 5u32];
+        level.insert_many(records, ids)?;
+
+        assert_eq!(level.record_count, 5);
+        assert_eq!(level.occupied(), 5);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_count_delete_single() -> DliResult<()> {
+        let input_shape = 2;
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        let records = vec![1.0, 2.0, 3.0, 4.0];
+        let ids = vec![1u32, 2u32];
+        level.insert_many(records, ids)?;
+
+        assert_eq!(level.record_count, 2);
+        assert_eq!(level.occupied(), 2);
+
+        level.delete(&1u32, &DeleteMethod::OidToBucket);
+
+        assert_eq!(level.record_count, 1);
+        assert_eq!(level.occupied(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_count_delete_multiple() -> DliResult<()> {
+        let input_shape = 2;
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        let records = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let ids = vec![1u32, 2u32, 3u32];
+        level.insert_many(records, ids)?;
+
+        assert_eq!(level.record_count, 3);
+
+        level.delete(&1u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.record_count, 2);
+        assert_eq!(level.occupied(), 2);
+
+        level.delete(&2u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.record_count, 1);
+        assert_eq!(level.occupied(), 1);
+
+        level.delete(&3u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.record_count, 0);
+        assert_eq!(level.occupied(), 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_count_get_data_resets() -> DliResult<()> {
+        let input_shape = 2;
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        let records = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let ids = vec![1u32, 2u32, 3u32];
+        level.insert_many(records, ids)?;
+
+        assert_eq!(level.record_count, 3);
+        assert_eq!(level.occupied(), 3);
+
+        let (_data, _ids) = level.get_data();
+
+        assert_eq!(level.record_count, 0);
+        assert_eq!(level.occupied(), 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_count_after_mixed_operations() -> DliResult<()> {
+        let input_shape = 2;
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        assert_eq!(level.record_count, 0);
+
+        let records = vec![1.0, 2.0, 3.0, 4.0];
+        let ids = vec![1u32, 2u32];
+        level.insert_many(records, ids)?;
+        assert_eq!(level.record_count, 2);
+
+        let records = vec![5.0, 6.0];
+        let ids = vec![3u32];
+        level.insert_many(records, ids)?;
+        assert_eq!(level.record_count, 3);
+
+        level.delete(&2u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.record_count, 2);
+
+        let records = vec![7.0, 8.0, 9.0, 10.0];
+        let ids = vec![4u32, 5u32];
+        level.insert_many(records, ids)?;
+        assert_eq!(level.record_count, 4);
+
+        level.delete(&1u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.record_count, 3);
+
+        let (_data, _ids) = level.get_data();
+        assert_eq!(level.record_count, 0);
+        assert_eq!(level.occupied(), 0);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_count_delete_nonexistent() -> DliResult<()> {
+        let input_shape = 2;
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        let records = vec![1.0, 2.0];
+        let ids = vec![1u32];
+        level.insert_many(records, ids)?;
+
+        assert_eq!(level.record_count, 1);
+
+        let result = level.delete(&999u32, &DeleteMethod::OidToBucket);
+        assert!(result.is_none());
+
+        assert_eq!(level.record_count, 1);
+        assert_eq!(level.occupied(), 1);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_record_count_with_multiple_buckets() -> DliResult<()> {
+        let input_shape = 2;
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(2)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .distance_fn(DistanceFn::Dot)
+            .build()?;
+
+        assert_eq!(level.record_count, 0);
+        assert_eq!(level.n_buckets(), 2);
+
+        let records = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
+        let ids = vec![1u32, 2u32, 3u32];
+        level.insert_many(records, ids)?;
+
+        assert_eq!(level.record_count, 3);
+        assert_eq!(level.occupied(), 3);
+
+        level.delete(&1u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.record_count, 2);
+
+        level.delete(&2u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.record_count, 1);
+
+        level.delete(&3u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.record_count, 0);
 
         Ok(())
     }
