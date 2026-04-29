@@ -12,6 +12,7 @@ use crate::{
 use flat_knn::VectorType;
 use log::debug;
 use measure_time_macro::log_time;
+use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator};
 use std::{
     fs::{create_dir, File},
     path::{absolute, Path},
@@ -281,8 +282,14 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
     #[log_time]
     fn bucket_selection(&self, query: &[F]) -> DliResult<Vec<Vec<(usize, f32)>>> {
         self.levels
-            .iter()
-            .map(|level| level.buckets2visit_predictions(query))
+            .par_iter()
+            .map(|level| {
+                if level.occupied() > 0 {
+                    level.buckets2visit_predictions(query)
+                } else {
+                    Ok(vec![])
+                }
+            })
             .collect::<DliResult<Vec<_>>>()
     }
 
