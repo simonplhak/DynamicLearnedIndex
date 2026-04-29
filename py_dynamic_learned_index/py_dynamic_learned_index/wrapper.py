@@ -1,8 +1,11 @@
-from typing import Any, Dict, List, Literal
+from __future__ import annotations
 
-import numpy as np
+from typing import TYPE_CHECKING, Any, Dict, List, Literal
 
 import py_dynamic_learned_index._pydli as _pydli
+
+if TYPE_CHECKING:
+    import numpy as np
 
 log_init = _pydli.log_init
 

@@ -3,6 +3,7 @@ import os
 import shutil
 from pathlib import Path
 
+# Note: numpy is a dev dependency, required for running this example
 import numpy as np
 import torch
 

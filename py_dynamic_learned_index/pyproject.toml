@@ -11,12 +11,11 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
 dynamic = ["version"]
-dependencies = [
-    "numpy>=2.0.2",
-]
+dependencies = []
 
 [dependency-groups]
 dev = [
+    "numpy>=2.0.2",
     "maturin[patchelf]>=1.11.5",
     "ruff",
     "ziglang>=0.15.1",
