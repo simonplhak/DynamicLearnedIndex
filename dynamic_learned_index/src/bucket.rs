@@ -35,6 +35,7 @@ pub(crate) struct StorageContainer<K, F: FloatElement> {
 /// Shared methods for all storage containers
 impl<K, F: FloatElement> StorageContainer<K, F> {
     /// Get a reference to the record at index i
+    #[inline(always)]
     pub fn record(&self, i: usize) -> &[F] {
         let start = i * self.input_shape;
         let end = start + self.input_shape;
