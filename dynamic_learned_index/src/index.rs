@@ -1767,4 +1767,200 @@ mod tests {
 
         Ok(())
     }
+
+    #[test]
+    fn test_search_recall_two_level_index_l2() -> DliResult<()> {
+        // Create index with arity 2, buffer/bucket size 10, input_shape 640
+        let mut config = create_test_config();
+        config.buffer_size = 50;
+        config.levels.bucket_size = 20;
+        config.input_shape = 640;
+        config.arity = 3;
+        config.distance_fn = DistanceFn::L2;
+
+        let mut index = IndexBuilder::from_config(config).build()?;
+        let mut inserted_records: Vec<(Vec<f32>, u32)> = Vec::new();
+
+        for i in 0..59 {
+            // Generate a vector with input_shape elements
+            // Use a pattern: each element is slightly offset from the record ID
+            let mut record = vec![0.0; 640];
+            let base_value = (i as f32) / 10.0;
+            for j in 0..640 {
+                record[j] = base_value + (j as f32 / 1000.0);
+            }
+            inserted_records.push((record.clone(), i as u32));
+            index.insert(record, i as u32)?;
+        }
+
+        // Verify index structure
+        println!("{}", index.n_levels());
+        assert_eq!(index.occupied(), 59, "Should have 59 records in index");
+        println!(
+            "Index structure (L2): {} levels, {} buckets",
+            index.n_levels(),
+            index.n_buckets()
+        );
+
+        // Use the first 20 records as queries
+        let mut correct_matches = 0;
+        let mut total_searches = 0;
+
+        for (query_record, query_id) in inserted_records.iter() {
+            // Search with k=1, ncandidates=10
+            let search_strategy = SearchStrategy::ModelDriven(10);
+            let search_params = (1usize, search_strategy);
+            let results = index.search(query_record, search_params)?;
+
+            total_searches += 1;
+
+            // For the top-1 result, the best match should be the query itself
+            // We check if the query_id appears in the top-1 results
+            if !results.is_empty() && results[0] == *query_id {
+                correct_matches += 1;
+            } else if !results.is_empty() {
+                // Check if we got the correct ID at all
+                println!(
+                    "Query ID: {}, Got: {:?}, Expected: {}",
+                    query_id, results, query_id
+                );
+            }
+        }
+
+        // Calculate recall@1
+        let recall = (correct_matches as f32) / (total_searches as f32);
+        println!(
+            "Recall@1 (L2): {}/{} = {:.2}%",
+            correct_matches,
+            total_searches,
+            recall * 100.0
+        );
+
+        // Assert that recall is higher than 90%
+        assert!(
+            recall > 0.9,
+            "Recall should be higher than 90%, got {:.2}%",
+            recall * 100.0
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_recall_two_level_index_dot_product() -> DliResult<()> {
+        // Create index with arity 2, buffer/bucket size 10, input_shape 640
+        let mut config = create_test_config();
+        config.buffer_size = 50;
+        config.levels.bucket_size = 20;
+        config.input_shape = 640;
+        config.arity = 3;
+        config.distance_fn = DistanceFn::Dot;
+
+        let mut index = IndexBuilder::from_config(config).build()?;
+
+        let mut inserted_records: Vec<(Vec<f32>, u32)> = Vec::new();
+
+        for i in 0..59 {
+            // Generate a vector with input_shape elements
+            // Use diverse normalized vectors for dot product similarity
+            let mut record = vec![0.0; 640];
+
+            // Create diverse vectors using different patterns for different ID ranges
+            let id_normalized = (i as f32) / 59.0; // Range [0, 1]
+
+            // Method: Create vectors with distinct patterns
+            // Different ID ranges get different patterns to ensure diversity
+            for j in 0..640 {
+                let j_normalized = (j as f32) / 640.0; // Range [0, 1]
+
+                if i < 20 {
+                    // Group 1: Sinusoidal pattern with varying frequency
+                    record[j] = ((id_normalized * std::f32::consts::PI * 2.0
+                        + j_normalized * std::f32::consts::PI)
+                        .sin()
+                        * 0.5)
+                        + id_normalized;
+                } else if i < 40 {
+                    // Group 2: Cosine pattern with different offset
+                    record[j] = ((id_normalized * std::f32::consts::PI * 2.0
+                        - j_normalized * std::f32::consts::PI)
+                        .cos()
+                        * 0.5)
+                        + (1.0 - id_normalized);
+                } else {
+                    // Group 3: Linear interpolation with per-dimension variation
+                    record[j] =
+                        id_normalized * j_normalized + (1.0 - id_normalized) * (1.0 - j_normalized);
+                }
+            }
+
+            // Normalize the vector to unit length
+            let norm: f32 = record.iter().map(|x| x * x).sum::<f32>().sqrt();
+            if norm > 1e-6 {
+                record.iter_mut().for_each(|x| *x /= norm);
+            } else {
+                // Fallback: create a random unit vector if normalization fails
+                for j in 0..640 {
+                    record[j] = ((i as f32 * 73.0 + j as f32 * 211.0).sin() * 0.5 + 0.5).max(0.0);
+                }
+                let norm: f32 = record.iter().map(|x| x * x).sum::<f32>().sqrt();
+                if norm > 0.0 {
+                    record.iter_mut().for_each(|x| *x /= norm);
+                }
+            }
+            inserted_records.push((record.clone(), i as u32));
+            index.insert(record, i as u32)?;
+        }
+
+        // Verify index structure
+        assert_eq!(index.occupied(), 59, "Should have 59 records in index");
+        println!(
+            "Index structure (Dot): {} levels, {} buckets",
+            index.n_levels(),
+            index.n_buckets()
+        );
+
+        // Use the first 20 records as queries
+        let mut correct_matches = 0;
+        let mut total_searches = 0;
+
+        for (query_record, query_id) in inserted_records.iter() {
+            // Search with k=1, ncandidates=10
+            let search_strategy = SearchStrategy::ModelDriven(10);
+            let search_params = (1usize, search_strategy);
+            let results = index.search(query_record, search_params)?;
+
+            total_searches += 1;
+
+            // For the top-1 result, the best match should be the query itself
+            // We check if the query_id appears in the top-1 results
+            if !results.is_empty() && results[0] == *query_id {
+                correct_matches += 1;
+            } else if !results.is_empty() {
+                // Check if we got the correct ID at all
+                println!(
+                    "Query ID: {}, Got: {:?}, Expected: {}",
+                    query_id, results, query_id
+                );
+            }
+        }
+
+        // Calculate recall@1
+        let recall = (correct_matches as f32) / (total_searches as f32);
+        println!(
+            "Recall@1 (Dot Product): {}/{} = {:.2}%",
+            correct_matches,
+            total_searches,
+            recall * 100.0
+        );
+
+        // Assert that recall is higher than 90%
+        assert!(
+            recall > 0.9,
+            "Recall should be higher than 90%, got {:.2}%",
+            recall * 100.0
+        );
+
+        Ok(())
+    }
 }
