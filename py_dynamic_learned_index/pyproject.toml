@@ -4,6 +4,9 @@ build-backend = "maturin"
 
 [project]
 name = "py_dynamic_learned_index"
+description = "Python bindings for Dynamic Learned Index - efficient approximate nearest neighbor search using learned models"
+readme = "README.md"
+license = {text = "LGPL-3.0-or-later"}
 requires-python = ">=3.9"
 classifiers = [
     "Programming Language :: Rust",

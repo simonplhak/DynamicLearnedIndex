@@ -1,16 +1,17 @@
 # Dynamic Learned Index implementation in Rust
 
+A Rust implementation of a dynamic learned index for efficient search in unstructured data. The index uses a multi-level structure where each level contains a neural network model that learns to predict the most likely bucket containing the requested data. This enables fast approximate nearest neighbor search by leveraging learned models instead of traditional indexing.
+
 ![High level overview of the index](images/highlevel.excalidraw.png "High level overview of the index")
 
 ## Dev
-
-You can find some useful commands in vscode tasks.
 
 The whole project is written in Rust and uses `cargo` as a build system. The project is divided into several crates:
 
 - `dynamic_learned_index`: main library crate that implements the dynamic learned index
 - `cli_dynamic_learned_index`: CLI crate that provides a command line interface to run experiments and build the index
 - `py_dynamic_learned_index`: Python crate that provides a Python interface to the dynamic learned index
+- `measure_time_macro`: Simple macro that enables logging time of the function through macro.
 
 ### Run
 
@@ -31,6 +32,9 @@ If you want to build the `cli_dynamic_learned_index` workspace, you need to have
   - You need to have `libtorch` installed on your system to use this feature. Follow the installation instructions for `libtorch` from [tch-rs homepage](https://github.com/LaurentMazare/tch-rs).
 - `candle`: enabled by default, enables the use of `candle` library for model training
 - `mkl`: enables the use of `mkl` library for linear algebra operations, can be used with `candle` feature to speed up training on CPU
+- `mix`: enables the use of mixed model of `tch` (training) and `candle` (predictions).
+
+**Note** It's not possible 
 
 **cli_dynamic_learned_index** crate:
 
@@ -108,40 +112,59 @@ Default values can be found via `cli_dynamic_learned_index defaults dataset` com
 Example config:
 
 ```yaml
+# Compaction strategy configuration
 compaction_strategy:
-  type: bentley_saxe  # curently only possible value
-  rebuild_strategy: no_rebuild # currently only possible value
+  type: bentley_saxe              # Strategy for managing level transitions (only option)
+  rebuild_strategy: no_rebuild    # How to rebuild during compaction: no_rebuild, basic_rebuild, or greedy_rebuild
+
+# Level configuration (repeated for multiple levels if needed)
 levels:
+  # Neural network model configuration
   model:
+    # Neural network layers (add more layers as needed, always adds output layer automatically)
     layers:
-    - type: linear
-      value: 256
-    - type: relu
-    ...  # add more layers if needed
-    # be aware that always index adds an output layer
+      - type: linear              # Linear transformation layer
+        value: 256                # Output dimensions
+      - type: relu                # ReLU activation layer
+    
+    # Model training parameters
     train_params:
-      threshold_samples: 1000
-      batch_size: 8
-      epochs: 3
-      max_iters: 10
-  bucket_size: 5000
-buffer_size: 5000
-input_shape: 768
-arity: 3
-device: cpu  # only cpu supported currently
-distance_fn: dot  # can be dot or l2
-delete_method: oid_to_bucket  # only one method currently
+      threshold_samples: 1000     # Minimum samples required before training
+      batch_size: 8               # Samples per training batch
+      epochs: 3                   # Number of training passes
+      max_iters: 10               # Maximum iterations for clustering
+      retrain_strategy: no_retrain  # When to retrain: no_retrain or from_scratch
+    
+    # Optional: path to pre-trained model weights
+    weights_path: null            # Load model weights from file
+    
+    # Optional: enable model quantization for compression
+    quantize: false               # Reduce model precision to int8
+    
+    # Optional: random seed for reproducibility
+    seed: 0                       # Seed for random number generation
+  
+  # Storage configuration for this level
+  bucket_size: 5000               # Maximum records per bucket before split
+
+# Global index configuration
+buffer_size: 5000                 # Size of write buffer before flushing to index
+input_shape: 768                  # Dimension of input vectors
+arity: 3                          # Fanout for compaction (max child nodes per parent)
+device: cpu                       # Compute device: cpu or cuda (cuda requires tch feature)
+distance_fn: dot                  # Distance metric: dot (for cosine similarity) or l2 (euclidean)
+delete_method: oid_to_bucket      # Deletion strategy (only option currently available)
 ```
 
-`compaction_strategy`: compaction strategy, can be `bentley_saxe`
+**Configuration Notes:**
 
-`levels`: levels of the index, specification for each level are taken from the previous level until the level index matches the level in the config. The first level is always 0.
+- `levels`: Index levels inherit from previous level until matched. First level is always 0. Omit levels field to use defaults for all levels.
+- `layers`: Add as many layers as needed. Neural network automatically adds output layer based on model parameters.
+- `distance_fn`: Choose `dot` for normalized embeddings (dot product), or `l2` for euclidean distance
+- `rebuild_strategy`: `no_rebuild` (fastest), `basic_rebuild` (retrains models), `greedy_rebuild` (optimizes splits)
+- `retrain_strategy`: `no_retrain` (use existing models), `from_scratch` (train all models from beginning)
 
-`layers`: layers of the model, can be `linear`, `relu`
-
-`train_params`: training parameters for the model
-
-Default values can be found via `cli_dynamic_learned_index defaults dataset` command.
+Default values can be found via `cli_dynamic_learned_index defaults index` command.
 
 ### Running experiments
 
@@ -177,7 +200,9 @@ index.delete(0)?;
 
 ## Python API
 
-Example can be found in [`py_dynamic_learned_index/example.py`](py_dynamic_learned_index/example.py) directory.
+This crate provides a Python API available on PyPI: https://pypi.org/project/py-dynamic-learned-index/
+
+Example usage can be found in [`py_dynamic_learned_index/example.py`](py_dynamic_learned_index/example.py) directory.
 
 ## Docker
 
