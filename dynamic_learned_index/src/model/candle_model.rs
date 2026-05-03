@@ -4,6 +4,7 @@ use candle_core::{Device, Result as CandleResult};
 use candle_nn::{linear, Module, Optimizer, Sequential, VarBuilder, VarMap};
 use candle_nn::{loss, ops};
 use log::debug;
+#[cfg(feature = "measure_time")]
 use measure_time_macro::log_time;
 use rand::distr::weighted::WeightedIndex;
 use rand::distr::Distribution;
@@ -124,6 +125,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
         Ok(predictions)
     }
 
+    #[log_time]
     fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>> {
         let dim = xs.len() / self.input_shape;
         let batch_size = 4096;

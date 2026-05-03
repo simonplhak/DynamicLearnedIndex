@@ -2,6 +2,8 @@ use std::sync::Mutex;
 use std::{marker::PhantomData, path::PathBuf};
 
 use log::debug;
+#[cfg(feature = "measure_time")]
+use measure_time_macro::log_time;
 use tch::{
     nn::{self, OptimizerConfig},
     vision::dataset::Dataset,
@@ -152,6 +154,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
         Ok(predictions)
     }
 
+    #[log_time]
     fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>> {
         let xs_tensor = Tensor::from_slice(xs);
         let xs_tensor = xs_tensor.view((

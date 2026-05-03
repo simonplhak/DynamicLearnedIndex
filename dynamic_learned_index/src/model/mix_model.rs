@@ -9,6 +9,10 @@ use crate::model::TchBackend;
 use crate::structs::FloatElement;
 use crate::DliError;
 use candle_core::Tensor;
+#[cfg(feature = "measure_time")]
+use log::debug;
+#[cfg(feature = "measure_time")]
+use measure_time_macro::log_time;
 use rand::Rng as _;
 
 use crate::{model::MixBackend, ArraySlice, DliResult, ModelConfig};
@@ -69,6 +73,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
         self.candle_model.predict(xs)
     }
 
+    #[log_time]
     fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>> {
         self.candle_model.predict_many(xs)
     }
