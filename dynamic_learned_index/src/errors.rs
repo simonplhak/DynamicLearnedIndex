@@ -20,6 +20,9 @@ pub enum DliError {
 
     #[error("Model creation failed: {0}")]
     ModelCreation(&'static str),
+
+    #[error("Generic error: {0}")]
+    Generic(String),
 }
 
 pub type DliResult<T> = Result<T, DliError>;

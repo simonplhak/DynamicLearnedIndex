@@ -73,7 +73,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
     }
 
     #[log_time]
-    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>> {
+    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<Vec<(usize, f32)>>> {
         self.candle_model.predict_many(xs)
     }
 

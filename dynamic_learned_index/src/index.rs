@@ -1,6 +1,6 @@
 use crate::{
-    bucket::{Buffer, BufferBuilder},
-    level_index::{LevelIndex, LevelIndexBuilder},
+    bucket::{Bucket, Buffer, BufferBuilder},
+    level_index::{LevelIndex, LevelIndexBuilder, StorageContainer},
     model::{ModelDevice, RetrainStrategy},
     structs::{
         CompactionStrategyConfig, DiskBuffer, DiskIndex, DiskLevelIndex, FloatElement, IndexConfig,
@@ -11,12 +11,16 @@ use crate::{
 };
 use flat_knn::VectorType;
 use log::debug;
+use lru::LruCache;
 use measure_time_macro::log_time;
 use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator};
 use std::{
-    fs::{create_dir, File},
-    path::{absolute, Path},
+    fs::{self, create_dir, File},
+    num::NonZeroUsize,
+    path::{absolute, Path, PathBuf},
+    sync::Mutex,
 };
+use typed_arena::Arena;
 
 pub struct Index<F: FloatElement> {
     compaction_strategy: CompactionStrategy<F>,
@@ -28,6 +32,13 @@ pub struct Index<F: FloatElement> {
     buffer: Buffer<F>,
     distance_fn: DistanceFn,
     delete_method: DeleteMethod,
+    /// Base directory for per-level cold storage files.
+    cold_storage_dir: Option<PathBuf>,
+    /// Levels at index >= this value are stored cold.
+    cold_threshold_level: Option<usize>,
+    /// Shared LRU cache for cold storage buckets.
+    /// Key: (level_idx, bucket_id). Capacity derived from `cold_cache_size_bytes`.
+    cache: Mutex<LruCache<(usize, usize), Bucket<F>>>,
 }
 
 impl<F: FloatElement + flat_knn::VectorType> Index<F> {
@@ -39,12 +50,7 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
         let params = params.into_search_params();
         let predictions = self.bucket_selection(query)?;
         let records2visit = self.records2visit(predictions, params.search_strategy);
-        let rs = self.merge_results(&records2visit.records, query, &params);
-        let res = rs
-            .into_iter()
-            .map(|(_, idx)| records2visit.ids[idx])
-            .collect();
-        Ok(res)
+        self.merge_results(records2visit, query, &params)
     }
 
     #[log_time]
@@ -81,13 +87,7 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
             let records2visit = self.records2visit(predictions, params.search_strategy);
 
             // Perform KNN merge
-            let rs = self.merge_results(&records2visit.records, query, &params);
-
-            // Convert results to IDs
-            let res = rs
-                .into_iter()
-                .map(|(_, idx)| records2visit.ids[idx])
-                .collect();
+            let res = self.merge_results(records2visit, query, &params)?;
             all_results.push(res);
         }
 
@@ -96,10 +96,10 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
 
     #[log_time]
     fn records2visit(
-        &'_ self,
+        &self,
         predictions: Vec<Vec<(usize, f32)>>,
         search_strategy: SearchStrategy,
-    ) -> Records2Visit<'_, F> {
+    ) -> Records2Visit {
         match search_strategy {
             SearchStrategy::Base(_nprobe) => todo!(),
             SearchStrategy::ModelDriven(ncandidates) => {
@@ -110,38 +110,32 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
                 let mut buckets2visit = Vec::with_capacity(self.n_buckets() + 1);
                 for (level_idx, level_predictions) in predictions.iter().enumerate() {
                     for (bucket_id, prob) in level_predictions {
+                        let occupied = self.levels[level_idx]
+                            .storage
+                            .bucket_occupied_count(*bucket_id);
+                        if occupied == 0 {
+                            continue;
+                        }
                         buckets2visit.push((
                             level_idx,
                             *bucket_id,
                             normalize_probability(*prob, level_idx as u32),
+                            occupied,
                         ));
                     }
                 }
                 // add buffer as a special "bucket"
-                buckets2visit.push((levels, 1, 1.0));
+                if self.buffer.occupied() > 0 {
+                    buckets2visit.push((levels, self.n_buckets(), 1.0, self.buffer.occupied()));
+                }
                 buckets2visit.sort_by(|a, b| b.2.total_cmp(&a.2));
-                let mut records = Vec::new();
-                let mut ids = Vec::new();
                 let mut total_occupied = 0;
                 let mut visited_buckets = 0;
-                for (level_idx, bucket_id, _prob) in buckets2visit {
+                for (level_idx, _bucket_id, _prob, occupied) in &buckets2visit {
                     if total_occupied < ncandidates {
-                        if level_idx == levels {
-                            // buffer
-                            let occupied = self.buffer.occupied();
-                            for i in 0..occupied {
-                                records.push(self.buffer.record(i));
-                                ids.push(self.buffer.ids[i]);
-                            }
+                        if *level_idx == levels {
                             total_occupied += occupied;
                         } else {
-                            let level = &self.levels[level_idx];
-                            let bucket = &level.bucket(bucket_id);
-                            let occupied = bucket.occupied();
-                            for i in 0..occupied {
-                                records.push(bucket.record(i));
-                                ids.push(bucket.ids[i]);
-                            }
                             total_occupied += occupied;
                         }
                         visited_buckets += 1;
@@ -151,28 +145,45 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
                 }
                 debug!(
                     visited_buckets = visited_buckets,
-                    visited_records = ids.len();
+                    visited_records = total_occupied;
                     "index:records2visit"
                 );
-                Records2Visit { records, ids }
+                let _ = buckets2visit.split_off(visited_buckets);
+                buckets2visit
             }
         }
     }
 
+    pub fn invalidate_cold_cache(&self) {
+        self.cache.lock().unwrap().clear();
+    }
+
     pub fn add_level(&mut self) -> DliResult<usize> {
         let level_index_config = self.get_level_index_config();
-        let n_buckets = self.arity.pow(self.levels.len() as u32 + 1);
-        let level_index = LevelIndexBuilder::default()
-            .id(format!("{}", self.levels.len()))
+        let new_level_idx = self.levels.len();
+        let n_buckets = self.arity.pow(new_level_idx as u32 + 1);
+        let mut level_index_builder = LevelIndexBuilder::default()
+            .id(format!("{}", new_level_idx))
             .n_buckets(n_buckets)
             .input_shape(self.input_shape)
             .model(level_index_config.model.clone())
             .model_device(self.device)
             .bucket_size(level_index_config.bucket_size)
-            .distance_fn(self.distance_fn.clone())
-            .build()?;
+            .distance_fn(self.distance_fn.clone());
+        // If this level meets the cold threshold, initialize cold storage for it.
+        if let Some(cold_storage_dir) = self.cold_storage_dir.clone() {
+            if let Some(cold_threshold) = self.cold_threshold_level {
+                if new_level_idx >= cold_threshold {
+                    let cold_data_path =
+                        cold_storage_dir.join(format!("cold_level_{}.bin", new_level_idx));
+                    level_index_builder = level_index_builder.cold_data_path(cold_data_path);
+                }
+            }
+        }
+
+        let level_index = level_index_builder.build()?;
         self.levels.push(level_index);
-        Ok(self.levels.len() - 1)
+        Ok(new_level_idx)
     }
 
     fn get_level_index_config(&self) -> LevelIndexConfig {
@@ -192,32 +203,37 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
     }
 
     #[log_time]
-    pub fn delete(&mut self, id: Id) -> DliResult<Option<(Vec<F>, Id)>> {
-        if let Some(deleted) = self.buffer.delete(&id) {
-            return Ok(Some(deleted));
+    pub fn delete(&mut self, id: Id) -> DliResult<bool> {
+        if self.buffer.delete(&id) {
+            return Ok(true);
         }
-        if let Some((level_idx, deleted)) = self.delete_from_level(id) {
+        let (deleted, level_idx) = self.delete_from_level(id);
+        if deleted {
             debug!(level_idx = level_idx, id = id; "index:delete");
             if self.is_level_underutilized(level_idx) {
                 self.compaction_strategy.clone().rebuild(self, level_idx)?;
             }
-            return Ok(Some(deleted));
+            return Ok(true);
         }
-        Ok(None)
+        Ok(false)
     }
 
     #[log_time]
-    fn delete_from_level(&mut self, id: Id) -> Option<(usize, (Vec<F>, Id))> {
+    fn delete_from_level(&mut self, id: Id) -> (bool, usize) {
         for (level_idx, level) in &mut self.levels.iter_mut().enumerate() {
-            if let Some(deleted) = level.delete(&id, &self.delete_method) {
-                return Some((level_idx, deleted));
+            if level.storage.delete(&id, &self.delete_method) {
+                return (true, level_idx);
             }
         }
-        None
+        (false, 0)
     }
 
     pub fn size(&self) -> usize {
-        self.levels.iter().map(|level| level.size()).sum::<usize>() + self.buffer.size
+        self.levels
+            .iter()
+            .map(|level| level.storage.size())
+            .sum::<usize>()
+            + self.buffer.size
     }
 
     pub fn memory_usage(&self) -> usize {
@@ -227,7 +243,10 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
     }
 
     pub fn n_buckets(&self) -> usize {
-        self.levels.iter().map(|level| level.n_buckets()).sum()
+        self.levels
+            .iter()
+            .map(|level| level.storage.n_buckets())
+            .sum()
     }
 
     pub fn n_levels(&self) -> usize {
@@ -237,7 +256,7 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
     pub fn occupied(&self) -> usize {
         self.levels
             .iter()
-            .map(|level| level.occupied())
+            .map(|level| level.storage.occupied())
             .sum::<usize>()
             + self.buffer_occupied()
     }
@@ -248,34 +267,36 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
 
     pub fn level_occupied(&self, level_idx: usize) -> usize {
         assert!(level_idx < self.levels.len());
-        self.levels[level_idx].occupied()
+        self.levels[level_idx].storage.occupied()
     }
 
     pub fn level_n_buckets(&self, level_idx: usize) -> usize {
         assert!(level_idx < self.levels.len());
-        self.levels[level_idx].n_buckets()
+        self.levels[level_idx].storage.n_buckets()
     }
 
     pub fn level_total_size(&self, level_idx: usize) -> usize {
         assert!(level_idx < self.levels.len());
-        self.levels[level_idx].size()
+        self.levels[level_idx].storage.size()
     }
 
     pub fn level_n_empty_buckets(&self, level_idx: usize) -> usize {
         assert!(level_idx < self.levels.len());
-        self.levels[level_idx].n_empty_buckets()
+        self.levels[level_idx].storage.n_empty_buckets()
     }
 
     pub fn bucket_occupied(&self, level_idx: usize, bucket_idx: usize) -> usize {
         assert!(level_idx < self.levels.len());
-        assert!(bucket_idx < self.levels[level_idx].n_buckets());
-        self.levels[level_idx].bucket(bucket_idx).occupied()
+        assert!(bucket_idx < self.levels[level_idx].storage.n_buckets());
+        self.levels[level_idx]
+            .storage
+            .bucket_occupied_count(bucket_idx)
     }
 
     pub fn n_empty_buckets(&self) -> usize {
         self.levels
             .iter()
-            .map(|level| level.n_empty_buckets())
+            .map(|level| level.storage.n_empty_buckets())
             .sum()
     }
 
@@ -284,7 +305,7 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
         self.levels
             .par_iter()
             .map(|level| {
-                if level.occupied() > 0 {
+                if level.storage.occupied() > 0 {
                     level.buckets2visit_predictions(query)
                 } else {
                     Ok(vec![])
@@ -296,19 +317,87 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
     #[log_time]
     fn merge_results(
         &self,
-        records2visit: &Vec<&[F]>,
+        records2visit: Records2Visit,
         query: &[F],
         params: &SearchParams,
-    ) -> Vec<(f32, usize)> {
-        match self.distance_fn {
-            DistanceFn::L2 => flat_knn::knn::<_, flat_knn::L2>(records2visit, query, params.k),
-            DistanceFn::Dot => flat_knn::knn::<_, flat_knn::Dot>(records2visit, query, params.k),
+    ) -> DliResult<Vec<Id>> {
+        // Acquiring the lock for the whole time of function
+        // This is usually not a good approach but currently index does not support concurrent writes,
+        // so it is safe and does not bring any performance overhead
+        let mut cache_lock = self.cache.lock().unwrap();
+
+        // Using an arena to avoid allocations for each record
+        let cold_arena = Arena::new();
+        let mut cold_arena_keys = Vec::new();
+
+        let mut records: Vec<&[F]> = Vec::new();
+        let mut ids: Vec<Id> = Vec::new();
+
+        for (level_idx, bucket_id, ..) in records2visit.into_iter() {
+            // --- Path A: Cache Hit ---
+            if let Some(cached_bucket) = cache_lock.get(&(level_idx, bucket_id)) {
+                for i in 0..cached_bucket.occupied() {
+                    // SAFETY:
+                    // Here is the trick: we cast the reference to a shorter lifetime
+                    // that the compiler can't "track" back to the mutable lock
+                    // in a way that blocks the next iteration.
+                    unsafe {
+                        let ptr = cached_bucket.record(i) as *const [F];
+                        records.push(&*ptr);
+                        ids.push(cached_bucket.ids[i]);
+                    }
+                }
+            } else {
+                if level_idx == self.levels.len() {
+                    for i in 0..self.buffer.occupied() {
+                        records.push(self.buffer.record(i));
+                        ids.push(self.buffer.ids[i]);
+                    }
+                } else {
+                    match &self.levels[level_idx].storage.container {
+                        StorageContainer::Hot(hot_storage) => {
+                            let bucket = &hot_storage.buckets[bucket_id];
+                            let occupied = bucket.occupied();
+                            for i in 0..occupied {
+                                records.push(bucket.record(i));
+                                ids.push(bucket.ids[i]);
+                            }
+                        }
+                        StorageContainer::Cold(cold_storage) => {
+                            let bucket = cold_storage.read_bucket(bucket_id)?;
+                            let pinned_bucket = cold_arena.alloc(bucket);
+                            cold_arena_keys.push((level_idx, bucket_id));
+                            for i in 0..pinned_bucket.occupied() {
+                                records.push(pinned_bucket.record(i));
+                                ids.push(pinned_bucket.ids[i]);
+                            }
+                        }
+                    };
+                }
+            }
         }
+
+        // KNN Computation
+        let res = match self.distance_fn {
+            DistanceFn::L2 => flat_knn::knn::<_, flat_knn::L2>(&records, query, params.k),
+            DistanceFn::Dot => flat_knn::knn::<_, flat_knn::Dot>(&records, query, params.k),
+        };
+
+        let res = res.into_iter().map(|(_, idx)| ids[idx]).collect();
+        // Update cache
+        for (cold_bucket, key) in cold_arena
+            .into_vec()
+            .into_iter()
+            .zip(cold_arena_keys.into_iter())
+        {
+            cache_lock.put(key, cold_bucket);
+        }
+        Ok(res)
     }
 
     fn is_level_underutilized(&self, level_idx: usize) -> bool {
         let level = &self.levels[level_idx];
-        level.occupied() < level.bucket_size() * self.arity.pow(level_idx as u32)
+        level.storage.occupied() < level.storage.bucket_size() * self.arity.pow(level_idx as u32)
     }
 
     pub fn dump(&self, working_dir: &Path) -> DliResult<()> {
@@ -330,6 +419,13 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
             ids_path,
             data: disk_buffer_storage,
         };
+        let cold_cache_size_bytes = {
+            let n = self.cache.lock().unwrap().cap().get();
+            let bytes_per_bucket =
+                self.input_shape * std::mem::size_of::<F>() * self.levels_config.bucket_size
+                    + std::mem::size_of::<Id>() * self.levels_config.bucket_size;
+            (n * bytes_per_bucket) as u64
+        };
         let disk_index = DiskIndex {
             levels_config: self.levels_config.clone(),
             compaction_strategy: self.compaction_strategy.strategy.clone(),
@@ -340,6 +436,9 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
             delete_method: self.delete_method.clone(),
             levels: disk_levels,
             disk_buffer,
+            cold_cache_size_bytes,
+            cold_storage_dir: self.cold_storage_dir.clone(),
+            cold_threshold_level: self.cold_threshold_level,
         };
         let meta_path = working_dir.join("meta.json");
         let meta_file = File::create(meta_path)?;
@@ -363,8 +462,8 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
             .iter()
             .enumerate()
             .find(|(_, level)| {
-                let occupied = level.occupied();
-                let fits = level.size() - occupied >= count;
+                let occupied = level.storage.occupied();
+                let fits = level.storage.size() - occupied >= count;
                 if !fits {
                     count += occupied;
                 }
@@ -373,12 +472,18 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
             .map(|(i, _)| i)
     }
 
-    fn lower_level_data(&self, index: &mut Index<F>, level_idx: usize) -> (Vec<F>, Vec<Id>) {
+    fn lower_level_data(
+        &self,
+        index: &mut Index<F>,
+        level_idx: usize,
+    ) -> DliResult<(Vec<F>, Vec<Id>)> {
         let (data, ids): (Vec<Vec<F>>, Vec<Vec<Id>>) = index
             .levels
             .iter_mut()
             .take(level_idx)
-            .map(|level| level.get_data())
+            .map(|level| level.storage.get_data())
+            .collect::<DliResult<Vec<_>>>()?
+            .into_iter()
             .unzip();
         let (buffer_data, buffer_ids) = index.buffer.get_data();
         let data = data
@@ -391,7 +496,7 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
             .flatten()
             .chain(buffer_ids)
             .collect::<Vec<_>>();
-        (data, ids)
+        Ok((data, ids))
     }
 
     #[log_time]
@@ -401,9 +506,9 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
             CompactionStrategyConfig::BentleySaxe(_) => {
                 match self.available_level(index) {
                     Some(level_idx) => {
-                        let (data, ids) = self.lower_level_data(index, level_idx);
+                        let (data, ids) = self.lower_level_data(index, level_idx)?;
                         let level = &mut index.levels[level_idx];
-                        if level.size() == 0 {
+                        if level.storage.size() == 0 {
                             debug!("index:retrain");
                             level.retrain(&data)?;
                         }
@@ -417,7 +522,7 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
                     None => {
                         debug!("index:new_level");
                         let level_idx = index.add_level()?;
-                        let (data, ids) = self.lower_level_data(index, level_idx);
+                        let (data, ids) = self.lower_level_data(index, level_idx)?;
                         let level = &mut index.levels[level_idx];
                         level.train(&data)?;
                         debug!(
@@ -437,7 +542,7 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
     #[log_time]
     pub fn rebuild(&self, index: &mut Index<F>, level_idx: usize) -> DliResult<()> {
         assert!(level_idx < index.levels.len());
-        let level_occupied = index.levels[level_idx].occupied();
+        let level_occupied = index.levels[level_idx].storage.occupied();
         debug!(level_idx = level_idx, occupied = level_occupied; "index:rebuild");
         match self.strategy {
             CompactionStrategyConfig::BentleySaxe(RebuildStrategy::NoRebuild) => {
@@ -458,14 +563,14 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
                 debug!("index:greedy_rebuild");
                 match Self::find_source_target_levels(index, level_idx, level_occupied) {
                     Some((_, to_level_idx)) => {
-                        let mut available_space = index.levels[to_level_idx].free_space();
+                        let mut available_space = index.levels[to_level_idx].storage.free_space();
                         let mut source_levels = vec![];
                         for level_idx in (to_level_idx..=0).rev() {
                             // handling case where to_level_idx is zero
                             if level_idx == to_level_idx {
                                 continue;
                             }
-                            let level_occupied = index.levels[level_idx].occupied();
+                            let level_occupied = index.levels[level_idx].storage.occupied();
                             if level_occupied > 0 {
                                 if level_occupied > available_space {
                                     break;
@@ -508,7 +613,7 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
         // Last level or no lower level found for middle level
         // Try to move data to the upper level
         let upper_level_idx = level_idx - 1;
-        if index.levels[upper_level_idx].free_space() >= level_occupied {
+        if index.levels[upper_level_idx].storage.free_space() >= level_occupied {
             return Some((level_idx, upper_level_idx));
         }
         // Top up current level from upper level
@@ -525,7 +630,7 @@ fn flush_buffer<F: FloatElement>(
     let (data, ids) = index.buffer.get_data();
     index.levels[level_idx].insert_many(data, ids)?;
     assert!(index.buffer.occupied() == 0);
-    assert!(index.levels[level_idx].occupied() == level_occupied + buffer_occupied);
+    assert!(index.levels[level_idx].storage.occupied() == level_occupied + buffer_occupied);
     Ok(())
 }
 
@@ -544,22 +649,24 @@ fn move_data<F: FloatElement>(
         .all(|&idx| idx < index.levels.len() && idx != to_level_idx));
     let from_levels_occupied = from_level_idxs
         .iter()
-        .map(|&idx| index.levels[idx].occupied())
+        .map(|&idx| index.levels[idx].storage.occupied())
         .sum::<usize>();
-    assert!(from_levels_occupied <= index.levels[to_level_idx].free_space());
-    let to_level_occupied = index.levels[to_level_idx].occupied();
+    assert!(from_levels_occupied <= index.levels[to_level_idx].storage.free_space());
+    let to_level_occupied = index.levels[to_level_idx].storage.occupied();
     let mut data = Vec::with_capacity(from_levels_occupied * index.input_shape);
     let mut ids = Vec::with_capacity(from_levels_occupied);
     for idx in from_level_idxs {
-        let (level_data, level_ids) = index.levels[*idx].get_data();
+        let (level_data, level_ids) = index.levels[*idx].storage.get_data()?;
         data.extend(level_data);
         ids.extend(level_ids);
     }
     index.levels[to_level_idx].insert_many(data, ids)?;
     assert!(from_level_idxs
         .iter()
-        .all(|&idx| index.levels[idx].occupied() == 0));
-    assert!(index.levels[to_level_idx].occupied() == from_levels_occupied + to_level_occupied);
+        .all(|&idx| index.levels[idx].storage.occupied() == 0));
+    assert!(
+        index.levels[to_level_idx].storage.occupied() == from_levels_occupied + to_level_occupied
+    );
     Ok(())
 }
 
@@ -570,7 +677,7 @@ fn lower_level<F: FloatElement>(index: &Index<F>, level_idx: usize, size: usize)
         .iter()
         .enumerate()
         .skip(level_idx + 1)
-        .find(|(_, level)| level.occupied() > 0 && level.free_space() >= size)
+        .find(|(_, level)| level.storage.occupied() > 0 && level.storage.free_space() >= size)
         .map(|(level_idx, _)| level_idx)
 }
 
@@ -587,6 +694,13 @@ pub struct IndexBuilder<F: FloatElement> {
     delete_method: Option<DeleteMethod>,
     levels: Option<Vec<DiskLevelIndex>>,
     disk_buffer: Option<DiskBuffer>,
+    /// Base directory for per-level cold storage files.
+    cold_storage_dir: Option<PathBuf>,
+    /// Levels >= this index are stored cold.
+    cold_threshold_level: Option<usize>,
+    /// Byte budget for the index-level LRU bucket cache.
+    /// Capacity in entries is derived from this at build time.
+    cold_cache_size_bytes: Option<u64>,
     _marker: std::marker::PhantomData<F>,
 }
 
@@ -615,6 +729,9 @@ impl<F: FloatElement> IndexBuilder<F> {
             delete_method: Some(config.delete_method),
             levels: None,
             disk_buffer: None,
+            cold_storage_dir: None,
+            cold_threshold_level: None,
+            cold_cache_size_bytes: None,
             model_layers: None,
             _marker: std::marker::PhantomData,
         }
@@ -635,6 +752,9 @@ impl<F: FloatElement> IndexBuilder<F> {
             delete_method: Some(disk_index.delete_method),
             levels: Some(disk_index.levels),
             disk_buffer: Some(disk_index.disk_buffer),
+            cold_storage_dir: disk_index.cold_storage_dir,
+            cold_threshold_level: disk_index.cold_threshold_level,
+            cold_cache_size_bytes: Some(disk_index.cold_cache_size_bytes),
             model_layers: None,
             _marker: std::marker::PhantomData,
         })
@@ -680,6 +800,29 @@ impl<F: FloatElement> IndexBuilder<F> {
         self
     }
 
+    pub fn cold_storage_dir(mut self, path: PathBuf) -> Self {
+        self.cold_storage_dir = Some(path);
+        self
+    }
+
+    /// Set the threshold: levels at index >= `level` will be stored cold.
+    /// Requires `cold_storage_dir` to also be set.
+    pub fn cold_threshold_level(mut self, level: usize) -> Self {
+        self.cold_threshold_level = Some(level);
+        self
+    }
+
+    /// Set the byte budget for the index-level LRU bucket cache.
+    ///
+    /// Entry capacity is estimated from the budget and the configured bucket size:
+    /// `n_entries = bytes / (bucket_size × (input_shape × sizeof(F) + sizeof(Id)))`
+    ///
+    /// Example: `4 * 1024 * 1024 * 1024` for a 4 GiB cache.
+    pub fn cold_cache_size_bytes(mut self, bytes: u64) -> Self {
+        self.cold_cache_size_bytes = Some(bytes);
+        self
+    }
+
     pub fn train_threshold_samples(mut self, samples: usize) -> Self {
         self.levels_config.model.train_params.threshold_samples = samples;
         self
@@ -721,21 +864,43 @@ impl<F: FloatElement> IndexBuilder<F> {
     }
 
     fn load_disk_level(
-        disk_index: DiskLevelIndex,
+        disk_level: DiskLevelIndex,
         device: ModelDevice,
         distance_fn: DistanceFn,
         input_shape: usize,
     ) -> DliResult<LevelIndex<F>> {
+        if let Some(cold_path) = disk_level.cold_data_path {
+            // Cold level: load routing metadata from sidecar, build level with empty hot storage, then replace with cold.
+            // todo: this should be done directly in the builder
+            let meta_path = crate::cold_storage::meta_path_for(&cold_path);
+            let cold_storage_level = crate::cold_storage::ColdStorage::load(
+                &cold_path,
+                &meta_path,
+                input_shape,
+                disk_level.config.bucket_size,
+            )?;
+            let n_buckets = cold_storage_level.n_buckets();
+            let mut level = LevelIndexBuilder::<F>::default()
+                .model(disk_level.config.model)
+                .distance_fn(distance_fn)
+                .model_device(device)
+                .bucket_size(disk_level.config.bucket_size)
+                .input_shape(input_shape)
+                .n_buckets(n_buckets)
+                .build()?;
+            level.storage.container = StorageContainer::Cold(cold_storage_level);
+            return Ok(level);
+        }
         LevelIndexBuilder::<F>::default()
-            .model(disk_index.config.model)
+            .model(disk_level.config.model)
             .distance_fn(distance_fn)
             .model_device(device)
-            .bucket_size(disk_index.config.bucket_size)
+            .bucket_size(disk_level.config.bucket_size)
             .input_shape(input_shape)
             .buckets(
-                disk_index.buckets,
-                disk_index.records_path,
-                disk_index.ids_path,
+                disk_level.buckets,
+                disk_level.records_path,
+                disk_level.ids_path,
             )
             .build()
     }
@@ -790,6 +955,20 @@ impl<F: FloatElement> IndexBuilder<F> {
                 .collect::<Result<Vec<_>, _>>()?,
             None => Vec::new(),
         };
+        let bucket_cache = {
+            let bytes = self.cold_cache_size_bytes.unwrap_or(0);
+            let bytes_per_entry = levels_config.bucket_size
+                * (input_shape * std::mem::size_of::<F>() + std::mem::size_of::<Id>());
+            let n_entries = if bytes == 0 {
+                1
+            } else {
+                ((bytes as usize) / bytes_per_entry).max(1)
+            };
+            Mutex::new(LruCache::new(NonZeroUsize::new(n_entries).unwrap()))
+        };
+        if let Some(cold_storage_dir) = &self.cold_storage_dir {
+            fs::create_dir_all(cold_storage_dir)?;
+        }
         let index = Index {
             levels_config,
             input_shape,
@@ -800,6 +979,9 @@ impl<F: FloatElement> IndexBuilder<F> {
             distance_fn,
             compaction_strategy,
             delete_method,
+            cold_storage_dir: self.cold_storage_dir,
+            cold_threshold_level: self.cold_threshold_level,
+            cache: bucket_cache,
         };
         Ok(index)
     }
@@ -1197,13 +1379,13 @@ mod tests {
             let loaded_level = &loaded_index.levels[level_idx];
 
             assert_eq!(
-                orig_level.occupied(),
-                loaded_level.occupied(),
+                orig_level.storage.occupied(),
+                loaded_level.storage.occupied(),
                 "Level {level_idx} occupancy should match"
             );
             assert_eq!(
-                orig_level.n_buckets(),
-                loaded_level.n_buckets(),
+                orig_level.storage.n_buckets(),
+                loaded_level.storage.n_buckets(),
                 "Level {level_idx} bucket count should match"
             );
         }
@@ -1268,136 +1450,10 @@ mod tests {
         let (data, ids) = index
             .compaction_strategy
             .clone()
-            .lower_level_data(&mut index, 0);
+            .lower_level_data(&mut index, 0)?;
         // Should only have buffer data initially
         assert!(data.is_empty());
         assert!(ids.is_empty());
-        Ok(())
-    }
-
-    #[test]
-    fn test_records2visit() -> DliResult<()> {
-        // Create an index with one level with predefined bucket structure
-        let input_shape = 3;
-        let bucket_size = 50;
-
-        // Bucket 0: 4 records (IDs 1, 2, 3, 4)
-        let bucket_0_records = [
-            1.0, 2.0, 3.0, // ID 1
-            4.0, 5.0, 6.0, // ID 2
-            7.0, 8.0, 9.0, // ID 3
-            10.0, 11.0, 12.0, // ID 4
-        ];
-        let bucket_0_ids = [1u32, 2u32, 3u32, 4u32];
-
-        // Bucket 1: 2 records (IDs 5, 6)
-        let bucket_1_records = [
-            13.0, 14.0, 15.0, // ID 5
-            16.0, 17.0, 18.0, // ID 6
-        ];
-        let bucket_1_ids = [5u32, 6u32];
-
-        // Create buckets in memory
-        let mut bucket_0 = bucket::BucketBuilder::<f32>::default()
-            .input_shape(input_shape)
-            .size(bucket_size)
-            .build()?;
-        for (rec, id) in bucket_0_records
-            .chunks_exact(input_shape)
-            .zip(bucket_0_ids.iter())
-        {
-            bucket_0.insert(rec.to_vec(), *id);
-        }
-
-        let mut bucket_1 = bucket::BucketBuilder::<f32>::default()
-            .input_shape(input_shape)
-            .size(bucket_size)
-            .build()?;
-        for (rec, id) in bucket_1_records
-            .chunks_exact(input_shape)
-            .zip(bucket_1_ids.iter())
-        {
-            bucket_1.insert(rec.to_vec(), *id);
-        }
-
-        // Build the index with one level containing these predefined buckets
-        let mut index = IndexBuilder::default()
-            .input_shape(input_shape)
-            .buffer_size(5)
-            .distance_fn(DistanceFn::Dot)
-            .build()?;
-
-        // Manually create and add a level with in-memory buckets
-        let level = LevelIndexBuilder::default()
-            .input_shape(input_shape)
-            .bucket_size(bucket_size)
-            .buckets_in_memory(vec![bucket_0, bucket_1])
-            .model(ModelConfig::default())
-            .model_device(ModelDevice::Cpu)
-            .distance_fn(DistanceFn::Dot)
-            .build()?;
-
-        index.levels.push(level);
-
-        // Add some records to buffer for testing
-        index.insert(vec![19.0, 20.0, 21.0], 7)?;
-        index.insert(vec![22.0, 23.0, 24.0], 8)?;
-
-        // Verify the structure we created
-        assert_eq!(index.n_levels(), 1);
-        assert_eq!(index.levels[0].n_buckets(), 2);
-        assert_eq!(index.levels[0].bucket(0).occupied(), 4); // bucket 0 has 4 records
-        assert_eq!(index.levels[0].bucket(1).occupied(), 2); // bucket 1 has 2 records
-        assert_eq!(index.buffer.occupied(), 2); // buffer has 2 records
-
-        // Create mock predictions with controlled probabilities
-        // Bucket 0 has higher probability (0.8) than bucket 1 (0.2)
-        let predictions = vec![vec![
-            (0, 0.8), // bucket 0, high prob, 4 records
-            (1, 0.2), // bucket 1, low prob, 2 records
-        ]];
-
-        // Test 1: with ncandidates = 5
-        // Bucket normalization: arity=2, level_idx=0
-        // bucket 0: 0.8 * 2^0 = 0.8
-        // bucket 1: 0.2 * 2^0 = 0.2
-        // buffer: 1.0
-        // Sorted: buffer(1.0), bucket 0(0.8), bucket 1(0.2)
-        // Collection: buffer(2) + bucket 0(4) = 6 total (exceeds ncandidates=5 but whole buckets collected)
-        let ncandidates = 5;
-        let search_strategy = SearchStrategy::ModelDriven(ncandidates);
-        let result = index.records2visit(predictions.clone(), search_strategy);
-
-        // 1. records and ids should have same length
-        assert_eq!(result.records.len(), result.ids.len());
-
-        // 2. Should collect whole buckets, may exceed ncandidates
-        // Buffer (2 records) + bucket 0 (4 records) = 6 total
-        assert_eq!(result.records.len(), 6);
-
-        // 3. All collected IDs should be from buffer and bucket 0
-        // Buffer IDs: 7, 8; Bucket 0 IDs: 1, 2, 3, 4
-        for id in &result.ids {
-            assert!(
-                (*id >= 1 && *id <= 4) || (*id == 7 || *id == 8),
-                "Invalid id: {id}"
-            );
-        }
-
-        // Test 2: with larger ncandidates to verify all records collected
-        let ncandidates_large = 20;
-        let search_strategy_large = SearchStrategy::ModelDriven(ncandidates_large);
-        let result_large = index.records2visit(predictions, search_strategy_large);
-
-        // Should collect all available records: 4 + 2 + 2 = 8
-        assert_eq!(result_large.records.len(), 8);
-        assert_eq!(result_large.ids.len(), 8);
-
-        // All IDs from 1-8 should be present
-        for id in &result_large.ids {
-            assert!(*id >= 1 && *id <= 8, "Invalid id: {id}");
-        }
-
         Ok(())
     }
 
@@ -1450,10 +1506,7 @@ mod tests {
 
         // Delete the first item
         let deleted = index.delete(id1)?;
-        assert!(deleted.is_some(), "Should return deleted item");
-        let (deleted_vec, deleted_id) = deleted.unwrap();
-        assert_eq!(deleted_id, id1);
-        assert_eq!(deleted_vec, vec1);
+        assert!(deleted, "Should return deleted item");
 
         // Verify occupancy decreased
         assert_eq!(index.occupied(), 1, "Should have 1 item after delete");
@@ -1502,6 +1555,71 @@ mod tests {
     }
 
     #[test]
+    fn test_compaction_with_cold_storage() -> DliResult<()> {
+        use tempfile::TempDir;
+
+        // Create a temporary directory for cold storage
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cold_storage_dir = temp_dir.path().to_path_buf();
+
+        // Create index with arity 2, bucket size 10, buffer size 10
+        let mut config = create_test_config();
+        config.arity = 2; // Will create new levels more frequently
+        config.levels.bucket_size = 10; // Small bucket size to trigger compaction sooner
+        config.buffer_size = 10; // Small buffer to trigger flushing
+        config.input_shape = 3;
+        config.distance_fn = DistanceFn::Dot;
+
+        let mut index = IndexBuilder::from_config(config)
+            .cold_storage_dir(cold_storage_dir.clone())
+            .cold_threshold_level(0) // All levels should be cold
+            .build()?;
+
+        // Insert 30 records to trigger compaction and create multiple levels
+        for i in 0..30 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        // Verify that compaction happened and we have 2 levels
+        assert_eq!(
+            index.n_levels(),
+            2,
+            "Should have 2 levels after inserting 30 records with arity 2 and bucket size 10"
+        );
+
+        // Verify that all 30 elements are present
+        assert_eq!(
+            index.occupied(),
+            30,
+            "All 30 inserted records should be present in the index"
+        );
+
+        // Verify that cold storage is being used
+        let mut cold_count = 0;
+        for level in index.levels.iter() {
+            match &level.storage.container {
+                StorageContainer::Cold(_) => {
+                    cold_count += 1;
+                }
+                StorageContainer::Hot(_) => {}
+            }
+        }
+        assert_eq!(
+            cold_count, 2,
+            "Both levels should be in cold storage due to cold_threshold_level=0"
+        );
+
+        // Verify that cold storage directory has files
+        assert!(
+            cold_storage_dir.exists(),
+            "Cold storage directory should exist"
+        );
+
+        Ok(())
+    }
+
+    #[test]
     fn test_delete_from_level() -> DliResult<()> {
         let mut config = create_test_config();
         config.distance_fn = DistanceFn::L2;
@@ -1535,10 +1653,7 @@ mod tests {
 
         // Delete it
         let deleted = index.delete(id_to_delete)?;
-        assert!(deleted.is_some(), "Should return deleted item");
-        let (deleted_vec, deleted_id) = deleted.unwrap();
-        assert_eq!(deleted_id, id_to_delete);
-        assert_eq!(deleted_vec, vec_to_delete);
+        assert!(deleted, "Should return deleted item");
 
         // Verify occupancy decreased
         assert_eq!(index.occupied(), 14, "Should have 14 items after delete");
@@ -1798,7 +1913,6 @@ mod tests {
         }
 
         // Verify index structure
-        println!("{}", index.n_levels());
         assert_eq!(index.occupied(), 59, "Should have 59 records in index");
         println!(
             "Index structure (L2): {} levels, {} buckets",
@@ -1962,6 +2076,409 @@ mod tests {
         assert!(
             recall > 0.9,
             "Recall should be higher than 90%, got {:.2}%",
+            recall * 100.0
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cold_storage_threshold_level_basic() -> DliResult<()> {
+        use tempfile::TempDir;
+
+        // Create a temporary directory for cold storage
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cold_storage_dir = temp_dir.path().to_path_buf();
+
+        let mut config = create_test_config();
+        config.buffer_size = 20;
+        config.levels.bucket_size = 10;
+        config.input_shape = 10;
+        config.arity = 2;
+        config.distance_fn = DistanceFn::Dot;
+
+        // Build index with cold storage enabled
+        let mut index = IndexBuilder::from_config(config)
+            .cold_storage_dir(cold_storage_dir.clone())
+            .cold_threshold_level(0)
+            .build()?;
+
+        // Verify that cold_threshold_level is set
+        assert_eq!(index.cold_threshold_level, Some(0));
+        assert_eq!(index.cold_storage_dir, Some(cold_storage_dir.clone()));
+
+        // Insert records to trigger level creation
+        for i in 0..30 {
+            let record: Vec<f32> = (0..10)
+                .map(|j| ((i * 10 + j) as f32 / 100.0).sin())
+                .collect();
+            index.insert(record, i as u32)?;
+        }
+
+        // Verify data was inserted and levels were created
+        assert_eq!(index.occupied(), 30);
+        assert!(index.n_levels() > 0, "Should have created levels");
+
+        // Since cold_threshold_level is 0, all levels should be cold
+        for (level_idx, level) in index.levels.iter().enumerate() {
+            match &level.storage.container {
+                crate::level_index::StorageContainer::Cold(_) => {
+                    println!("Level {} is cold storage", level_idx);
+                }
+                crate::level_index::StorageContainer::Hot(_) => {
+                    println!(
+                        "Level {} is hot storage (cold storage may not be initialized)",
+                        level_idx
+                    );
+                }
+            }
+        }
+
+        // Test that searches still work correctly with cold storage
+        let query = (0..10)
+            .map(|j| ((0 * 10 + j) as f32 / 100.0).sin())
+            .collect::<Vec<f32>>();
+        let results = index.search(&query, (5usize, SearchStrategy::ModelDriven(10)))?;
+        assert!(!results.is_empty(), "Search should return results");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_search_recall_with_cold_storage_dot_product() -> DliResult<()> {
+        use tempfile::TempDir;
+
+        // Create a temporary directory for cold storage
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cold_storage_dir = temp_dir.path().to_path_buf();
+
+        // Create index with cold storage enabled (identical config to test_search_recall_two_level_index_dot_product)
+        let mut config = create_test_config();
+        config.buffer_size = 50;
+        config.levels.bucket_size = 20;
+        config.input_shape = 640;
+        config.arity = 3;
+        config.distance_fn = DistanceFn::Dot;
+
+        let mut index = IndexBuilder::from_config(config)
+            .cold_storage_dir(cold_storage_dir.clone())
+            .cold_threshold_level(0)
+            .build()?;
+
+        let mut inserted_records: Vec<(Vec<f32>, u32)> = Vec::new();
+
+        // Insert 59 records with the same vector generation logic
+        for i in 0..59 {
+            // Generate a vector with input_shape elements
+            // Use diverse normalized vectors for dot product similarity
+            let mut record = vec![0.0; 640];
+
+            // Create diverse vectors using different patterns for different ID ranges
+            let id_normalized = (i as f32) / 59.0; // Range [0, 1]
+
+            // Method: Create vectors with distinct patterns
+            // Different ID ranges get different patterns to ensure diversity
+            for j in 0..640 {
+                let j_normalized = (j as f32) / 640.0; // Range [0, 1]
+
+                if i < 20 {
+                    // Group 1: Sinusoidal pattern with varying frequency
+                    record[j] = ((id_normalized * std::f32::consts::PI * 2.0
+                        + j_normalized * std::f32::consts::PI)
+                        .sin()
+                        * 0.5)
+                        + id_normalized;
+                } else if i < 40 {
+                    // Group 2: Cosine pattern with different offset
+                    record[j] = ((id_normalized * std::f32::consts::PI * 2.0
+                        - j_normalized * std::f32::consts::PI)
+                        .cos()
+                        * 0.5)
+                        + (1.0 - id_normalized);
+                } else {
+                    // Group 3: Linear interpolation with per-dimension variation
+                    record[j] =
+                        id_normalized * j_normalized + (1.0 - id_normalized) * (1.0 - j_normalized);
+                }
+            }
+
+            // Normalize the vector to unit length
+            let norm: f32 = record.iter().map(|x| x * x).sum::<f32>().sqrt();
+            if norm > 1e-6 {
+                record.iter_mut().for_each(|x| *x /= norm);
+            } else {
+                // Fallback: create a random unit vector if normalization fails
+                for j in 0..640 {
+                    record[j] = ((i as f32 * 73.0 + j as f32 * 211.0).sin() * 0.5 + 0.5).max(0.0);
+                }
+                let norm: f32 = record.iter().map(|x| x * x).sum::<f32>().sqrt();
+                if norm > 0.0 {
+                    record.iter_mut().for_each(|x| *x /= norm);
+                }
+            }
+            inserted_records.push((record.clone(), i as u32));
+            index.insert(record, i as u32)?;
+        }
+
+        // Verify index structure
+        assert_eq!(index.occupied(), 59, "Should have 59 records in index");
+        println!(
+            "Index structure (Dot with Cold Storage): {} levels, {} buckets",
+            index.n_levels(),
+            index.n_buckets()
+        );
+
+        // Use all records as queries to test recall@1
+        let mut correct_matches = 0;
+        let mut total_searches = 0;
+
+        for (query_record, query_id) in inserted_records.iter() {
+            // Search with k=1, ncandidates=10
+            let search_strategy = SearchStrategy::ModelDriven(10);
+            let search_params = (1usize, search_strategy);
+            let results = index.search(query_record, search_params)?;
+
+            total_searches += 1;
+
+            // For the top-1 result, the best match should be the query itself
+            // We check if the query_id appears in the top-1 results
+            if !results.is_empty() && results[0] == *query_id {
+                correct_matches += 1;
+            } else if !results.is_empty() {
+                // Check if we got the correct ID at all
+                println!(
+                    "Query ID: {}, Got: {:?}, Expected: {}",
+                    query_id, results, query_id
+                );
+            }
+        }
+
+        // Calculate recall@1
+        let recall = (correct_matches as f32) / (total_searches as f32);
+        println!(
+            "Recall@1 (Dot Product with Cold Storage): {}/{} = {:.2}%",
+            correct_matches,
+            total_searches,
+            recall * 100.0
+        );
+
+        // Assert that recall is higher than 90%
+        assert!(
+            recall > 0.9,
+            "Recall should be higher than 90%, got {:.2}%",
+            recall * 100.0
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_trigger_compaction_simple() -> DliResult<()> {
+        use tempfile::TempDir;
+
+        // Create a temporary directory for cold storage
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cold_storage_dir = temp_dir.path().to_path_buf();
+
+        // Create index with arity 2, bucket size 10, buffer size 10
+        let mut config = create_test_config();
+        config.arity = 2;
+        config.levels.bucket_size = 10;
+        config.buffer_size = 10;
+
+        let mut index = IndexBuilder::from_config(config)
+            .cold_storage_dir(cold_storage_dir)
+            .cold_threshold_level(0)
+            .build()?;
+
+        // Insert 30 records to trigger compaction
+        for i in 0..30 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        // Verify we have 2 levels after compaction
+        assert_eq!(
+            index.n_levels(),
+            2,
+            "Should have 2 levels after inserting 30 records with arity 2 and bucket size 10"
+        );
+        assert!(matches!(
+            index.levels[0].storage.container,
+            StorageContainer::Cold(_)
+        ));
+        assert!(matches!(
+            index.levels[1].storage.container,
+            StorageContainer::Cold(_)
+        ));
+
+        // Verify all 30 elements are present
+        assert_eq!(
+            index.occupied(),
+            30,
+            "All 30 inserted records should be present in the index"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_compaction_with_recall() -> DliResult<()> {
+        use tempfile::TempDir;
+
+        // Create a temporary directory for cold storage
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cold_storage_dir = temp_dir.path().to_path_buf();
+
+        // Create index with arity 2, bucket size 10, buffer size 10
+        let mut config = create_test_config();
+        config.arity = 2;
+        config.levels.bucket_size = 10;
+        config.buffer_size = 10;
+        config.input_shape = 3;
+        config.distance_fn = DistanceFn::L2;
+
+        let mut index = IndexBuilder::from_config(config)
+            .cold_storage_dir(cold_storage_dir)
+            .cold_threshold_level(0)
+            .build()?;
+
+        // Insert 59 records to trigger compaction and new level creation
+        for i in 0..59 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        // Verify we have multiple levels after compaction
+        assert!(
+            index.n_levels() == 2,
+            "Should have 2 levels after inserting 60 records with arity 2 and bucket size 10, but got {}",
+            index.n_levels()
+        );
+
+        // Verify all 60 elements are present
+        assert_eq!(
+            index.occupied(),
+            59,
+            "All 59 inserted records should be present in the index"
+        );
+
+        // Perform searches and check recall
+        let mut correct_count = 0;
+        let k = 5;
+        let num_queries = 59; // Query 59 points
+
+        for query_id in 0..num_queries {
+            let query_vec = vec![query_id as f32, query_id as f32, query_id as f32];
+            let results = index.search(
+                &query_vec,
+                SearchParams {
+                    k: k,
+                    search_strategy: SearchStrategy::ModelDriven(100),
+                },
+            )?;
+
+            // Check if the query point itself is in the results
+            let found = results.iter().any(|id| {
+                let id_val = *id as f32;
+                // Check if this result is close to our query ID
+                (id_val - query_id as f32).abs() < 1.0
+            });
+
+            if found {
+                correct_count += 1;
+            }
+        }
+
+        let recall = correct_count as f32 / num_queries as f32;
+        println!(
+            "Recall: {:.2}% ({}/{})",
+            recall * 100.0,
+            correct_count,
+            num_queries
+        );
+
+        // Assert that recall is at least 60%
+        assert!(
+            recall == 1.0,
+            "Recall should be 100%, got {:.2}%",
+            recall * 100.0
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_compaction_deep_with_recall() -> DliResult<()> {
+        use tempfile::TempDir;
+
+        // Create a temporary directory for cold storage
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cold_storage_dir = temp_dir.path().to_path_buf();
+
+        // Create index with arity 2, bucket size 10, buffer size 10
+        let mut config = create_test_config();
+        config.arity = 2;
+        config.levels.bucket_size = 10;
+        config.buffer_size = 10;
+        config.input_shape = 3;
+        config.distance_fn = DistanceFn::L2;
+
+        let mut index = IndexBuilder::from_config(config)
+            .cold_storage_dir(cold_storage_dir)
+            .cold_threshold_level(0)
+            .build()?;
+
+        for i in 0..500 {
+            let vec = vec![i as f32, i as f32, i as f32];
+            index.insert(vec, i as u32)?;
+        }
+
+        assert_eq!(
+            index.occupied(),
+            500,
+            "All 500 inserted records should be present in the index"
+        );
+
+        // Perform searches and check recall
+        let mut correct_count = 0;
+        let k = 5;
+        let num_queries = 500; // Query 500 points
+
+        for query_id in 0..num_queries {
+            let query_vec = vec![query_id as f32, query_id as f32, query_id as f32];
+            let results = index.search(
+                &query_vec,
+                SearchParams {
+                    k: k,
+                    search_strategy: SearchStrategy::ModelDriven(1000),
+                },
+            )?;
+
+            // Check if the query point itself is in the results
+            let found = results.iter().any(|id| {
+                let id_val = *id as f32;
+                // Check if this result is close to our query ID
+                (id_val - query_id as f32).abs() < 1.0
+            });
+
+            if found {
+                correct_count += 1;
+            }
+        }
+
+        let recall = correct_count as f32 / num_queries as f32;
+        println!(
+            "Recall: {:.2}% ({}/{})",
+            recall * 100.0,
+            correct_count,
+            num_queries
+        );
+
+        // Assert that recall is at least 60%
+        assert!(
+            recall == 1.0,
+            "Recall should be 100%, got {:.2}%",
             recall * 100.0
         );
 

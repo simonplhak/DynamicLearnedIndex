@@ -51,6 +51,11 @@ builder = (
 
 # optional: make model device use gpu
 # builder = builder.device(gpu:0)
+builder = (builder
+    .cold_storage_dir("/tmp/dli")
+    .cold_threshold_level(0)
+    .cold_cache_size_bytes(1024 * 1024)
+)
 
 # TBD
 # builder.levels(...)

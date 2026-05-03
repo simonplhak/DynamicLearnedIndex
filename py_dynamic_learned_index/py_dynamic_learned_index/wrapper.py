@@ -112,6 +112,21 @@ class DynamicLearnedIndexBuilder:
         self.config["seed"] = seed
         return self
 
+    def cold_storage_dir(self, path: str) -> 'DynamicLearnedIndexBuilder':
+        """Set the cold storage directory."""
+        self.config["cold_storage_dir"] = path
+        return self
+
+    def cold_threshold_level(self, level: int) -> 'DynamicLearnedIndexBuilder':
+        """Set the cold threshold level."""
+        self.config["cold_threshold_level"] = level
+        return self
+
+    def cold_cache_size_bytes(self, bytes: int) -> 'DynamicLearnedIndexBuilder':
+        """Set the cold cache size in bytes."""
+        self.config["cold_cache_size_bytes"] = bytes
+        return self
+
     def build(self) -> 'DynamicLearnedIndex':
         """Build the index."""
         self.config["layers"] = self.layers
