@@ -461,6 +461,10 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
                         let mut available_space = index.levels[to_level_idx].free_space();
                         let mut source_levels = vec![];
                         for level_idx in (to_level_idx..=0).rev() {
+                            // handling case where to_level_idx is zero
+                            if level_idx == to_level_idx {
+                                continue;
+                            }
                             let level_occupied = index.levels[level_idx].occupied();
                             if level_occupied > 0 {
                                 if level_occupied > available_space {
