@@ -1,4 +1,5 @@
 mod bucket;
+pub mod cold_storage;
 mod clustering;
 // mod compaction_strategy;
 mod constants;
@@ -9,6 +10,7 @@ pub mod model;
 mod sampling;
 pub mod structs;
 pub mod types;
+pub use bucket::{Bucket, BucketKind, BufferKind, StorageContainer};
 pub use errors::{DliError, DliResult};
 pub use index::{CompactionStrategy, Index, IndexBuilder};
 pub use model::{ModelConfig, ModelDevice, ModelLayer, TrainParams};

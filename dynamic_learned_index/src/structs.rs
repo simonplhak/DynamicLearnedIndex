@@ -6,8 +6,9 @@ use crate::{
         DEFAULT_ARITY, DEFAULT_BUCKET_SIZE, DEFAULT_BUFFER_SIZE, DEFAULT_INPUT_SHAPE,
         DEFAULT_SEARCH_K, DEFAULT_SEARCH_N_CANDIDATES,
     },
-    Id, ModelConfig, ModelDevice,
+    ModelConfig, ModelDevice,
 };
+
 use half::f16;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -93,7 +94,7 @@ impl Default for IndexConfig {
     }
 }
 
-#[derive(Default, Deserialize, Serialize, Debug, Clone)]
+#[derive(Default, Deserialize, Serialize, Debug, Clone, Copy)]
 pub enum DistanceFn {
     #[serde(rename = "l2")]
     L2,
@@ -260,13 +261,11 @@ impl FloatElement for f16 {
     }
 }
 
-pub struct Records2Visit<'a, F: FloatElement> {
-    pub records: Vec<&'a [F]>,
-    pub ids: Vec<Id>,
-}
+pub(crate) type Records2Visit = Vec<(usize, usize, f32, usize)>;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DiskBucket {
+    pub bucket_idx: usize,
     pub records_offset: u64,
     pub ids_offset: u64,
     pub count: usize,
@@ -278,6 +277,9 @@ pub struct DiskLevelIndex {
     pub ids_path: PathBuf,
     pub buckets: Vec<DiskBucket>,
     pub config: LevelIndexConfig,
+    /// Path to the cold storage data file for this level, if it is cold.
+    #[serde(default)]
+    pub cold_data_path: Option<PathBuf>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -298,4 +300,11 @@ pub struct DiskIndex {
     pub delete_method: DeleteMethod,
     pub levels: Vec<DiskLevelIndex>,
     pub disk_buffer: DiskBuffer,
+    /// Byte budget for the index-level LRU bucket cache.
+    pub cold_cache_size_bytes: u64,
+    /// Base directory for per-level cold storage files (`{dir}/cold_level_{i}.bin`).
+    pub cold_storage_dir: Option<PathBuf>,
+    /// Index levels >= this threshold are stored cold. usize::MAX means no cold levels.
+    pub cold_threshold_level: Option<usize>,
+    // pub cold_storage_data_path: Option<PathBuf>,
 }

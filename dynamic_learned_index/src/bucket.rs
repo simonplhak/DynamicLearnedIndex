@@ -15,7 +15,7 @@ pub type Bucket<F> = StorageContainer<BucketKind, F>;
 pub type BucketBuilder<'a, F> = StorageBuilder<'a, BucketKind, F>;
 pub type BufferBuilder<'a, F> = StorageBuilder<'a, BufferKind, F>;
 
-type DeleteResult<F> = Option<((Vec<F>, Id), (usize, Id))>;
+type DeleteResult<F> = ((Vec<F>, Id), (usize, Id));
 
 #[derive(Debug)]
 pub struct BufferKind;
@@ -24,7 +24,7 @@ pub struct BufferKind;
 pub struct BucketKind;
 
 #[derive(Debug)]
-pub(crate) struct StorageContainer<K, F: FloatElement> {
+pub struct StorageContainer<K, F: FloatElement> {
     records: Vec<F>,
     pub ids: Vec<Id>,
     pub size: usize,
@@ -67,6 +67,7 @@ impl<K, F: FloatElement> StorageContainer<K, F> {
         let ids_bytes: &[u8] = bytemuck::cast_slice(&self.ids);
         ids_file.write_all(ids_bytes).unwrap();
         DiskBucket {
+            bucket_idx: 0, // dummy for bucket dump
             records_offset,
             ids_offset,
             count: self.occupied(),
@@ -95,12 +96,13 @@ impl<F: FloatElement> StorageContainer<BufferKind, F> {
     }
 
     /// Delete a record by ID. Returns the deleted record and ID if found.
-    pub fn delete(&mut self, id: &Id) -> Option<(Vec<F>, Id)> {
+    pub fn delete(&mut self, id: &Id) -> bool {
         let idx = self.ids.iter().position(|inner_id| inner_id == id);
-        match idx {
-            Some(idx) => swap_and_pop(&mut self.records, &mut self.ids, idx, self.input_shape)
-                .map(|(deleted, _)| deleted),
-            None => None,
+        if let Some(idx) = idx {
+            swap_and_pop(&mut self.records, &mut self.ids, idx, self.input_shape);
+            true
+        } else {
+            false
         }
     }
 }
@@ -139,6 +141,24 @@ impl<F: FloatElement> StorageContainer<BucketKind, F> {
     pub fn size(&self) -> usize {
         self.size
     }
+
+    /// Returns the flattened record slice (n_records * input_shape elements).
+    pub fn records_slice(&self) -> &[F] {
+        &self.records
+    }
+
+    /// Constructs a Bucket directly from raw parts.
+    /// Used by ColdStorageLevel after decoding blocks from disk.
+    pub fn from_parts(records: Vec<F>, ids: Vec<Id>, input_shape: usize) -> Bucket<F> {
+        let size = ids.len();
+        StorageContainer {
+            records,
+            ids,
+            size,
+            input_shape,
+            _kind: PhantomData,
+        }
+    }
 }
 
 pub(crate) fn swap_and_pop<F>(
@@ -155,7 +175,7 @@ pub(crate) fn swap_and_pop<F>(
             let inner_id = ids.pop().unwrap(); // we are sure that there is something
             let record_start = idx * input_shape;
             let removed_vector = records.drain(record_start..).collect();
-            Some(((removed_vector, inner_id), (idx, inner_id)))
+            ((removed_vector, inner_id), (idx, inner_id))
         }
         false => {
             // idx is not the last one, swap with the last and pop
@@ -169,7 +189,7 @@ pub(crate) fn swap_and_pop<F>(
             }
             // Remove the record from the end
             let removed_vector = records.drain(last_record_start..).collect();
-            Some(((removed_vector, inner_id), (idx, ids[idx])))
+            ((removed_vector, inner_id), (idx, ids[idx]))
         }
     }
 }
@@ -539,7 +559,7 @@ mod tests {
         let idx = 0;
 
         let ((deleted_vec, deleted_id), (new_idx, swapped_id)) =
-            swap_and_pop(&mut records, &mut ids, idx, input_shape).unwrap();
+            swap_and_pop(&mut records, &mut ids, idx, input_shape);
 
         assert_eq!(deleted_vec, vec![1.0, 2.0, 3.0]);
         assert_eq!(deleted_id, 100u32);
@@ -560,7 +580,7 @@ mod tests {
         let idx = 1; // delete rec1
 
         let ((deleted_vec, deleted_id), (new_idx, swapped_id)) =
-            swap_and_pop(&mut records, &mut ids, idx, input_shape).unwrap();
+            swap_and_pop(&mut records, &mut ids, idx, input_shape);
 
         // The function removes the element that was at `idx` (rec1)
         assert_eq!(deleted_vec, rec1);
@@ -583,7 +603,7 @@ mod tests {
         let idx = 1; // remove middle element (11)
 
         let ((deleted_vec, deleted_id), (new_idx, swapped_id)) =
-            swap_and_pop(&mut records, &mut ids, idx, input_shape).unwrap();
+            swap_and_pop(&mut records, &mut ids, idx, input_shape);
 
         assert_eq!(deleted_vec, vec![11.0f32]);
         assert_eq!(deleted_id, 11u32);
@@ -611,11 +631,7 @@ mod tests {
         // Case A: Delete existing ID (ID 2)
         // This is the middle element, so ID 3 should be swapped into its place.
         let result = buffer.delete(&2);
-        assert!(result.is_some());
-        let (deleted_record, deleted_id) = result.unwrap();
-
-        assert_eq!(deleted_id, 2);
-        assert_eq!(deleted_record, vec![2.0, 2.0]);
+        assert!(result);
         assert_eq!(buffer.occupied(), 2);
 
         // Verify swap: Index 0 is still ID 1, Index 1 should now be ID 3
@@ -625,7 +641,7 @@ mod tests {
 
         // Case B: Delete non-existent ID (ID 99)
         let result = buffer.delete(&99);
-        assert!(result.is_none());
+        assert!(!result);
         assert_eq!(buffer.occupied(), 2);
         assert_eq!(buffer.ids, vec![1, 3]);
     }
@@ -836,11 +852,8 @@ mod tests {
 
         // Delete existing ID (ID 2)
         let result = buffer.delete(&2);
-        assert!(result.is_some());
-        let (deleted_record, deleted_id) = result.unwrap();
+        assert!(result);
 
-        assert_eq!(deleted_id, 2);
-        assert_eq!(deleted_record.len(), 2);
         assert_eq!(buffer.occupied(), 2);
 
         // Verify swap: Index 0 is still ID 1, Index 1 should now be ID 3
@@ -850,7 +863,7 @@ mod tests {
 
         // Delete non-existent ID (ID 99)
         let result = buffer.delete(&99);
-        assert!(result.is_none());
+        assert!(!result);
         assert_eq!(buffer.occupied(), 2);
     }
 }
