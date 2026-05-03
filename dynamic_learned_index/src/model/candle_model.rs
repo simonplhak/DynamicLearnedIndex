@@ -4,7 +4,6 @@ use candle_core::{Device, Result as CandleResult};
 use candle_nn::{linear, Module, Optimizer, Sequential, VarBuilder, VarMap};
 use candle_nn::{loss, ops};
 use log::debug;
-#[cfg(feature = "measure_time")]
 use measure_time_macro::log_time;
 use rand::distr::weighted::WeightedIndex;
 use rand::distr::Distribution;

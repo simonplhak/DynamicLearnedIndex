@@ -2,7 +2,6 @@ use std::sync::Mutex;
 use std::{marker::PhantomData, path::PathBuf};
 
 use log::debug;
-#[cfg(feature = "measure_time")]
 use measure_time_macro::log_time;
 use tch::{
     nn::{self, OptimizerConfig},

@@ -11,7 +11,6 @@ use crate::DliError;
 use candle_core::Tensor;
 #[cfg(feature = "measure_time")]
 use log::debug;
-#[cfg(feature = "measure_time")]
 use measure_time_macro::log_time;
 use rand::Rng as _;
 
