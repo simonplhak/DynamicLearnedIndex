@@ -125,27 +125,27 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
     }
 
     #[log_time]
-    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>> {
+    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<Vec<(usize, f32)>>> {
         let dim = xs.len() / self.input_shape;
         let batch_size = 4096;
 
-        let mut predictions = Vec::with_capacity(dim);
+        let mut predictions: Vec<Vec<(usize, f32)>> = Vec::with_capacity(dim);
 
         for chunk in xs.chunks(batch_size * self.input_shape) {
             let chunk_dim = chunk.len() / self.input_shape;
             let dataset = Tensor::from_slice(chunk, (chunk_dim, self.input_shape), &self.device)?
                 .to_dtype(DType::F32)?;
-            let rs = match self.use_quantization {
-                true => self
-                    .quant_model
-                    .as_ref()
-                    .unwrap()
-                    .forward(&dataset)?
-                    .argmax(1)?
-                    .to_vec1::<u32>()?,
-                false => self.model.forward(&dataset)?.argmax(1)?.to_vec1::<u32>()?,
+            let res = match self.use_quantization {
+                true => self.quant_model.as_ref().unwrap().forward(&dataset)?,
+                false => self.model.forward(&dataset)?,
             };
-            predictions.extend(rs.into_iter().map(|v| v as usize));
+            let res = ops::softmax(&res, D::Minus1)?;
+            let res = res.to_vec2::<f32>()?;
+            let res: Vec<Vec<(usize, f32)>> = res
+                .into_iter()
+                .map(|preds| preds.into_iter().enumerate().collect())
+                .collect();
+            predictions.extend(res);
         }
         Ok(predictions)
     }

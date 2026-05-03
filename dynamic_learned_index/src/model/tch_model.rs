@@ -154,19 +154,29 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
     }
 
     #[log_time]
-    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>> {
+    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<Vec<(usize, f32)>>> {
         let xs_tensor = Tensor::from_slice(xs);
         let xs_tensor = xs_tensor.view((
             (xs.len() / self.input_shape) as i64,
             self.input_shape as i64,
         ));
-        let labels = self
+        let res = self
             .model
             .lock()
             .unwrap()
             .forward(&xs_tensor)
-            .argmax(1, false);
-        Ok(tensor2vec_usize(&labels))
+            .softmax(-1, tch::Kind::Float);
+        let predictions = tensor2vec(&res);
+        Ok(predictions
+            .chunks_exact(self.labels)
+            .map(|chunk| {
+                chunk
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, v)| (i, *v))
+                    .collect()
+            })
+            .collect())
     }
 
     fn train(&mut self, xs: &ArraySlice) -> DliResult<()> {
@@ -308,11 +318,6 @@ impl<F: FloatElement> Model<F> {
 
 fn tensor2vec(tensor: &tch::Tensor) -> Vec<f32> {
     tensor.try_into().unwrap()
-}
-
-fn tensor2vec_usize(tensor: &tch::Tensor) -> Vec<usize> {
-    let x: Vec<i64> = tensor.try_into().unwrap();
-    x.iter().map(|&v| v as usize).collect()
 }
 
 #[cfg(test)]

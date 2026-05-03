@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use dynamic_learned_index::{
     model::RetrainStrategy, IndexBuilder, ModelDevice, ModelLayer, SearchParams,
@@ -112,6 +112,21 @@ where
             builder = builder.delete_method(s.as_str().into());
         }
     }
+    if let Some(v) = config.get_item("cold_storage_dir").ok().flatten() {
+        if let Ok(s) = v.extract::<String>() {
+            builder = builder.cold_storage_dir(PathBuf::from(s));
+        }
+    }
+    if let Some(v) = config.get_item("cold_threshold_level").ok().flatten() {
+        if let Ok(level) = v.extract::<usize>() {
+            builder = builder.cold_threshold_level(level);
+        }
+    }
+    if let Some(v) = config.get_item("cold_cache_size_bytes").ok().flatten() {
+        if let Ok(bytes) = v.extract::<u64>() {
+            builder = builder.cold_cache_size_bytes(bytes);
+        }
+    }
     if let Some(v) = config.get_item("layers").ok().flatten() {
         if let Ok(layers) = v.extract::<Vec<Bound<'_, PyDict>>>() {
             for layer_dict in layers {
@@ -216,6 +231,21 @@ impl _DynamicIndexBuilderF16 {
         Ok(_DynamicIndexBuilderF16 { builder })
     }
 
+    fn cold_storage_dir(&mut self, path: &str) -> PyResult<()> {
+        self.builder = self.builder.clone().cold_storage_dir(PathBuf::from(path));
+        Ok(())
+    }
+
+    fn cold_threshold_level(&mut self, level: usize) -> PyResult<()> {
+        self.builder = self.builder.clone().cold_threshold_level(level);
+        Ok(())
+    }
+
+    fn cold_cache_size_bytes(&mut self, bytes: u64) -> PyResult<()> {
+        self.builder = self.builder.clone().cold_cache_size_bytes(bytes);
+        Ok(())
+    }
+
     fn build(&self) -> PyResult<_DynamicLearnedIndexF16> {
         let index = self.builder.clone().build()?;
         Ok(_DynamicLearnedIndexF16 { index })
@@ -317,17 +347,12 @@ impl _DynamicLearnedIndexF16 {
         })
     }
 
-    fn delete(&mut self, id: u32) -> PyResult<Option<(Vec<u16>, u32)>> {
+    fn delete(&mut self, id: u32) -> PyResult<bool> {
         let deleted = self
             .index
             .delete(id)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-        if let Some((vec, id)) = deleted {
-            let vec_u16: Vec<u16> = f16tou16_vec(vec);
-            Ok(Some((vec_u16, id)))
-        } else {
-            Ok(None)
-        }
+        Ok(deleted)
     }
 
     fn n_buckets(&self) -> usize {
@@ -392,11 +417,6 @@ fn array2vec<'py>(x: Bound<'py, PyArrayDyn<f16>>) -> Vec<half::f16> {
 
 fn array2vec_f32<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {
     x.as_array().iter().copied().collect()
-}
-
-fn f16tou16_vec(x: Vec<half::f16>) -> Vec<u16> {
-    let mut x = std::mem::ManuallyDrop::new(x);
-    unsafe { Vec::from_raw_parts(x.as_mut_ptr() as *mut u16, x.len(), x.capacity()) }
 }
 
 #[pyfunction]
@@ -506,16 +526,12 @@ impl _DynamicLearnedIndexF32 {
         })
     }
 
-    fn delete(&mut self, id: u32) -> PyResult<Option<(Vec<f32>, u32)>> {
+    fn delete(&mut self, id: u32) -> PyResult<bool> {
         let deleted = self
             .index
             .delete(id)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?;
-        if let Some((vec, id)) = deleted {
-            Ok(Some((vec, id)))
-        } else {
-            Ok(None)
-        }
+        Ok(deleted)
     }
 
     fn n_buckets(&self) -> usize {

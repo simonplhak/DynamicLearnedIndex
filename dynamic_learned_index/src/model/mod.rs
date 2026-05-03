@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 
 pub trait ModelInterface<F: FloatElement> {
     fn predict(&self, xs: &Self::TensorType) -> DliResult<Vec<(usize, f32)>>;
-    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<usize>>;
+    fn predict_many(&self, xs: &[F]) -> DliResult<Vec<Vec<(usize, f32)>>>;
     fn train(&mut self, xs: &ArraySlice) -> DliResult<()>;
     fn retrain(&mut self, xs: &ArraySlice) -> DliResult<()>;
     fn dump(&self, weights_filename: PathBuf) -> DliResult<ModelConfig>;
@@ -360,15 +360,16 @@ mod tests {
             "Should have same number of predictions"
         );
 
-        for (i, (individual, batch)) in individual_predictions
-            .iter()
-            .zip(batch_predictions.iter())
+        for (i, (individual, mut batch)) in individual_predictions
+            .into_iter()
+            .zip(batch_predictions.into_iter())
             .enumerate()
         {
+            batch.sort_by(|(_, a), (_, b)| b.total_cmp(a));
             assert_eq!(
-                individual, batch,
+                individual, batch[0].0,
                 "Prediction mismatch at index {}: individual={}, batch={}",
-                i, individual, batch
+                i, individual, batch[0].0
             );
         }
     }

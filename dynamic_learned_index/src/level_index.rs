@@ -1,5 +1,6 @@
 use crate::{
     bucket::{self, Bucket},
+    cold_storage::ColdStorage,
     model::{Model, ModelBuilder, ModelConfig, ModelDevice, ModelInterface as _},
     structs::{DiskBucket, DiskLevelIndex, FloatElement, LevelIndexConfig},
     DeleteMethod, DistanceFn, DliError, DliResult, Id,
@@ -13,6 +14,237 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[derive(Debug)]
+pub(crate) struct HotStorage<F: FloatElement> {
+    pub(crate) buckets: Vec<Bucket<F>>,
+    pub(crate) ids_map: HashMap<Id, (usize, usize)>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Storage<F: FloatElement> {
+    pub(crate) container: StorageContainer<F>,
+    pub(crate) record_count: usize,
+}
+
+#[derive(Debug)]
+pub(crate) enum StorageContainer<F: FloatElement> {
+    Hot(HotStorage<F>),
+    Cold(ColdStorage<F>),
+}
+
+impl<F: FloatElement> Storage<F> {
+    pub(crate) fn size(&self) -> usize {
+        match &self.container {
+            StorageContainer::Hot(h) => h.buckets[0].size() * h.buckets.len(),
+            StorageContainer::Cold(c) => c.n_buckets() * c.bucket_size,
+        }
+    }
+
+    pub(crate) fn bucket_size(&self) -> usize {
+        match &self.container {
+            StorageContainer::Hot(h) => h.buckets[0].size(),
+            StorageContainer::Cold(c) => c.bucket_size,
+        }
+    }
+
+    pub(crate) fn occupied(&self) -> usize {
+        self.record_count
+    }
+
+    pub(crate) fn free_space(&self) -> usize {
+        let size = self.size();
+        let occupied = self.occupied();
+        if size > occupied {
+            size - occupied
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn n_buckets(&self) -> usize {
+        match &self.container {
+            StorageContainer::Hot(h) => h.buckets.len(),
+            StorageContainer::Cold(c) => c.disk_buckets.len(),
+        }
+    }
+
+    pub(crate) fn n_empty_buckets(&self) -> usize {
+        match &self.container {
+            StorageContainer::Hot(h) => h
+                .buckets
+                .iter()
+                .filter(|bucket| bucket.occupied() == 0)
+                .count(),
+            StorageContainer::Cold(c) => c
+                .disk_buckets
+                .iter()
+                .filter(|bucket| bucket.count == 0)
+                .count(),
+        }
+    }
+
+    pub(crate) fn bucket_occupied_count(&self, bucket_id: usize) -> usize {
+        match &self.container {
+            StorageContainer::Hot(h) => h.buckets[bucket_id].occupied(),
+            StorageContainer::Cold(c) => c.bucket_occupied(bucket_id),
+        }
+    }
+
+    pub(crate) fn insert(
+        &mut self,
+        records: Vec<F>,
+        ids: Vec<Id>,
+        assignments: &[usize],
+    ) -> DliResult<()> {
+        let to_insert = ids.len();
+        match &mut self.container {
+            StorageContainer::Hot(h) => h.insert(records, ids, assignments),
+            StorageContainer::Cold(c) => c.insert(records, ids, assignments),
+        }?;
+        self.record_count += to_insert;
+        Ok(())
+    }
+
+    #[log_time]
+    pub(crate) fn get_data(&mut self) -> DliResult<(Vec<F>, Vec<Id>)> {
+        let (records, ids) = match &mut self.container {
+            StorageContainer::Hot(h) => h.get_data(),
+            StorageContainer::Cold(c) => c.get_data(),
+        }?;
+        self.record_count = 0;
+        Ok((records, ids))
+    }
+
+    pub(crate) fn dump(
+        &self,
+        working_dir: &Path,
+        level_id: usize,
+        config: &LevelIndexConfig,
+    ) -> DliResult<DiskLevelIndex> {
+        match &self.container {
+            StorageContainer::Hot(h) => h.dump(working_dir, level_id, config),
+            StorageContainer::Cold(c) => c.dump(working_dir, level_id, config),
+        }
+    }
+
+    pub(crate) fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> bool {
+        let res = match &mut self.container {
+            StorageContainer::Hot(h) => h.delete(id, delete_method),
+            StorageContainer::Cold(c) => c.delete(*id),
+        };
+        if res {
+            self.record_count -= 1;
+        }
+        res
+    }
+}
+
+impl<F: FloatElement> HotStorage<F> {
+    fn insert(&mut self, records: Vec<F>, ids: Vec<Id>, assignments: &[usize]) -> DliResult<()> {
+        let input_shape = records.len() / ids.len();
+        assert!(records.len() / input_shape == ids.len());
+        if records.is_empty() {
+            return Ok(());
+        }
+        assert!(assignments.len() == ids.len());
+        // Calculate frequency of each bucket index in assignments
+        let mut frequencies = vec![0; self.buckets.len()];
+        for &bucket_idx in assignments {
+            frequencies[bucket_idx] += 1;
+        }
+        // Pre-resize buckets based on calculated frequencies
+        frequencies
+            .iter()
+            .enumerate()
+            .filter(|(_, &count)| count > 0)
+            .for_each(|(bucket_idx, count)| {
+                self.buckets[bucket_idx].resize(*count);
+            });
+        {
+            let mut records = records;
+            let mut ids = ids;
+            let mut assignments_iter = assignments.iter().rev();
+            while !records.is_empty() {
+                let query = records.split_off(records.len() - input_shape);
+                let id = ids.pop().expect("ids mismatch");
+                let bucket_idx = *assignments_iter.next().expect("assignments mismatch");
+                let record_idx = self.buckets[bucket_idx].insert(query, id);
+                self.ids_map.insert(id, (bucket_idx, record_idx));
+            }
+            assert!(assignments_iter.next().is_none());
+            assert!(ids.is_empty());
+            assert!(records.is_empty());
+        }
+        Ok(())
+    }
+
+    fn get_data(&mut self) -> DliResult<(Vec<F>, Vec<Id>)> {
+        let mut all_data = Vec::new();
+        let mut all_ids = Vec::new();
+        for bucket in &mut self.buckets {
+            let (data, ids) = bucket.get_data();
+            all_data.extend(data);
+            all_ids.extend(ids);
+        }
+        self.ids_map.clear();
+        Ok((all_data, all_ids))
+    }
+
+    fn dump(
+        &self,
+        working_dir: &Path,
+        level_id: usize,
+        config: &LevelIndexConfig,
+    ) -> DliResult<DiskLevelIndex> {
+        let records_path = working_dir.join(format!("bucket-records-{level_id}.bin"));
+        let ids_path = working_dir.join(format!("bucket-ids-{level_id}.bin"));
+        let mut records_file = File::create(records_path.clone())?;
+        let mut ids_file = File::create(ids_path.clone())?;
+        let disk_buckets = self
+            .buckets
+            .iter()
+            .enumerate()
+            .map(|(i, bucket)| {
+                let db = bucket.dump(&mut records_file, &mut ids_file);
+                DiskBucket {
+                    bucket_idx: i,
+                    records_offset: db.records_offset,
+                    ids_offset: db.ids_offset,
+                    count: db.count,
+                }
+            })
+            .collect::<Vec<_>>();
+        Ok(DiskLevelIndex {
+            buckets: disk_buckets,
+            config: config.clone(),
+            records_path,
+            ids_path,
+            cold_data_path: None,
+        })
+    }
+
+    fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> bool {
+        let deleted = self.ids_map.get(id).cloned();
+        if let Some((bucket_idx, record_idx)) = deleted {
+            assert!(bucket_idx < self.buckets.len());
+            assert!(record_idx < self.buckets[bucket_idx].occupied());
+            let bucket = &mut self.buckets[bucket_idx];
+            let (deleted, (swapped_new_idx, swapped_id)) = bucket.delete(record_idx, delete_method);
+            let (deleted_bucket_idx, deleted_record_idx) = self.ids_map.remove(id).unwrap(); // we are sure it exists
+            assert_eq!(deleted_bucket_idx, bucket_idx);
+            assert_eq!(deleted_record_idx, record_idx);
+            // Only insert the swapped id mapping if a different record was moved into the deleted slot.
+            // In the bucket's "delete last" case the swapped_id equals the deleted id, so avoid re-inserting it.
+            if swapped_id != deleted.1 {
+                self.ids_map
+                    .insert(swapped_id, (bucket_idx, swapped_new_idx));
+            }
+            return true;
+        }
+        false
+    }
+}
+
 #[derive(Debug, Default)]
 pub(crate) struct LevelIndexBuilder<F: FloatElement> {
     id: Option<String>,
@@ -24,6 +256,7 @@ pub(crate) struct LevelIndexBuilder<F: FloatElement> {
     input_shape: Option<usize>,
     model_device: ModelDevice,
     distance_fn: Option<DistanceFn>,
+    cold_data_path: Option<PathBuf>,
 }
 
 impl<F: FloatElement> LevelIndexBuilder<F> {
@@ -78,20 +311,22 @@ impl<F: FloatElement> LevelIndexBuilder<F> {
         self
     }
 
-    pub fn build(self) -> DliResult<LevelIndex<F>> {
-        let input_shape = self
-            .input_shape
-            .ok_or(DliError::MissingAttribute("input_shape"))?;
-        let bucket_size = self
-            .bucket_size
-            .ok_or(DliError::MissingAttribute("bucket_size"))?;
-        let buckets = if let Some(buckets) = self.buckets_in_memory {
+    pub fn cold_data_path(mut self, path: PathBuf) -> Self {
+        self.cold_data_path = Some(path);
+        self
+    }
+
+    fn build_buckets(&mut self, input_shape: usize) -> DliResult<Vec<Bucket<F>>> {
+        if let Some(buckets) = self.buckets_in_memory.take() {
             // Use pre-built in-memory buckets directly
-            buckets
-        } else if let Some((buckets, records_path, ids_path)) = self.buckets {
+            Ok(buckets)
+        } else if let Some((buckets, records_path, ids_path)) = self.buckets.take() {
             // Load buckets from disk
             let mut records_file = File::open(records_path)?;
             let mut ids_file = File::open(ids_path)?;
+            let bucket_size = self
+                .bucket_size
+                .ok_or(DliError::MissingAttribute("bucket_size"))?;
             buckets
                 .into_iter()
                 .map(|disk_bucket| {
@@ -104,9 +339,12 @@ impl<F: FloatElement> LevelIndexBuilder<F> {
                     .size(bucket_size)
                     .build()
                 })
-                .collect::<Result<Vec<_>, _>>()?
+                .collect::<Result<Vec<_>, _>>()
         } else {
             // Create empty buckets
+            let bucket_size = self
+                .bucket_size
+                .ok_or(DliError::MissingAttribute("bucket_size"))?;
             let n_buckets = self
                 .n_buckets
                 .ok_or(DliError::MissingAttribute("n_buckets"))?;
@@ -117,17 +355,64 @@ impl<F: FloatElement> LevelIndexBuilder<F> {
                         .size(bucket_size)
                         .build()
                 })
-                .collect::<Result<Vec<_>, _>>()?
+                .collect::<Result<Vec<_>, _>>()
+        }
+    }
+
+    fn build_storage(&mut self, input_shape: usize) -> DliResult<Storage<F>> {
+        let (container, record_count) = match self.cold_data_path.take() {
+            Some(data_path) => {
+                let bucket_size = self
+                    .bucket_size
+                    .ok_or(DliError::MissingAttribute("bucket_size"))?;
+                let n_buckets = self
+                    .n_buckets
+                    .ok_or(DliError::MissingAttribute("n_buckets"))?;
+                // Create cold storage
+                let mut cold = ColdStorage::new(&data_path, n_buckets, input_shape, bucket_size)?;
+                let buckets = self.build_buckets(input_shape)?;
+                let mut records_to_add = Vec::new();
+                let mut ids_to_add = Vec::new();
+                let mut assigments = Vec::new();
+                for (i, mut bucket) in buckets.into_iter().enumerate() {
+                    let (records, ids) = bucket.get_data();
+                    records_to_add.extend(records);
+                    assigments.extend(vec![i; ids.len()]);
+                    ids_to_add.extend(ids);
+                }
+                let to_add = ids_to_add.len();
+                cold.insert(records_to_add, ids_to_add, &assigments)?;
+
+                (StorageContainer::Cold(cold), to_add)
+            }
+            None => {
+                let buckets = self.build_buckets(input_shape)?;
+                let to_add = buckets.iter().map(|b| b.ids.len()).sum::<usize>();
+                let hot = HotStorage {
+                    buckets,
+                    ids_map: HashMap::new(),
+                };
+                (StorageContainer::Hot(hot), to_add)
+            }
         };
-        let n_buckets = buckets.len();
+        Ok(Storage {
+            container,
+            record_count,
+        })
+    }
+
+    pub fn build(mut self) -> DliResult<LevelIndex<F>> {
+        let input_shape = self
+            .input_shape
+            .ok_or(DliError::MissingAttribute("input_shape"))?;
         let distance_fn = self
             .distance_fn
             .ok_or(DliError::MissingAttribute("distance_fn"))?;
-        let model_config = self
-            .model_config
-            .as_ref()
-            .ok_or(DliError::MissingAttribute("model_config"))?;
-        let mut model_builder = ModelBuilder::<F>::default();
+        let model_config = self.model_config.take();
+        let model_config = model_config.ok_or(DliError::MissingAttribute("model_config"))?;
+        let storage = self.build_storage(input_shape)?;
+        let mut model_builder = ModelBuilder::default();
+        let n_buckets = storage.n_buckets();
         model_builder
             .device(self.model_device)
             .input_nodes(input_shape as i64)
@@ -143,82 +428,72 @@ impl<F: FloatElement> LevelIndexBuilder<F> {
         });
         let model = model_builder.build()?;
 
-        let level_index = LevelIndex::new(model, buckets);
+        let level_index = LevelIndex::new(model, storage);
         Ok(level_index)
     }
 }
 
 pub struct LevelIndex<F: FloatElement> {
     model: Model<F>,
-    buckets: Vec<Bucket<F>>,
-    ids_map: HashMap<Id, (usize, usize)>, // Id -> (bucket_idx, record_idx)
-    record_count: usize,                  // Track current number of records
+    pub(crate) storage: Storage<F>,
 }
 
 impl<F: FloatElement> LevelIndex<F> {
-    fn new(model: Model<F>, buckets: Vec<Bucket<F>>) -> Self {
-        let record_count = buckets.iter().map(|bucket| bucket.occupied()).sum();
-        Self {
-            model,
-            buckets,
-            ids_map: HashMap::new(),
-            record_count,
+    fn new(model: Model<F>, storage: Storage<F>) -> Self {
+        Self { model, storage }
+    }
+
+    #[cfg(test)]
+    fn test_buckets(&self) -> Option<&Vec<Bucket<F>>> {
+        match &self.storage.container {
+            StorageContainer::Hot(h) => Some(&h.buckets),
+            StorageContainer::Cold(_) => None,
         }
     }
 
-    pub(crate) fn size(&self) -> usize {
-        self.buckets[0].size() * self.buckets.len()
-    }
-
-    pub(crate) fn bucket_size(&self) -> usize {
-        self.buckets[0].size()
-    }
-
-    pub(crate) fn occupied(&self) -> usize {
-        self.record_count
-    }
-
-    pub(crate) fn free_space(&self) -> usize {
-        let size = self.size();
-        let occupied = self.occupied();
-        match size > occupied {
-            true => size - occupied,
-            false => 0,
+    #[cfg(test)]
+    fn test_buckets_mut(&mut self) -> Option<&mut Vec<Bucket<F>>> {
+        match &mut self.storage.container {
+            StorageContainer::Hot(h) => Some(&mut h.buckets),
+            StorageContainer::Cold(_) => None,
         }
     }
 
-    pub(crate) fn n_buckets(&self) -> usize {
-        self.buckets.len()
+    #[cfg(test)]
+    fn test_ids_map(&self) -> Option<&HashMap<Id, (usize, usize)>> {
+        match &self.storage.container {
+            StorageContainer::Hot(h) => Some(&h.ids_map),
+            StorageContainer::Cold(_) => None,
+        }
     }
 
-    pub(crate) fn n_empty_buckets(&self) -> usize {
-        self.buckets
-            .iter()
-            .filter(|bucket| bucket.occupied() == 0)
-            .count()
+    #[cfg(test)]
+    fn test_ids_map_mut(&mut self) -> Option<&mut HashMap<Id, (usize, usize)>> {
+        match &mut self.storage.container {
+            StorageContainer::Hot(h) => Some(&mut h.ids_map),
+            StorageContainer::Cold(_) => None,
+        }
     }
-
-    pub(crate) fn bucket(&self, bucket_idx: usize) -> &Bucket<F> {
-        &self.buckets[bucket_idx]
-    }
-
     pub fn memory_usage(&self) -> usize {
-        let buckets_size: usize = self.buckets.iter().map(|b| b.memory_usage()).sum();
-        let map_capacity = self.ids_map.capacity();
-        // size of Key + Value + 1 byte control (SwissTable)
-        let entry_size = std::mem::size_of::<Id>() + std::mem::size_of::<(usize, usize)>() + 1;
-        let map_size = map_capacity * entry_size;
+        let (buckets_size, map_size) = match &self.storage.container {
+            StorageContainer::Hot(h) => {
+                let buckets_size = h.buckets.iter().map(|b| b.memory_usage()).sum();
+                let map_capacity = h.ids_map.capacity();
+                let entry_size =
+                    std::mem::size_of::<Id>() + std::mem::size_of::<(usize, usize)>() + 1;
+                let map_size = map_capacity * entry_size;
+                (buckets_size, map_size)
+            }
+            StorageContainer::Cold(_) => (0, 0), // buckets cleared, ids_map empty
+        };
 
         std::mem::size_of::<Self>() + self.model.memory_usage() + buckets_size + map_size
     }
 
     pub(crate) fn buckets2visit_predictions(&self, query: &[F]) -> DliResult<Vec<(usize, f32)>> {
-        if self.occupied() == 0 {
-            return Ok(self
-                .buckets
-                .iter()
-                .enumerate()
-                .map(|(bucket_id, _)| (bucket_id, 0.0))
+        if self.storage.occupied() == 0 {
+            return Ok((0..self.storage.n_buckets())
+                .map(|bucket_id| (bucket_id, 0.0))
                 .collect());
         }
         let query = self.model.vec2tensor(&F::to_f32_slice(query))?;
@@ -230,12 +505,9 @@ impl<F: FloatElement> LevelIndex<F> {
         &self,
         queries: &[&[F]],
     ) -> DliResult<Vec<Vec<(usize, f32)>>> {
-        if self.occupied() == 0 {
-            let empty_predictions = self
-                .buckets
-                .iter()
-                .enumerate()
-                .map(|(bucket_id, _)| (bucket_id, 0.0))
+        if self.storage.occupied() == 0 {
+            let empty_predictions = (0..self.storage.n_buckets())
+                .map(|bucket_id| (bucket_id, 0.0))
                 .collect::<Vec<_>>();
             return Ok(vec![empty_predictions; queries.len()]);
         }
@@ -244,19 +516,7 @@ impl<F: FloatElement> LevelIndex<F> {
         for query in queries {
             flat_queries.extend_from_slice(query);
         }
-
-        // Get batch predictions (bucket assignments) using predict_many
-        let assignments = self.model.predict_many(&flat_queries)?;
-
-        // Group assignments by query and convert to the required format
-        let mut results = vec![Vec::new(); queries.len()];
-        for (assignment_idx, &bucket_idx) in assignments.iter().enumerate() {
-            let query_idx = assignment_idx;
-            // (bucket_idx, probability=0.0)
-            results[query_idx].push((bucket_idx, 0.0));
-        }
-
-        Ok(results)
+        self.model.predict_many(&flat_queries)
     }
 
     #[log_time]
@@ -271,110 +531,33 @@ impl<F: FloatElement> LevelIndex<F> {
         Ok(())
     }
 
-    #[log_time]
     pub(crate) fn insert_many(&mut self, records: Vec<F>, ids: Vec<Id>) -> DliResult<()> {
         let input_shape = self.model.input_shape;
         assert!(records.len() / input_shape == ids.len());
-        let num_records = ids.len();
         if records.is_empty() {
             return Ok(());
         }
-        // let xs = F::to_f32_slice(&records);
         let assignments = self.model.predict_many(&records)?;
-        assert!(assignments.len() == ids.len());
-        // Calculate frequency of each bucket index in assignments
-        let mut frequencies = vec![0; self.buckets.len()];
-        for &bucket_idx in &assignments {
-            frequencies[bucket_idx] += 1;
-        }
-        // Pre-resize buckets based on calculated frequencies
-        frequencies
-            .iter()
-            .enumerate()
-            .filter(|(_, &count)| count > 0)
-            .for_each(|(bucket_idx, count)| {
-                self.buckets[bucket_idx].resize(*count);
-            });
-        {
-            let mut records = records;
-            let mut ids = ids;
-            let mut assignments = assignments;
-            while !records.is_empty() {
-                let query = records.split_off(records.len() - input_shape);
-                let id = ids.pop().expect("ids mismatch");
-                let bucket_idx = assignments.pop().expect("assignments mismatch");
-                let record_idx = self.buckets[bucket_idx].insert(query, id);
-                self.ids_map.insert(id, (bucket_idx, record_idx));
-            }
-            assert!(assignments.is_empty());
-            assert!(ids.is_empty());
-            assert!(records.is_empty());
-        }
-        self.record_count += num_records;
+        let assignments = assignments
+            .into_iter()
+            .map(|mut assignment| {
+                assignment.sort_by(|(_, a), (_, b)| b.total_cmp(a));
+                assignment[0].0
+            })
+            .collect::<Vec<_>>();
+        self.storage.insert(records, ids, &assignments)?;
         Ok(())
-    }
-
-    pub(crate) fn get_data(&mut self) -> (Vec<F>, Vec<Id>) {
-        self.ids_map.clear(); // clear existing id mappings
-        self.record_count = 0; // reset record count
-        let (data, ids): (Vec<_>, Vec<Vec<Id>>) = self
-            .buckets
-            .iter_mut()
-            .filter(|bucket| bucket.occupied() > 0)
-            .map(|bucket| bucket.get_data())
-            .unzip();
-        (
-            data.into_iter().flatten().collect(),
-            ids.into_iter().flatten().collect(),
-        )
-    }
-
-    pub(crate) fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> Option<(Vec<F>, Id)> {
-        let deleted = self.ids_map.get(id).cloned();
-        if let Some((bucket_idx, record_idx)) = deleted {
-            assert!(bucket_idx < self.buckets.len());
-            assert!(record_idx < self.buckets[bucket_idx].occupied());
-            let bucket = &mut self.buckets[bucket_idx];
-            let (deleted, (swapped_new_idx, swapped_id)) =
-                bucket.delete(record_idx, delete_method)?;
-            let (deleted_bucket_idx, deleted_record_idx) = self.ids_map.remove(id)?; // we are sure it exists
-            assert_eq!(deleted_bucket_idx, bucket_idx);
-            assert_eq!(deleted_record_idx, record_idx);
-            // Only insert the swapped id mapping if a different record was moved into the deleted slot.
-            // In the bucket's "delete last" case the swapped_id equals the deleted id, so avoid re-inserting it.
-            if swapped_id != deleted.1 {
-                self.ids_map
-                    .insert(swapped_id, (bucket_idx, swapped_new_idx));
-            }
-            self.record_count -= 1;
-            return Some(deleted);
-        }
-        None
     }
 
     pub(crate) fn dump(&self, working_dir: &Path, level_id: usize) -> DliResult<DiskLevelIndex> {
         let model = self
             .model
             .dump(working_dir.join(format!("model-{level_id}.safetensors")))?;
-        let records_path = working_dir.join(format!("bucket-records-{level_id}.bin"));
-        let ids_path = working_dir.join(format!("bucket-ids-{level_id}.bin"));
-        let mut records_file = File::create(records_path.clone())?;
-        let mut ids_file = File::create(ids_path.clone())?;
-        let disk_buckets = self
-            .buckets
-            .iter()
-            .map(|bucket| bucket.dump(&mut records_file, &mut ids_file))
-            .collect::<Vec<_>>();
         let config = LevelIndexConfig {
             model,
-            bucket_size: self.buckets[0].size(),
+            bucket_size: self.storage.bucket_size(),
         };
-        Ok(DiskLevelIndex {
-            buckets: disk_buckets,
-            config,
-            records_path,
-            ids_path,
-        })
+        self.storage.dump(working_dir, level_id, &config)
     }
 }
 
@@ -403,11 +586,10 @@ mod tests {
             .expect("level build failed");
 
         for (rec, id) in records.into_iter().zip(ids.into_iter()) {
-            level.buckets[0].insert(rec, id);
-            level
-                .ids_map
-                .insert(id, (0, level.buckets[0].occupied() - 1));
-            level.record_count += 1;
+            level.test_buckets_mut().unwrap()[0].insert(rec, id);
+            let x = level.test_buckets().unwrap()[0].occupied() - 1;
+            level.test_ids_map_mut().unwrap().insert(id, (0, x));
+            level.storage.record_count += 1;
         }
         level
     }
@@ -426,10 +608,10 @@ mod tests {
             .expect("Failed to build LevelIndex with minimal params");
 
         // Verify level has correct number of buckets
-        assert_eq!(level.n_buckets(), 4);
+        assert_eq!(level.storage.n_buckets(), 4);
 
         // Verify each bucket has correct configuration
-        for bucket in &level.buckets {
+        for bucket in level.test_buckets().unwrap() {
             assert_eq!(bucket.size(), 50);
             assert_eq!(bucket.occupied(), 0); // Should be empty initially
         }
@@ -439,12 +621,12 @@ mod tests {
         // Note: labels field is private, but should equal n_buckets (4)
 
         // Verify level is initially empty
-        assert_eq!(level.occupied(), 0);
-        assert_eq!(level.size(), 4 * 50); // n_buckets * bucket_size
-        assert_eq!(level.free_space(), 200); // All space is free
+        assert_eq!(level.storage.occupied(), 0);
+        assert_eq!(level.storage.size(), 4 * 50); // n_buckets * bucket_size
+        assert_eq!(level.storage.free_space(), 200); // All space is free
 
         // Verify ids_map is empty
-        assert!(level.ids_map.is_empty());
+        assert!(level.test_ids_map().unwrap().is_empty());
     }
 
     #[test]
@@ -462,7 +644,7 @@ mod tests {
             .expect("Failed to build with L2 distance");
 
         assert_eq!(level_l2.model.input_shape, 5);
-        assert_eq!(level_l2.n_buckets(), 3);
+        assert_eq!(level_l2.storage.n_buckets(), 3);
 
         // Test with Dot distance
         let level_dot = LevelIndexBuilder::<f32>::default()
@@ -475,7 +657,7 @@ mod tests {
             .expect("Failed to build with Dot distance");
 
         assert_eq!(level_dot.model.input_shape, 8);
-        assert_eq!(level_dot.n_buckets(), 5);
+        assert_eq!(level_dot.storage.n_buckets(), 5);
 
         // Test with custom model config
         let custom_model_config = ModelConfig {
@@ -506,7 +688,7 @@ mod tests {
             .expect("Failed to build with custom model config");
 
         assert_eq!(level_custom.model.input_shape, 12);
-        assert_eq!(level_custom.n_buckets(), 2);
+        assert_eq!(level_custom.storage.n_buckets(), 2);
     }
 
     #[test]
@@ -582,9 +764,9 @@ mod tests {
             .build()?;
 
         // Verify loaded level has same properties
-        assert_eq!(loaded_level.n_buckets(), n_buckets);
+        assert_eq!(loaded_level.storage.n_buckets(), n_buckets);
         assert_eq!(loaded_level.model.input_shape, input_shape);
-        assert_eq!(loaded_level.occupied(), 20); // Same number of records
+        assert_eq!(loaded_level.storage.occupied(), 20); // Same number of records
 
         // Get predictions from loaded level
         let loaded_predictions = test_queries
@@ -609,8 +791,8 @@ mod tests {
 
         // Verify the actual data in buckets matches
         for bucket_idx in 0..n_buckets {
-            let orig_bucket = &level.buckets[bucket_idx];
-            let loaded_bucket = &loaded_level.buckets[bucket_idx];
+            let orig_bucket = &level.test_buckets().unwrap()[bucket_idx];
+            let loaded_bucket = &loaded_level.test_buckets().unwrap()[bucket_idx];
 
             assert_eq!(
                 orig_bucket.occupied(),
@@ -651,18 +833,18 @@ mod tests {
             make_level_with_records(vec![rec0.clone(), rec1.clone(), rec2.clone()], ids.clone());
 
         // delete middle id (2)
-        let res = level.delete(&2u32, &DeleteMethod::OidToBucket);
-        let (deleted_vec, deleted_id) = res.expect("expected middle deletion");
-        assert_eq!(deleted_id, 2u32);
-        assert_eq!(deleted_vec, rec1);
-
+        let res = level.storage.delete(&2u32, &DeleteMethod::OidToBucket);
+        assert!(res);
         // ids_map should not contain deleted id
-        assert!(!level.ids_map.contains_key(&2u32));
+        assert!(!level.test_ids_map().unwrap().contains_key(&2u32));
         // moved id (3) should now be at index 1
-        assert_eq!(level.ids_map.get(&3u32).cloned(), Some((0usize, 1usize)));
+        assert_eq!(
+            level.test_ids_map().unwrap().get(&3u32).cloned(),
+            Some((0usize, 1usize))
+        );
         // bucket should have two records and record(1) equals rec2
-        assert_eq!(level.buckets[0].occupied(), 2);
-        assert_eq!(level.buckets[0].record(1), rec2.as_slice());
+        assert_eq!(level.test_buckets().unwrap()[0].occupied(), 2);
+        assert_eq!(level.test_buckets().unwrap()[0].record(1), rec2.as_slice());
         Ok(())
     }
 
@@ -671,35 +853,41 @@ mod tests {
         let rec = vec![1.0f32, 2.0, 3.0];
         let id = 42u32;
         let mut level = make_level_with_records(vec![rec.clone()], vec![id]);
-        let res = level.delete(&id, &DeleteMethod::OidToBucket);
-        let (deleted_vec, deleted_id) = res.expect("expected deletion");
-        assert_eq!(deleted_id, id);
-        assert_eq!(deleted_vec, rec);
+        let res = level.storage.delete(&id, &DeleteMethod::OidToBucket);
+        assert!(res);
 
         // id should be removed from ids_map
-        assert!(!level.ids_map.contains_key(&id));
+        assert!(!level.test_ids_map().unwrap().contains_key(&id));
         // bucket should be empty
-        assert_eq!(level.buckets[0].occupied(), 0);
+        assert_eq!(level.test_buckets().unwrap()[0].occupied(), 0);
         Ok(())
     }
 
     #[test]
     fn test_level_index_delete_missing_id_returns_none() -> DliResult<()> {
         let mut level = make_level_with_records(vec![], vec![]);
-        let res = level.delete(&999u32, &DeleteMethod::OidToBucket);
-        assert!(res.is_none());
+        let res = level.storage.delete(&999u32, &DeleteMethod::OidToBucket);
+        assert!(!res);
         Ok(())
     }
 
     #[test]
     fn test_level_index_get_data_empty() {
         let mut level = make_level_with_records(vec![], vec![]);
-        let (data, ids) = level.get_data();
+        let (data, ids) = level.storage.get_data().unwrap();
         assert!(data.is_empty());
         assert!(ids.is_empty());
-        assert!(level.ids_map.is_empty());
+        assert!(level.test_ids_map().unwrap().is_empty());
         // buckets remain empty
-        assert_eq!(level.buckets.iter().map(|b| b.occupied()).sum::<usize>(), 0);
+        assert_eq!(
+            level
+                .test_buckets()
+                .unwrap()
+                .iter()
+                .map(|b| b.occupied())
+                .sum::<usize>(),
+            0
+        );
     }
 
     #[test]
@@ -708,12 +896,12 @@ mod tests {
         let id = 7u32;
         let mut level = make_level_with_records(vec![rec.clone()], vec![id]);
 
-        assert_eq!(level.buckets[0].occupied(), 1);
-        let (data, ids) = level.get_data();
+        assert_eq!(level.test_buckets().unwrap()[0].occupied(), 1);
+        let (data, ids) = level.storage.get_data().unwrap();
         assert_eq!(ids, vec![id]);
         assert_eq!(data, rec);
-        assert!(level.ids_map.is_empty());
-        assert_eq!(level.buckets[0].occupied(), 0);
+        assert!(level.test_ids_map().unwrap().is_empty());
+        assert_eq!(level.test_buckets().unwrap()[0].occupied(), 0);
     }
 
     #[test]
@@ -733,30 +921,76 @@ mod tests {
             .build()
             .unwrap();
 
-        level.buckets[0].insert(rec0.clone(), 1u32);
-        level
-            .ids_map
-            .insert(1u32, (0, level.buckets[0].occupied() - 1));
+        level.test_buckets_mut().unwrap()[0].insert(rec0.clone(), 1u32);
+        let occ0 = level.test_buckets().unwrap()[0].occupied() - 1;
+        level.test_ids_map_mut().unwrap().insert(1u32, (0, occ0));
 
-        level.buckets[1].insert(rec1.clone(), 2u32);
-        level
-            .ids_map
-            .insert(2u32, (1, level.buckets[1].occupied() - 1));
+        level.test_buckets_mut().unwrap()[1].insert(rec1.clone(), 2u32);
+        let occ1 = level.test_buckets().unwrap()[1].occupied() - 1;
+        level.test_ids_map_mut().unwrap().insert(2u32, (1, occ1));
 
-        level.buckets[1].insert(rec1b.clone(), 3u32);
-        level
-            .ids_map
-            .insert(3u32, (1, level.buckets[1].occupied() - 1));
+        level.test_buckets_mut().unwrap()[1].insert(rec1b.clone(), 3u32);
+        let occ1b = level.test_buckets().unwrap()[1].occupied() - 1;
+        level.test_ids_map_mut().unwrap().insert(3u32, (1, occ1b));
 
-        let (data, ids) = level.get_data();
+        let (data, ids) = level.storage.get_data().unwrap();
         // ids should be in bucket order then insertion order
         assert_eq!(ids, vec![1u32, 2u32, 3u32]);
         // data is flattened concatenation
         let expected = [rec0, rec1, rec1b].concat();
         assert_eq!(data, expected);
         // after get_data, ids_map cleared and buckets empty
-        assert!(level.ids_map.is_empty());
-        assert_eq!(level.buckets.iter().map(|b| b.occupied()).sum::<usize>(), 0);
+        assert!(level.test_ids_map().unwrap().is_empty());
+        assert_eq!(
+            level
+                .test_buckets()
+                .unwrap()
+                .iter()
+                .map(|b| b.occupied())
+                .sum::<usize>(),
+            0
+        );
+    }
+
+    #[test]
+    fn test_level_index_get_data_cold() -> DliResult<()> {
+        use tempfile::NamedTempFile;
+
+        let input_shape = 3;
+        let tmp = NamedTempFile::new()?;
+        let data_path = tmp.path().to_path_buf();
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .cold_data_path(data_path.clone())
+            .build()
+            .unwrap();
+
+        // Insert some data
+        let rec0 = vec![1.0f32, 2.0, 3.0];
+        let rec1 = vec![4.0f32, 5.0, 6.0];
+        let records = rec0
+            .iter()
+            .chain(rec1.iter())
+            .cloned()
+            .collect::<Vec<f32>>();
+        level.insert_many(records, vec![1u32, 2u32])?;
+
+        // Files should exist
+        assert!(data_path.exists());
+
+        // Now get_data should load from disk
+        let (data, ids) = level.storage.get_data()?;
+
+        // Verify data
+        assert_eq!(ids, vec![1u32, 2u32]);
+        let expected_data = rec0.into_iter().chain(rec1).collect::<Vec<f32>>();
+        assert_eq!(data, expected_data);
+        Ok(())
     }
 
     #[test]
@@ -806,14 +1040,14 @@ mod tests {
             .build()?;
 
         // Verify the level was created correctly
-        assert_eq!(level.n_buckets(), 2);
-        assert_eq!(level.occupied(), 3); // 2 + 1 records
-        assert_eq!(level.buckets[0].occupied(), 2);
-        assert_eq!(level.buckets[1].occupied(), 1);
+        assert_eq!(level.storage.n_buckets(), 2);
+        assert_eq!(level.storage.occupied(), 3); // 2 + 1 records
+        assert_eq!(level.test_buckets().unwrap()[0].occupied(), 2);
+        assert_eq!(level.test_buckets().unwrap()[1].occupied(), 1);
 
         // Verify the records are correct
-        assert_eq!(level.buckets[0].ids, vec![1u32, 2u32]);
-        assert_eq!(level.buckets[1].ids, vec![3u32]);
+        assert_eq!(level.test_buckets().unwrap()[0].ids, vec![1u32, 2u32]);
+        assert_eq!(level.test_buckets().unwrap()[1].ids, vec![3u32]);
 
         Ok(())
     }
@@ -840,39 +1074,39 @@ mod tests {
 
         // 2. Insert A
         level.insert_many(rec_a.clone(), vec![id_a])?;
-        assert_eq!(level.ids_map.get(&id_a), Some(&(0, 0)));
+        assert_eq!(level.test_ids_map().unwrap().get(&id_a), Some(&(0, 0)));
 
         // 3. Insert B
         level.insert_many(rec_b.clone(), vec![id_b])?;
-        assert_eq!(level.ids_map.get(&id_a), Some(&(0, 0)));
-        assert_eq!(level.ids_map.get(&id_b), Some(&(0, 1)));
+        assert_eq!(level.test_ids_map().unwrap().get(&id_a), Some(&(0, 0)));
+        assert_eq!(level.test_ids_map().unwrap().get(&id_b), Some(&(0, 1)));
 
         // 4. Delete A
         // Since we have [A, B], deleting A (idx 0) should swap B (last) to idx 0.
-        level.delete(&id_a, &DeleteMethod::OidToBucket);
+        level.storage.delete(&id_a, &DeleteMethod::OidToBucket);
 
-        assert!(!level.ids_map.contains_key(&id_a));
+        assert!(!level.test_ids_map().unwrap().contains_key(&id_a));
         assert_eq!(
-            level.ids_map.get(&id_b),
+            level.test_ids_map().unwrap().get(&id_b),
             Some(&(0, 0)),
             "B should have moved to index 0"
         );
 
         // Verify bucket content
-        assert_eq!(level.buckets[0].occupied(), 1);
-        assert_eq!(level.buckets[0].record(0), rec_b.as_slice());
+        assert_eq!(level.test_buckets().unwrap()[0].occupied(), 1);
+        assert_eq!(level.test_buckets().unwrap()[0].record(0), rec_b.as_slice());
 
         // 5. Insert C
         level.insert_many(rec_c.clone(), vec![id_c])?;
 
         // 6. Verify ids_map consistency
-        assert_eq!(level.ids_map.get(&id_b), Some(&(0, 0)));
-        assert_eq!(level.ids_map.get(&id_c), Some(&(0, 1)));
+        assert_eq!(level.test_ids_map().unwrap().get(&id_b), Some(&(0, 0)));
+        assert_eq!(level.test_ids_map().unwrap().get(&id_c), Some(&(0, 1)));
 
         // 7. Verify bucket data
-        assert_eq!(level.buckets[0].occupied(), 2);
-        assert_eq!(level.buckets[0].record(0), rec_b.as_slice());
-        assert_eq!(level.buckets[0].record(1), rec_c.as_slice());
+        assert_eq!(level.test_buckets().unwrap()[0].occupied(), 2);
+        assert_eq!(level.test_buckets().unwrap()[0].record(0), rec_b.as_slice());
+        assert_eq!(level.test_buckets().unwrap()[0].record(1), rec_c.as_slice());
 
         Ok(())
     }
@@ -889,15 +1123,15 @@ mod tests {
             .build()?;
 
         // Initial state check
-        assert_eq!(level.occupied(), 0);
-        assert!(level.ids_map.is_empty());
+        assert_eq!(level.storage.occupied(), 0);
+        assert!(level.test_ids_map().unwrap().is_empty());
 
         // Call insert_many with empty vectors
         level.insert_many(vec![], vec![])?;
 
         // Verify state hasn't changed
-        assert_eq!(level.occupied(), 0);
-        assert!(level.ids_map.is_empty());
+        assert_eq!(level.storage.occupied(), 0);
+        assert!(level.test_ids_map().unwrap().is_empty());
 
         Ok(())
     }
@@ -919,52 +1153,143 @@ mod tests {
             .build()?;
 
         // 1. Initialization
-        assert_eq!(level.size(), 20);
-        assert_eq!(level.occupied(), 0);
-        assert_eq!(level.free_space(), 20);
-        assert_eq!(level.n_empty_buckets(), 2);
+        assert_eq!(level.storage.size(), 20);
+        assert_eq!(level.storage.occupied(), 0);
+        assert_eq!(level.storage.free_space(), 20);
+        assert_eq!(level.storage.n_empty_buckets(), 2);
 
         // 2. Manual Insertion to control distribution
         // Insert into bucket 0
-        let rec1 = vec![1.0, 1.0];
-        let id1 = 1u32;
-        level.buckets[0].insert(rec1.clone(), id1);
-        level.ids_map.insert(id1, (0, 0));
-        level.record_count += 1;
+        let recs = vec![1.0, 1.0, 2.0, 2.0, 3.0, 3.0];
+        let ids = vec![1u32, 2u32, 3u32];
+        level.insert_many(recs, ids).unwrap();
 
-        assert_eq!(level.size(), 20);
-        assert_eq!(level.occupied(), 1);
-        assert_eq!(level.free_space(), 19);
-        assert_eq!(level.n_empty_buckets(), 1);
+        assert_eq!(level.storage.occupied(), 3);
+        assert_eq!(level.storage.free_space(), 17);
 
-        // 3. Insert into bucket 1
-        let rec2 = vec![2.0, 2.0];
-        let id2 = 2u32;
-        level.buckets[1].insert(rec2.clone(), id2);
-        level.ids_map.insert(id2, (1, 0));
-        level.record_count += 1;
+        level.storage.delete(&2u32, &DeleteMethod::OidToBucket);
 
-        assert_eq!(level.occupied(), 2);
-        assert_eq!(level.free_space(), 18);
-        assert_eq!(level.n_empty_buckets(), 0);
+        assert_eq!(level.storage.occupied(), 2);
+        assert_eq!(level.storage.free_space(), 18);
 
-        // 4. Insert another into bucket 0
-        let rec3 = vec![3.0, 3.0];
-        let id3 = 3u32;
-        level.buckets[0].insert(rec3.clone(), id3);
-        level.ids_map.insert(id3, (0, 1));
-        level.record_count += 1;
+        Ok(())
+    }
 
-        assert_eq!(level.occupied(), 3);
-        assert_eq!(level.free_space(), 17);
-        assert_eq!(level.n_empty_buckets(), 0);
+    #[test]
+    fn test_cold_storage_delete_marks_deleted() -> DliResult<()> {
+        use tempfile::NamedTempFile;
 
-        // 5. Deletion from bucket 1 (making it empty)
-        level.delete(&id2, &DeleteMethod::OidToBucket);
+        let input_shape = 3;
+        let tmp = NamedTempFile::new()?;
+        let data_path = tmp.path().to_path_buf();
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .cold_data_path(data_path.clone())
+            .build()?;
 
-        assert_eq!(level.occupied(), 2);
-        assert_eq!(level.free_space(), 18);
-        assert_eq!(level.n_empty_buckets(), 1);
+        // Insert some data to make it cold
+        let rec0 = vec![1.0f32, 2.0, 3.0];
+        let rec1 = vec![4.0f32, 5.0, 6.0];
+        let records = rec0
+            .iter()
+            .chain(rec1.iter())
+            .cloned()
+            .collect::<Vec<f32>>();
+        level.insert_many(records, vec![1u32, 2u32])?;
+
+        // Delete ID 1
+        let result = level.storage.delete(&1u32, &DeleteMethod::OidToBucket);
+        assert!(result);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cold_storage_read_bucket_filters_deleted() -> DliResult<()> {
+        use tempfile::NamedTempFile;
+
+        let input_shape = 3;
+        let tmp = NamedTempFile::new()?;
+        let data_path = tmp.path().to_path_buf();
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .cold_data_path(data_path.clone())
+            .build()?;
+
+        // Insert data
+        let rec0 = vec![1.0f32, 2.0, 3.0];
+        let rec1 = vec![4.0f32, 5.0, 6.0];
+        let records = rec0
+            .iter()
+            .chain(rec1.iter())
+            .cloned()
+            .collect::<Vec<f32>>();
+        level.insert_many(records, vec![1u32, 2u32])?;
+
+        // Mark ID 1 as deleted
+        level.storage.delete(&1u32, &DeleteMethod::OidToBucket);
+
+        // Read bucket
+        if let StorageContainer::Cold(cold) = &level.storage.container {
+            let bucket = cold.read_bucket(0)?;
+            assert_eq!(bucket.occupied(), 1);
+            assert_eq!(bucket.ids, vec![2u32]);
+            assert_eq!(bucket.record(0), &[4.0f32, 5.0, 6.0]);
+        } else {
+            panic!("Expected cold storage");
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_cold_storage_get_data_filters_deleted() -> DliResult<()> {
+        use tempfile::NamedTempFile;
+
+        let input_shape = 3;
+        let tmp = NamedTempFile::new()?;
+        let data_path = tmp.path().to_path_buf();
+        let mut level = LevelIndexBuilder::<f32>::default()
+            .n_buckets(1)
+            .input_shape(input_shape)
+            .bucket_size(100)
+            .model(ModelConfig::default())
+            .model_device(ModelDevice::Cpu)
+            .distance_fn(DistanceFn::Dot)
+            .cold_data_path(data_path.clone())
+            .build()?;
+
+        // Insert data
+        let rec0 = vec![1.0f32, 2.0, 3.0];
+        let rec1 = vec![4.0f32, 5.0, 6.0];
+        let records = rec0
+            .iter()
+            .chain(rec1.iter())
+            .cloned()
+            .collect::<Vec<f32>>();
+        level.insert_many(records, vec![1u32, 2u32])?;
+
+        // Mark ID 1 as deleted
+        level.storage.delete(&1u32, &DeleteMethod::OidToBucket);
+
+        // Get data
+        if let StorageContainer::Cold(cold) = &mut level.storage.container {
+            let (data, ids) = cold.get_data()?;
+            assert_eq!(ids, vec![2u32]);
+            assert_eq!(data, vec![4.0f32, 5.0, 6.0]);
+        } else {
+            panic!("Expected cold storage");
+        }
 
         Ok(())
     }
@@ -980,8 +1305,7 @@ mod tests {
             .build()
             .expect("Failed to build LevelIndex");
 
-        assert_eq!(level.record_count, 0);
-        assert_eq!(level.occupied(), 0);
+        assert_eq!(level.storage.occupied(), 0);
     }
 
     #[test]
@@ -1001,8 +1325,7 @@ mod tests {
 
         level.insert_many(records.iter().flatten().copied().collect(), ids.clone())?;
 
-        assert_eq!(level.record_count, 3);
-        assert_eq!(level.occupied(), 3);
+        assert_eq!(level.storage.occupied(), 3);
 
         Ok(())
     }
@@ -1018,14 +1341,12 @@ mod tests {
             .distance_fn(DistanceFn::Dot)
             .build()?;
 
-        assert_eq!(level.record_count, 0);
-        assert_eq!(level.occupied(), 0);
+        assert_eq!(level.storage.occupied(), 0);
 
         let rec1 = vec![1.0, 2.0];
         level.insert_many(rec1, vec![1u32])?;
 
-        assert_eq!(level.record_count, 1);
-        assert_eq!(level.occupied(), 1);
+        assert_eq!(level.storage.occupied(), 1);
 
         Ok(())
     }
@@ -1041,21 +1362,19 @@ mod tests {
             .distance_fn(DistanceFn::Dot)
             .build()?;
 
-        assert_eq!(level.record_count, 0);
+        assert_eq!(level.storage.occupied(), 0);
 
         let records = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let ids = vec![1u32, 2u32];
         level.insert_many(records, ids)?;
 
-        assert_eq!(level.record_count, 2);
-        assert_eq!(level.occupied(), 2);
+        assert_eq!(level.storage.occupied(), 2);
 
         let records = vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0];
         let ids = vec![3u32, 4u32, 5u32];
         level.insert_many(records, ids)?;
 
-        assert_eq!(level.record_count, 5);
-        assert_eq!(level.occupied(), 5);
+        assert_eq!(level.storage.occupied(), 5);
 
         Ok(())
     }
@@ -1075,13 +1394,11 @@ mod tests {
         let ids = vec![1u32, 2u32];
         level.insert_many(records, ids)?;
 
-        assert_eq!(level.record_count, 2);
-        assert_eq!(level.occupied(), 2);
+        assert_eq!(level.storage.occupied(), 2);
 
-        level.delete(&1u32, &DeleteMethod::OidToBucket);
+        level.storage.delete(&1u32, &DeleteMethod::OidToBucket);
 
-        assert_eq!(level.record_count, 1);
-        assert_eq!(level.occupied(), 1);
+        assert_eq!(level.storage.occupied(), 1);
 
         Ok(())
     }
@@ -1101,19 +1418,16 @@ mod tests {
         let ids = vec![1u32, 2u32, 3u32];
         level.insert_many(records, ids)?;
 
-        assert_eq!(level.record_count, 3);
+        assert_eq!(level.storage.occupied(), 3);
 
-        level.delete(&1u32, &DeleteMethod::OidToBucket);
-        assert_eq!(level.record_count, 2);
-        assert_eq!(level.occupied(), 2);
+        level.storage.delete(&1u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.storage.occupied(), 2);
 
-        level.delete(&2u32, &DeleteMethod::OidToBucket);
-        assert_eq!(level.record_count, 1);
-        assert_eq!(level.occupied(), 1);
+        level.storage.delete(&2u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.storage.occupied(), 1);
 
-        level.delete(&3u32, &DeleteMethod::OidToBucket);
-        assert_eq!(level.record_count, 0);
-        assert_eq!(level.occupied(), 0);
+        level.storage.delete(&3u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.storage.occupied(), 0);
 
         Ok(())
     }
@@ -1133,13 +1447,11 @@ mod tests {
         let ids = vec![1u32, 2u32, 3u32];
         level.insert_many(records, ids)?;
 
-        assert_eq!(level.record_count, 3);
-        assert_eq!(level.occupied(), 3);
+        assert_eq!(level.storage.occupied(), 3);
 
-        let (_data, _ids) = level.get_data();
+        let (_data, _ids) = level.storage.get_data().unwrap();
 
-        assert_eq!(level.record_count, 0);
-        assert_eq!(level.occupied(), 0);
+        assert_eq!(level.storage.occupied(), 0);
 
         Ok(())
     }
@@ -1155,32 +1467,31 @@ mod tests {
             .distance_fn(DistanceFn::Dot)
             .build()?;
 
-        assert_eq!(level.record_count, 0);
+        assert_eq!(level.storage.occupied(), 0);
 
         let records = vec![1.0, 2.0, 3.0, 4.0];
         let ids = vec![1u32, 2u32];
         level.insert_many(records, ids)?;
-        assert_eq!(level.record_count, 2);
+        assert_eq!(level.storage.occupied(), 2);
 
         let records = vec![5.0, 6.0];
         let ids = vec![3u32];
         level.insert_many(records, ids)?;
-        assert_eq!(level.record_count, 3);
+        assert_eq!(level.storage.occupied(), 3);
 
-        level.delete(&2u32, &DeleteMethod::OidToBucket);
-        assert_eq!(level.record_count, 2);
+        level.storage.delete(&2u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.storage.occupied(), 2);
 
         let records = vec![7.0, 8.0, 9.0, 10.0];
         let ids = vec![4u32, 5u32];
         level.insert_many(records, ids)?;
-        assert_eq!(level.record_count, 4);
+        assert_eq!(level.storage.occupied(), 4);
 
-        level.delete(&1u32, &DeleteMethod::OidToBucket);
-        assert_eq!(level.record_count, 3);
+        level.storage.delete(&1u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.storage.occupied(), 3);
 
-        let (_data, _ids) = level.get_data();
-        assert_eq!(level.record_count, 0);
-        assert_eq!(level.occupied(), 0);
+        let (_data, _ids) = level.storage.get_data().unwrap();
+        assert_eq!(level.storage.occupied(), 0);
 
         Ok(())
     }
@@ -1200,13 +1511,12 @@ mod tests {
         let ids = vec![1u32];
         level.insert_many(records, ids)?;
 
-        assert_eq!(level.record_count, 1);
+        assert_eq!(level.storage.occupied(), 1);
 
-        let result = level.delete(&999u32, &DeleteMethod::OidToBucket);
-        assert!(result.is_none());
+        let result = level.storage.delete(&999u32, &DeleteMethod::OidToBucket);
+        assert!(!result);
 
-        assert_eq!(level.record_count, 1);
-        assert_eq!(level.occupied(), 1);
+        assert_eq!(level.storage.occupied(), 1);
 
         Ok(())
     }
@@ -1222,24 +1532,23 @@ mod tests {
             .distance_fn(DistanceFn::Dot)
             .build()?;
 
-        assert_eq!(level.record_count, 0);
-        assert_eq!(level.n_buckets(), 2);
+        assert_eq!(level.storage.occupied(), 0);
+        assert_eq!(level.storage.n_buckets(), 2);
 
         let records = vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0];
         let ids = vec![1u32, 2u32, 3u32];
         level.insert_many(records, ids)?;
 
-        assert_eq!(level.record_count, 3);
-        assert_eq!(level.occupied(), 3);
+        assert_eq!(level.storage.occupied(), 3);
 
-        level.delete(&1u32, &DeleteMethod::OidToBucket);
-        assert_eq!(level.record_count, 2);
+        level.storage.delete(&1u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.storage.occupied(), 2);
 
-        level.delete(&2u32, &DeleteMethod::OidToBucket);
-        assert_eq!(level.record_count, 1);
+        level.storage.delete(&2u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.storage.occupied(), 1);
 
-        level.delete(&3u32, &DeleteMethod::OidToBucket);
-        assert_eq!(level.record_count, 0);
+        level.storage.delete(&3u32, &DeleteMethod::OidToBucket);
+        assert_eq!(level.storage.occupied(), 0);
 
         Ok(())
     }
