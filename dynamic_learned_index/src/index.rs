@@ -509,6 +509,9 @@ impl<F: FloatElement + VectorType> CompactionStrategy<F> {
         // Try to move data to the upper level
         let upper_level_idx = level_idx - 1;
         if index.levels[upper_level_idx].free_space() >= level_occupied {
+            if upper_level_idx == 0 {
+                return None;
+            }
             return Some((level_idx, upper_level_idx));
         }
         // Top up current level from upper level
@@ -552,6 +555,7 @@ fn move_data<F: FloatElement>(
     let mut ids = Vec::with_capacity(from_levels_occupied);
     for idx in from_level_idxs {
         let (level_data, level_ids) = index.levels[*idx].get_data();
+        assert!(index.levels[*idx].occupied() == 0);
         data.extend(level_data);
         ids.extend(level_ids);
     }
