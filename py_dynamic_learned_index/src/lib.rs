@@ -317,6 +317,21 @@ impl _DynamicLearnedIndexF16 {
         })
     }
 
+    fn insert_bulk<'py>(
+        &mut self,
+        py: Python<'_>,
+        records: Bound<'py, PyArrayDyn<f16>>,
+        ids: Bound<'py, PyArray1<u32>>,
+    ) -> PyResult<()> {
+        let records = array2vec(records);
+        let ids = array2vec_u32(ids);
+        py.detach(|| {
+            self.index
+                .insert_bulk(records, ids)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+        })
+    }
+
     fn delete(&mut self, id: u32) -> PyResult<Option<(Vec<u16>, u32)>> {
         let deleted = self
             .index
@@ -392,6 +407,16 @@ fn array2vec<'py>(x: Bound<'py, PyArrayDyn<f16>>) -> Vec<half::f16> {
 
 fn array2vec_f32<'py>(x: PyReadonlyArray1<'py, f32>) -> Vec<f32> {
     x.as_array().iter().copied().collect()
+}
+
+fn array2vec_u32<'py>(x: Bound<'py, PyArray1<u32>>) -> Vec<u32> {
+    let view = x.readonly();
+    if let Ok(slice) = view.as_slice() {
+        return slice.to_vec();
+    }
+    // Fallback for non-contiguous arrays
+    let array = view.as_array();
+    array.iter().cloned().collect()
 }
 
 fn f16tou16_vec(x: Vec<half::f16>) -> Vec<u16> {
@@ -502,6 +527,21 @@ impl _DynamicLearnedIndexF32 {
         py.detach(|| {
             self.index
                 .insert(record, id)
+                .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
+        })
+    }
+
+    fn insert_bulk<'py>(
+        &mut self,
+        py: Python<'_>,
+        records: PyReadonlyArray1<'py, f32>,
+        ids: Bound<'py, PyArray1<u32>>,
+    ) -> PyResult<()> {
+        let records = array2vec_f32(records);
+        let ids = array2vec_u32(ids);
+        py.detach(|| {
+            self.index
+                .insert_bulk(records, ids)
                 .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))
         })
     }

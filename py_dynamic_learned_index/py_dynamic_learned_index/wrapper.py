@@ -176,6 +176,11 @@ class DynamicLearnedIndex:
         """Insert a vector with given id."""
         self._index.insert(query, id)
 
+    def insert_bulk(self, records: np.ndarray, ids: np.ndarray) -> None:
+        """Insert multiple vectors with given ids."""
+        self._index.insert_bulk(records, ids)
+
+
     def delete(self, id: int):
         """Delete the vector with given id."""
         return self._index.delete(id)

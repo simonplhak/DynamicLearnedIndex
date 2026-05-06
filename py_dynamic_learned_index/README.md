@@ -40,6 +40,36 @@ results = index.search(query, k=10)  # Returns top-10 nearest neighbors
 index.delete(id=1)
 ```
 
+## Bulk Insertion
+
+For efficient insertion of large datasets, use `insert_bulk()` which creates all necessary index levels at once and trains the final level with your data. This is significantly faster than inserting vectors one-by-one.
+
+**Important**: `insert_bulk()` can only be called on an empty index.
+
+```python
+import numpy as np
+from py_dynamic_learned_index import DynamicLearnedIndexBuilder
+
+# Create an empty index
+index = DynamicLearnedIndexBuilder(
+    input_shape=768,
+    buffer_size=5000,
+    bucket_size=5000
+).build()
+
+# Prepare bulk data
+n_vectors = 100000
+vectors = np.random.randn(n_vectors, 768).astype(np.float32)
+ids = np.arange(n_vectors, dtype=np.uint32)
+
+# Insert all vectors at once
+index.insert_bulk(vectors, ids)
+
+# Now you can search
+query = vectors[0]
+results = index.search(query, k=10)
+```
+
 ## Configuration
 
 The index supports various configuration options to optimize for your use case:

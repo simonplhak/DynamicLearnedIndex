@@ -346,6 +346,53 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
         serde_json::to_writer(meta_file, &disk_index)?;
         Ok(())
     }
+
+    #[log_time]
+    pub fn insert_bulk(&mut self, records: Vec<F>, ids: Vec<Id>) -> DliResult<()> {
+        assert!(
+            self.levels.is_empty() && self.buffer.occupied() == 0,
+            "insert_bulk can only be called on an empty index"
+        );
+        assert!(!ids.is_empty(), "Cannot insert empty bulk data");
+        assert_eq!(
+            records.len() % self.input_shape,
+            0,
+            "Records length must be divisible by input_shape"
+        );
+        let n_records = ids.len();
+        assert_eq!(
+            records.len() / self.input_shape,
+            n_records,
+            "Records and ids length mismatch"
+        );
+
+        // Calculate bucket size for capacity calculation
+        let bucket_size = self.levels_config.bucket_size;
+
+        // Calculate the minimum level needed to fit all records
+        // Each level i (0-indexed) has arity^(i+1) buckets
+        // Each bucket can hold bucket_size records
+        // Total capacity at level i = arity^(i+1) * bucket_size
+        let min_level = ((n_records as f64 / bucket_size as f64)
+            .log(self.arity as f64)
+            .ceil()
+            - 1.0) as usize;
+        for _ in 0..=min_level {
+            self.add_level()?;
+        }
+
+        let target_level = &mut self.levels[min_level];
+        debug!("insert_bulk:training_level");
+        target_level.train(&records)?;
+        debug!(
+            level_idx = min_level,
+            data_size = n_records;
+            "insert_bulk:inserting_data"
+        );
+        target_level.insert_many(records, ids)?;
+
+        Ok(())
+    }
 }
 
 // Generic version used in your actual logic
@@ -1964,6 +2011,102 @@ mod tests {
             "Recall should be higher than 90%, got {:.2}%",
             recall * 100.0
         );
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_bulk_creates_single_level() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.levels.bucket_size = 10;
+        let mut index = IndexBuilder::<f32>::from_config(config).build()?;
+
+        // Create bulk data that fits in a single level
+        let n_records = 5;
+        let mut records = Vec::new();
+        let mut ids = Vec::new();
+        for i in 0..n_records {
+            records.push(i as f32);
+            records.push((i + 1) as f32);
+            records.push((i + 2) as f32);
+            ids.push(i as u32 + 1);
+        }
+
+        // Verify no levels exist initially
+        assert_eq!(index.levels.len(), 0);
+
+        // Insert bulk data
+        index.insert_bulk(records, ids)?;
+
+        // Verify exactly one level was created
+        assert_eq!(index.levels.len(), 1);
+        // Verify all records were inserted
+        assert_eq!(index.level_occupied(0), n_records);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_bulk_creates_multiple_levels() -> DliResult<()> {
+        let mut config = create_test_config();
+        config.buffer_size = 4;
+        config.levels.bucket_size = 4;
+        let mut index = IndexBuilder::<f32>::from_config(config).build()?;
+
+        // Create bulk data that requires multiple levels
+        // With bucket_size=4 and arity=2: level 0 has 2 buckets (capacity 8), level 1 has 4 buckets (capacity 16)
+        let n_records = 20;
+        let mut records = Vec::new();
+        let mut ids = Vec::new();
+        for i in 0..n_records {
+            records.push(i as f32);
+            records.push((i + 1) as f32);
+            records.push((i + 2) as f32);
+            ids.push(i as u32 + 1);
+        }
+
+        // Insert bulk data
+        index.insert_bulk(records, ids)?;
+
+        // Verify multiple levels were created (level 0 capacity: 8, level 1 capacity: 16, need 20 so level 2 with 32 capacity)
+        assert!(index.levels.len() >= 2);
+        // Verify all records are in the highest level
+        assert_eq!(index.level_occupied(index.levels.len() - 1), n_records);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_insert_bulk_large_dataset() -> DliResult<()> {
+        let mut config = create_test_config();
+        // Set a small bucket size to force multiple levels
+        config.levels.bucket_size = 4;
+        let mut index = IndexBuilder::<f32>::from_config(config).build()?;
+
+        // Bulk insert a large amount of data that requires multiple levels
+        // With bucket_size=4 and arity=2:
+        // level 0: 2 buckets * 4 = 8 records capacity
+        // level 1: 4 buckets * 4 = 16 records capacity
+        // level 2: 8 buckets * 4 = 32 records capacity
+        // So 40 records needs level 3
+        let n_records = 40;
+        let mut records = Vec::new();
+        let mut ids = Vec::new();
+        for i in 0..n_records {
+            records.push(i as f32);
+            records.push((i + 10) as f32);
+            records.push((i + 20) as f32);
+            ids.push(i as u32 + 1);
+        }
+        index.insert_bulk(records, ids)?;
+
+        // Verify that the appropriate number of levels were created
+        assert!(index.levels.len() >= 2);
+        // Verify total records across all levels
+        let total_records_in_levels: usize = (0..index.levels.len())
+            .map(|i| index.level_occupied(i))
+            .sum();
+        assert_eq!(total_records_in_levels, n_records);
 
         Ok(())
     }
