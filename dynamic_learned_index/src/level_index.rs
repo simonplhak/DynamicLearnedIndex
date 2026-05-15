@@ -54,11 +54,7 @@ impl<F: FloatElement> Storage<F> {
     pub(crate) fn free_space(&self) -> usize {
         let size = self.size();
         let occupied = self.occupied();
-        if size > occupied {
-            size - occupied
-        } else {
-            0
-        }
+        size.saturating_sub(occupied)
     }
 
     pub(crate) fn n_buckets(&self) -> usize {

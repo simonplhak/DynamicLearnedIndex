@@ -1,6 +1,6 @@
 mod bucket;
-pub mod cold_storage;
 mod clustering;
+pub mod cold_storage;
 // mod compaction_strategy;
 mod constants;
 mod errors;

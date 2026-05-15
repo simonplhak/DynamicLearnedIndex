@@ -131,13 +131,9 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
                 buckets2visit.sort_by(|a, b| b.2.total_cmp(&a.2));
                 let mut total_occupied = 0;
                 let mut visited_buckets = 0;
-                for (level_idx, _bucket_id, _prob, occupied) in &buckets2visit {
+                for (_level_idx, _bucket_id, _prob, occupied) in &buckets2visit {
                     if total_occupied < ncandidates {
-                        if *level_idx == levels {
-                            total_occupied += occupied;
-                        } else {
-                            total_occupied += occupied;
-                        }
+                        total_occupied += occupied;
                         visited_buckets += 1;
                     } else {
                         break;

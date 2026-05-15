@@ -169,13 +169,7 @@ impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {
         let predictions = tensor2vec(&res);
         Ok(predictions
             .chunks_exact(self.labels)
-            .map(|chunk| {
-                chunk
-                    .into_iter()
-                    .enumerate()
-                    .map(|(i, v)| (i, *v))
-                    .collect()
-            })
+            .map(|chunk| chunk.iter().enumerate().map(|(i, v)| (i, *v)).collect())
             .collect())
     }
 

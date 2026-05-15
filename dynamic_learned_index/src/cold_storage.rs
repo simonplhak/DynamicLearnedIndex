@@ -314,7 +314,7 @@ impl<F: FloatElement> ColdStorage<F> {
             let byte_offset = block_idx as u64 * BLOCK_SIZE as u64;
             self.data_file
                 .read_exact_at(buf.as_mut_slice(), byte_offset)?;
-            let (recs, ids) = decode_block::<F>(&*buf, input_shape)?;
+            let (recs, ids) = decode_block::<F>(&buf, input_shape)?;
             for (rec, id) in recs.chunks_exact(input_shape).zip(ids) {
                 if self.ids.contains(&id) {
                     all_records.extend(rec);
