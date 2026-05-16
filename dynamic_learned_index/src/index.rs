@@ -379,11 +379,7 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
 
         let res = res.into_iter().map(|(_, idx)| ids[idx]).collect();
         // // Update cache
-        for (cold_bucket, key) in cold_arena
-            .into_vec()
-            .into_iter()
-            .zip(cold_arena_keys.into_iter())
-        {
+        for (cold_bucket, key) in cold_arena.into_vec().into_iter().zip(cold_arena_keys) {
             cache_lock.put(key, cold_bucket);
         }
         Ok(res)
