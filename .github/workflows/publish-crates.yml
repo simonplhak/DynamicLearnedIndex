@@ -37,7 +37,7 @@ jobs:
         run: cargo clippy --workspace --exclude cli_dynamic_learned_index --no-default-features --features candle -- -D warnings
 
       - name: Run tests
-        run: cargo test --verbose -p dynamic_learned_index
+        run: cargo test --verbose -p dynamic_learned_index --no-default-features --features candle
 
   publish:
     name: Publish to crates.io
