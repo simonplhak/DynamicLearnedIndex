@@ -2,9 +2,34 @@
 
 A Rust implementation of a dynamic learned index for efficient search in unstructured data. The index uses a multi-level structure where each level contains a neural network model that learns to predict the most likely bucket containing the requested data. This enables fast approximate nearest neighbor search by leveraging learned models instead of traditional indexing.
 
-![High level overview of the index](images/highlevel.excalidraw.png "High level overview of the index")
 
-## Dev
+## Run
+
+
+If you want to build the `cli_dynamic_learned_index` workspace, you need to have hdf5 library installed on your system. You can install it via your package manager.
+
+
+Project provides basic CLI interface to quickly run experiments and build the index.
+
+```shell
+# either run with candle model
+cargo run -p cli_dynamic_learned_index --no-default-features --features candle
+
+# or install the libtorch and link it, for example like this
+cd py_dynamic_learned_index
+uv sync
+source .venv/bin/activate
+cargo run -p cli_dynamic_learned_index
+```
+
+Or run via Docker
+
+```shell
+docker build -t dli .
+docker run -it -v "$(pwd)/data/:/app/data/" -v "$(pwd)/configs/:/app/configs/" dli test
+```
+
+### Feature flags
 
 The whole project is written in Rust and uses `cargo` as a build system. The project is divided into several crates:
 
@@ -13,17 +38,6 @@ The whole project is written in Rust and uses `cargo` as a build system. The pro
 - `py_dynamic_learned_index`: Python crate that provides a Python interface to the dynamic learned index
 - `measure_time_macro`: Simple macro that enables logging time of the function through macro.
 
-### Run
-
-```shell
-cargo run -p cli_dynamic_learned_index
-```
-
-## Build
-
-If you want to build the `cli_dynamic_learned_index` workspace, you need to have hdf5 library installed on your system. You can install it via your package manager.
-
-### Feature flags
 
 **dynamic_learned_index** crate:
 
@@ -34,7 +48,7 @@ If you want to build the `cli_dynamic_learned_index` workspace, you need to have
 - `mkl`: enables the use of `mkl` library for linear algebra operations, can be used with `candle` feature to speed up training on CPU
 - `mix`: enables the use of mixed model of `tch` (training) and `candle` (predictions).
 
-**Note** It's not possible 
+**Note** It's not possible to have only `tch`, `candle` or `mix` feature enabled at the same time. 
 
 **cli_dynamic_learned_index** crate:
 
@@ -58,14 +72,15 @@ Setup python environment
 ```shell
 cd py_dynamic_learned_index
 uv sync
-uv run maturin develop --release
+source .venv/bin/activate
+maturin develop
 python -c "import py_dynamic_learned_index; print(py_dynamic_learned_index.__version__)"  # test installation
 ```
 
-Then you can install the package via pip:
-
+You can also run example python script:
 ```shell
-pip install ./target/wheels/py_dynamic_learned_index*.whl
+# make sure your virtual environment is activated
+python py_dynamic_learned_index/example.py
 ```
 
 Building the wheel in release mode:
@@ -73,7 +88,8 @@ Building the wheel in release mode:
 ```shell
 cd py_dynamic_learned_index
 uv sync
-uv run maturin build --release
+# --strip flag is needed due to the linking with pytorch
+maturin build --release --strip
 uv pip install ./target/wheels/py_dynamic_learned_index*.whl
 ```
 
