@@ -17,9 +17,9 @@ kentro = { version = "0.1.0" }
 rayon = { version = "1.10.0" }
 simsimd = { version = "6.4.9" }
 ndarray = "0.16.1"
-candle-nn = { git = "https://github.com/huggingface/candle.git", tag = "0.9.1", optional = true }
-candle-core = { git = "https://github.com/huggingface/candle.git", tag = "0.9.1", optional = true }
-flat-knn = { git = "https://github.com/simonplhak/flat-knn" }
+candle-nn = { git = "https://github.com/huggingface/candle.git", tag = "0.9.1", version = "0.9.1", optional = true }
+candle-core = { git = "https://github.com/huggingface/candle.git", tag = "0.9.1", version = "0.9.1", optional = true }
+flat-knn = { git = "https://github.com/simonplhak/flat-knn", version = "0.1.0" }
 bytemuck = "1.24.0"
 lru = "0.12"
 thiserror = "2.0.17"
