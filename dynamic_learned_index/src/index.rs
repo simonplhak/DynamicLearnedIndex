@@ -101,7 +101,6 @@ impl<F: FloatElement + flat_knn::VectorType> Index<F> {
         search_strategy: SearchStrategy,
     ) -> Records2Visit {
         match search_strategy {
-            SearchStrategy::Base(_nprobe) => todo!(),
             SearchStrategy::ModelDriven(ncandidates) => {
                 let arity = self.arity;
                 let normalize_probability =
@@ -864,40 +863,45 @@ impl<F: FloatElement> IndexBuilder<F> {
         distance_fn: DistanceFn,
         input_shape: usize,
     ) -> DliResult<LevelIndex<F>> {
-        if let Some(cold_path) = disk_level.cold_data_path {
-            // Cold level: load routing metadata from sidecar, build level with empty hot storage, then replace with cold.
-            // todo: this should be done directly in the builder
-            let meta_path = crate::cold_storage::meta_path_for(&cold_path);
-            let cold_storage_level = crate::cold_storage::ColdStorage::load(
-                &cold_path,
-                &meta_path,
-                input_shape,
-                disk_level.config.bucket_size,
-            )?;
-            let n_buckets = cold_storage_level.n_buckets();
-            let mut level = LevelIndexBuilder::<F>::default()
+        match disk_level {
+            DiskLevelIndex::Hot(disk_level) => LevelIndexBuilder::<F>::default()
                 .model(disk_level.config.model)
                 .distance_fn(distance_fn)
                 .model_device(device)
                 .bucket_size(disk_level.config.bucket_size)
                 .input_shape(input_shape)
-                .n_buckets(n_buckets)
-                .build()?;
-            level.storage.container = StorageContainer::Cold(cold_storage_level);
-            return Ok(level);
+                .buckets(
+                    disk_level.buckets,
+                    disk_level.records_path,
+                    disk_level.ids_path,
+                )
+                .build(),
+            DiskLevelIndex::Cold(disk_level) => {
+                // Cold level: load routing metadata from sidecar, build level with empty hot storage, then replace with cold.
+                let cold_path = &disk_level.cold_data_path;
+                let meta_path = crate::cold_storage::meta_path_for(cold_path);
+                let level_builder = LevelIndexBuilder::<F>::default()
+                    .model(disk_level.config.model)
+                    .distance_fn(distance_fn)
+                    .model_device(device)
+                    .bucket_size(disk_level.config.bucket_size)
+                    .input_shape(input_shape);
+                dbg!(disk_level.ids.len());
+                let cold_storage_level = crate::cold_storage::ColdStorage::load(
+                    cold_path,
+                    &meta_path,
+                    input_shape,
+                    disk_level.config.bucket_size,
+                    disk_level.ids.into_iter().collect(),
+                )?;
+                let n_buckets = cold_storage_level.n_buckets();
+                let mut level = level_builder.n_buckets(n_buckets).build()?;
+
+                level.storage.record_count = cold_storage_level.ids.len();
+                level.storage.container = StorageContainer::Cold(cold_storage_level);
+                Ok(level)
+            }
         }
-        LevelIndexBuilder::<F>::default()
-            .model(disk_level.config.model)
-            .distance_fn(distance_fn)
-            .model_device(device)
-            .bucket_size(disk_level.config.bucket_size)
-            .input_shape(input_shape)
-            .buckets(
-                disk_level.buckets,
-                disk_level.records_path,
-                disk_level.ids_path,
-            )
-            .build()
     }
 
     pub fn build(self) -> DliResult<Index<F>> {
@@ -1132,9 +1136,12 @@ mod tests {
 
     #[test]
     fn test_search_params_trait_tuple() {
-        let params = (3, SearchStrategy::Base(10)).into_search_params();
+        let params = (3, SearchStrategy::ModelDriven(10)).into_search_params();
         assert_eq!(params.k, 3);
-        assert!(matches!(params.search_strategy, SearchStrategy::Base(10)));
+        assert!(matches!(
+            params.search_strategy,
+            SearchStrategy::ModelDriven(10)
+        ));
     }
 
     #[test]
@@ -1278,6 +1285,311 @@ mod tests {
             n_levels_after_insert > 0,
             "Should have created levels during insertion"
         );
+
+        // Create test queries
+        let test_queries: Vec<Vec<f32>> = vec![
+            (0..input_shape).map(|i| i as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i + 5) as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i * 2) as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i + 3) as f32 / 15.0).collect(),
+            (0..input_shape)
+                .map(|i| ((i * 3) % 10) as f32 / 20.0)
+                .collect(),
+        ];
+
+        // Run queries and store results from original index
+        let original_results = test_queries
+            .iter()
+            .map(|query| index.search(query.as_slice(), 10))
+            .collect::<DliResult<Vec<_>>>()?;
+
+        // Also get verbose search statistics
+        let original_stats = test_queries
+            .iter()
+            .map(|query| index.search(query.as_slice(), 10))
+            .collect::<DliResult<Vec<_>>>()?;
+
+        // Save index to temporary directory
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let dump_dir = temp_dir.path().join("index_dump");
+        index.dump(&dump_dir)?;
+
+        // Verify meta file was created
+        let meta_path = dump_dir.join("meta.json");
+        assert!(meta_path.exists(), "Meta file should exist");
+
+        // Load index from disk
+        let loaded_index = IndexBuilder::from_disk(&dump_dir)?.build()?;
+
+        // Verify loaded index has same configuration
+        assert_eq!(loaded_index.arity, index.arity);
+        assert_eq!(loaded_index.buffer.size, index.buffer.size);
+        assert_eq!(loaded_index.input_shape, index.input_shape);
+        assert_eq!(
+            loaded_index.levels_config.bucket_size,
+            index.levels_config.bucket_size
+        );
+        assert!(matches!(loaded_index.distance_fn, DistanceFn::Dot));
+
+        // Verify loaded index has same data
+        assert_eq!(loaded_index.occupied(), occupied_after_insert);
+        assert_eq!(loaded_index.n_levels(), n_levels_after_insert);
+        assert_eq!(loaded_index.size(), index.size());
+        assert_eq!(loaded_index.n_buckets(), index.n_buckets());
+
+        // Run same queries on loaded index
+        let loaded_results = test_queries
+            .iter()
+            .map(|query| loaded_index.search(query.as_slice(), 10))
+            .collect::<DliResult<Vec<_>>>()?;
+
+        let loaded_stats = test_queries
+            .iter()
+            .map(|query| loaded_index.search(query.as_slice(), 10))
+            .collect::<DliResult<Vec<_>>>()?;
+
+        // Verify search results match
+        assert_eq!(original_results.len(), loaded_results.len());
+        for (i, (orig, loaded)) in original_results
+            .iter()
+            .zip(loaded_results.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                orig, loaded,
+                "Query {i} results should match between original and loaded index"
+            );
+        }
+
+        // Verify search statistics match
+        for (i, (orig_ids, loaded_ids)) in
+            original_stats.iter().zip(loaded_stats.iter()).enumerate()
+        {
+            assert_eq!(orig_ids, loaded_ids, "Query {i} IDs should match");
+        }
+
+        // Verify buffer contents match
+        assert_eq!(
+            index.buffer.occupied(),
+            loaded_index.buffer.occupied(),
+            "Buffer occupancy should match"
+        );
+
+        // Verify each level matches
+        for level_idx in 0..n_levels_after_insert {
+            let orig_level = &index.levels[level_idx];
+            let loaded_level = &loaded_index.levels[level_idx];
+
+            assert_eq!(
+                orig_level.storage.occupied(),
+                loaded_level.storage.occupied(),
+                "Level {level_idx} occupancy should match"
+            );
+            assert_eq!(
+                orig_level.storage.n_buckets(),
+                loaded_level.storage.n_buckets(),
+                "Level {level_idx} bucket count should match"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_save_and_load_cold_storage() -> DliResult<()> {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cold_dump_dir = temp_dir.path().join("index_dump");
+        // Build an index with specific configuration
+        let input_shape = 10;
+        let mut index = IndexBuilder::default()
+            .arity(2)
+            .bucket_size(10)
+            .buffer_size(10)
+            .input_shape(input_shape)
+            .distance_fn(DistanceFn::Dot)
+            .cold_cache_size_bytes(10)
+            .cold_storage_dir(cold_dump_dir)
+            .cold_threshold_level(0)
+            .build()?;
+
+        // Verify initial configuration
+        assert_eq!(index.arity, 2);
+        assert_eq!(index.buffer.size, 10);
+        assert_eq!(index.levels_config.bucket_size, 10);
+        assert_eq!(index.input_shape, input_shape);
+
+        // Insert 1000 records into the index
+        for i in 0..100 {
+            let record: Vec<f32> = (0..input_shape)
+                .map(|j| ((i * input_shape + j) % 100) as f32 / 100.0)
+                .collect();
+            index.insert(record, i as u32)?;
+        }
+
+        // Verify data was inserted
+        let occupied_after_insert = index.occupied();
+        assert_eq!(occupied_after_insert, 100);
+        let n_levels_after_insert = index.n_levels();
+        assert!(
+            n_levels_after_insert > 0,
+            "Should have created levels during insertion"
+        );
+
+        // Create test queries
+        let test_queries: Vec<Vec<f32>> = vec![
+            (0..input_shape).map(|i| i as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i + 5) as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i * 2) as f32 / 10.0).collect(),
+            (0..input_shape).map(|i| (i + 3) as f32 / 15.0).collect(),
+            (0..input_shape)
+                .map(|i| ((i * 3) % 10) as f32 / 20.0)
+                .collect(),
+        ];
+
+        // Run queries and store results from original index
+        let original_results = test_queries
+            .iter()
+            .map(|query| index.search(query.as_slice(), 10))
+            .collect::<DliResult<Vec<_>>>()?;
+
+        // Also get verbose search statistics
+        let original_stats = test_queries
+            .iter()
+            .map(|query| index.search(query.as_slice(), 10))
+            .collect::<DliResult<Vec<_>>>()?;
+
+        // Save index to temporary directory
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let dump_dir = temp_dir.path().join("index_dump");
+        index.dump(&dump_dir)?;
+
+        // Verify meta file was created
+        let meta_path = dump_dir.join("meta.json");
+        assert!(meta_path.exists(), "Meta file should exist");
+
+        // Load index from disk
+        let loaded_index = IndexBuilder::from_disk(&dump_dir)?.build()?;
+
+        // Verify loaded index has same configuration
+        assert_eq!(loaded_index.arity, index.arity);
+        assert_eq!(loaded_index.buffer.size, index.buffer.size);
+        assert_eq!(loaded_index.input_shape, index.input_shape);
+        assert_eq!(
+            loaded_index.levels_config.bucket_size,
+            index.levels_config.bucket_size
+        );
+        assert!(matches!(loaded_index.distance_fn, DistanceFn::Dot));
+
+        // Verify loaded index has same data
+        assert_eq!(loaded_index.occupied(), occupied_after_insert);
+        assert_eq!(loaded_index.n_levels(), n_levels_after_insert);
+        assert_eq!(loaded_index.size(), index.size());
+        assert_eq!(loaded_index.n_buckets(), index.n_buckets());
+
+        // Run same queries on loaded index
+        let loaded_results = test_queries
+            .iter()
+            .map(|query| loaded_index.search(query.as_slice(), 10))
+            .collect::<DliResult<Vec<_>>>()?;
+
+        let loaded_stats = test_queries
+            .iter()
+            .map(|query| loaded_index.search(query.as_slice(), 10))
+            .collect::<DliResult<Vec<_>>>()?;
+
+        // Verify search results match
+        assert_eq!(original_results.len(), loaded_results.len());
+        for (i, (orig, loaded)) in original_results
+            .iter()
+            .zip(loaded_results.iter())
+            .enumerate()
+        {
+            assert_eq!(
+                orig, loaded,
+                "Query {i} results should match between original and loaded index"
+            );
+        }
+
+        // Verify search statistics match
+        for (i, (orig_ids, loaded_ids)) in
+            original_stats.iter().zip(loaded_stats.iter()).enumerate()
+        {
+            assert_eq!(orig_ids, loaded_ids, "Query {i} IDs should match");
+        }
+
+        // Verify buffer contents match
+        assert_eq!(
+            index.buffer.occupied(),
+            loaded_index.buffer.occupied(),
+            "Buffer occupancy should match"
+        );
+
+        // Verify each level matches
+        for level_idx in 0..n_levels_after_insert {
+            let orig_level = &index.levels[level_idx];
+            let loaded_level = &loaded_index.levels[level_idx];
+
+            assert_eq!(
+                orig_level.storage.occupied(),
+                loaded_level.storage.occupied(),
+                "Level {level_idx} occupancy should match"
+            );
+            assert_eq!(
+                orig_level.storage.n_buckets(),
+                loaded_level.storage.n_buckets(),
+                "Level {level_idx} bucket count should match"
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_index_save_and_load_cold_storage_with_delete() -> DliResult<()> {
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().expect("Failed to create temp dir");
+        let cold_dump_dir = temp_dir.path().join("index_dump");
+        // Build an index with specific configuration
+        let input_shape = 10;
+        let mut index = IndexBuilder::default()
+            .arity(2)
+            .bucket_size(10)
+            .buffer_size(10)
+            .input_shape(input_shape)
+            .distance_fn(DistanceFn::Dot)
+            .cold_cache_size_bytes(10)
+            .cold_storage_dir(cold_dump_dir)
+            .cold_threshold_level(0)
+            .build()?;
+
+        // Verify initial configuration
+        assert_eq!(index.arity, 2);
+        assert_eq!(index.buffer.size, 10);
+        assert_eq!(index.levels_config.bucket_size, 10);
+        assert_eq!(index.input_shape, input_shape);
+
+        // Insert 1000 records into the index
+        for i in 0..100 {
+            let record: Vec<f32> = (0..input_shape)
+                .map(|j| ((i * input_shape + j) % 100) as f32 / 100.0)
+                .collect();
+            index.insert(record, i as u32)?;
+        }
+
+        // Verify data was inserted
+        let occupied_after_insert = index.occupied();
+        assert_eq!(occupied_after_insert, 100);
+        let n_levels_after_insert = index.n_levels();
+        assert!(
+            n_levels_after_insert > 0,
+            "Should have created levels during insertion"
+        );
+        // delete one record
+        let deleted = index.delete(0)?;
+        assert!(deleted, "Should delete the record");
+        let occupied_after_insert = index.occupied();
+        assert_eq!(occupied_after_insert, 99);
 
         // Create test queries
         let test_queries: Vec<Vec<f32>> = vec![

@@ -2,7 +2,7 @@ use crate::{
     bucket::{self, Bucket},
     cold_storage::ColdStorage,
     model::{Model, ModelBuilder, ModelConfig, ModelDevice, ModelInterface as _},
-    structs::{DiskBucket, DiskLevelIndex, FloatElement, LevelIndexConfig},
+    structs::{DiskBucket, DiskLevelIndex, FloatElement, HotDiskLevelIndex, LevelIndexConfig},
     DeleteMethod, DistanceFn, DliError, DliResult, Id,
 };
 #[cfg(feature = "measure_time")]
@@ -117,10 +117,15 @@ impl<F: FloatElement> Storage<F> {
         level_id: usize,
         config: &LevelIndexConfig,
     ) -> DliResult<DiskLevelIndex> {
-        match &self.container {
-            StorageContainer::Hot(h) => h.dump(working_dir, level_id, config),
-            StorageContainer::Cold(c) => c.dump(working_dir, level_id, config),
-        }
+        let disk_level = match &self.container {
+            StorageContainer::Hot(h) => {
+                DiskLevelIndex::Hot(h.dump(working_dir, level_id, config)?)
+            }
+            StorageContainer::Cold(c) => {
+                DiskLevelIndex::Cold(c.dump(working_dir, level_id, config)?)
+            }
+        };
+        Ok(disk_level)
     }
 
     pub(crate) fn delete(&mut self, id: &Id, delete_method: &DeleteMethod) -> bool {
@@ -191,7 +196,7 @@ impl<F: FloatElement> HotStorage<F> {
         working_dir: &Path,
         level_id: usize,
         config: &LevelIndexConfig,
-    ) -> DliResult<DiskLevelIndex> {
+    ) -> DliResult<HotDiskLevelIndex> {
         let records_path = working_dir.join(format!("bucket-records-{level_id}.bin"));
         let ids_path = working_dir.join(format!("bucket-ids-{level_id}.bin"));
         let mut records_file = File::create(records_path.clone())?;
@@ -210,12 +215,11 @@ impl<F: FloatElement> HotStorage<F> {
                 }
             })
             .collect::<Vec<_>>();
-        Ok(DiskLevelIndex {
+        Ok(HotDiskLevelIndex {
             buckets: disk_buckets,
             config: config.clone(),
             records_path,
             ids_path,
-            cold_data_path: None,
         })
     }
 
@@ -740,6 +744,10 @@ mod tests {
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
         let level_id = 0;
         let disk_level = level.dump(temp_dir.path(), level_id)?;
+        let disk_level = match disk_level {
+            DiskLevelIndex::Hot(hot) => hot,
+            DiskLevelIndex::Cold(_cold) => panic!(),
+        };
 
         // Verify disk files were created
         assert!(disk_level.records_path.exists());

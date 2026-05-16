@@ -188,7 +188,6 @@ impl SearchParamsT for usize {
 
 #[derive(Debug, Copy, Clone)]
 pub enum SearchStrategy {
-    Base(usize), // todo rename to KnnDriven
     ModelDriven(usize),
 }
 
@@ -272,14 +271,25 @@ pub struct DiskBucket {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct DiskLevelIndex {
+pub enum DiskLevelIndex {
+    Hot(HotDiskLevelIndex),
+    Cold(ColdDiskLevelIndex),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct HotDiskLevelIndex {
     pub records_path: PathBuf,
     pub ids_path: PathBuf,
     pub buckets: Vec<DiskBucket>,
     pub config: LevelIndexConfig,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct ColdDiskLevelIndex {
+    pub config: LevelIndexConfig,
     /// Path to the cold storage data file for this level, if it is cold.
-    #[serde(default)]
-    pub cold_data_path: Option<PathBuf>,
+    pub cold_data_path: PathBuf,
+    pub ids: Vec<u32>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

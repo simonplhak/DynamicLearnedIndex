@@ -1,6 +1,6 @@
 use crate::{
     bucket::Bucket,
-    structs::{DiskLevelIndex, FloatElement, LevelIndexConfig},
+    structs::{ColdDiskLevelIndex, FloatElement, LevelIndexConfig},
     DliError, DliResult, Id,
 };
 use serde::{Deserialize, Serialize};
@@ -161,36 +161,10 @@ impl<F: FloatElement> ColdStorage<F> {
         meta_path: &Path,
         input_shape: usize,
         bucket_size: usize,
+        ids: HashSet<Id>,
     ) -> DliResult<Self> {
         let disk_buckets = load_metadata(meta_path)?;
         let data_file = File::options().read(true).write(true).open(data_path)?;
-
-        // Populate ids HashSet from all records in the file
-        let mut ids = HashSet::new();
-        let file_size = data_file.metadata()?.len();
-        if file_size > 0 {
-            let mut buf = vec![0u8; file_size as usize];
-            data_file.read_exact_at(&mut buf, 0)?;
-
-            for bucket in &disk_buckets {
-                for &block_idx in &bucket.extents {
-                    let start = block_idx as usize * BLOCK_SIZE;
-                    let end = start + BLOCK_SIZE;
-                    if end <= buf.len() {
-                        let block: &[u8; BLOCK_SIZE] =
-                            buf[start..end].try_into().map_err(|_| {
-                                DliError::IoError(std::io::Error::new(
-                                    std::io::ErrorKind::InvalidData,
-                                    "Invalid block size in cold storage file",
-                                ))
-                            })?;
-                        let (_recs, block_ids) = decode_block::<F>(block, input_shape)?;
-                        ids.extend(block_ids);
-                    }
-                }
-            }
-        }
-
         Ok(Self {
             disk_buckets,
             data_file,
@@ -384,9 +358,13 @@ impl<F: FloatElement> ColdStorage<F> {
         &self,
         _working_dir: &Path,
         _level_id: usize,
-        _config: &LevelIndexConfig,
-    ) -> DliResult<DiskLevelIndex> {
-        todo!()
+        config: &LevelIndexConfig,
+    ) -> DliResult<ColdDiskLevelIndex> {
+        Ok(ColdDiskLevelIndex {
+            cold_data_path: self.data_path.clone(),
+            ids: self.ids.iter().cloned().collect::<Vec<_>>(),
+            config: config.clone(),
+        })
     }
 }
 
