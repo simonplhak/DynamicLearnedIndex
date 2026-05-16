@@ -6,7 +6,6 @@ from typing import Literal, cast
 
 # Note: numpy is a dev dependency, required for running this example
 import numpy as np
-import torch  # type: ignore
 
 from py_dynamic_learned_index import (
     DynamicLearnedIndex,
@@ -17,7 +16,9 @@ from py_dynamic_learned_index import (
 # log_init = rust.log_init
 
 # DTYPE can be "f16" or "f32", default "f16", override with env DLI_DTYPE
-DTYPE: Literal["f16", "f32"] = cast(Literal['f16', 'f32'], os.getenv("DLI_DTYPE", "f16"))
+DTYPE: Literal["f16", "f32"] = cast(
+    Literal['f16', 'f32'], os.getenv("DLI_DTYPE", "f16")
+)
 
 # Initialize Rust logger to write to a buffer
 log_buffer = io.StringIO()
@@ -50,15 +51,13 @@ builder = (
 
 # optional: make model device use gpu
 # builder = builder.device(gpu:0)
-builder = (builder
-    .cold_storage_dir("/tmp/dli")
-    .cold_threshold_level(0)
-    .cold_cache_size_bytes(1024 * 1024)
-)
 
-# TBD
-# builder.levels(...)
-# builder.bucket_size(10)  # size of the individial buckets
+# optional: enable cold storage
+# builder = (builder
+#     .cold_storage_dir("/tmp/dli")  # directory for cold storage
+#     .cold_threshold_level(0)  # threshold level for cold storage
+#     .cold_cache_size_bytes(1024 * 1024)  # size of the cold storage cache in bytes
+# )
 
 index: DynamicLearnedIndex = builder.build()
 
@@ -69,7 +68,10 @@ index: DynamicLearnedIndex = builder.build()
 
 
 if DTYPE == "f16":
-    queries = [np.random.rand(input_shape).astype(np.float16).view(np.float16) for _ in range(1000)]
+    queries = [
+        np.random.rand(input_shape).astype(np.float16).view(np.float16)
+        for _ in range(1000)
+    ]
 else:
     queries = [np.random.rand(input_shape).astype(np.float32) for _ in range(1000)]
 for i, query in enumerate(queries):
@@ -139,7 +141,7 @@ print()
 loaded_index = DynamicLearnedIndexBuilder.from_disk(str(working_dir))
 assert index.n_buckets() == loaded_index.n_buckets()
 assert index.n_levels() == loaded_index.n_levels()
-assert index.occupied() == loaded_index.occupied(), f"occupied mismatch: {index.occupied()} vs {loaded_index.occupied()}"
+assert index.occupied() == loaded_index.occupied()
 assert index.n_empty_buckets() == loaded_index.n_empty_buckets()
 
 print("INDEX STATISTICS FOR LOADED INDEX")
@@ -166,7 +168,8 @@ for level_idx in range(index.n_levels()):
 print()
 
 print("SEARCH IN LOADED INDEX")
-for i in range(0, len(queries) - 1, 50):
+# skipping first query as it was previously deleted
+for i in range(50, len(queries) - 1, 50):
     res = index.search(
         queries[i], k, n_candidates=n_candidates, search_strategy=search_strategy
     )
