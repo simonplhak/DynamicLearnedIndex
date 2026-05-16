@@ -103,10 +103,10 @@ pub struct Model<F: FloatElement> {
     _marker: std::marker::PhantomData<F>,
 }
 
-// UNSAFE: TODO
+// UNSAFE: Currently only supports single-threaded use
 unsafe impl<F: FloatElement> Send for Model<F> {}
 
-// UNSAFE: TODO
+// UNSAFE: Currently only supports single-threaded use
 unsafe impl<F: FloatElement> Sync for Model<F> {}
 
 impl<F: FloatElement> crate::model::ModelInterface<F> for Model<F> {

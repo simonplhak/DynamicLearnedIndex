@@ -39,7 +39,6 @@ enum LogOuptut {
 
 #[derive(Parser, Debug, Serialize, Deserialize, Clone, clap::ValueEnum)]
 enum CLISearchStrategy {
-    Knn,
     Model,
 }
 
@@ -152,7 +151,6 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
         }),
     };
     let search_strategy = match config.search_strategy {
-        CLISearchStrategy::Knn => SearchStrategy::Base(config.ncandidates[0]),
         CLISearchStrategy::Model => SearchStrategy::ModelDriven(config.ncandidates[0]),
     };
     insert_all_data(
@@ -177,7 +175,6 @@ fn experiment(config: &ExperimentConfig) -> Result<()> {
     }
     for ncandidates in &config.ncandidates {
         let search_strategy = match config.search_strategy {
-            CLISearchStrategy::Knn => SearchStrategy::Base(*ncandidates),
             CLISearchStrategy::Model => SearchStrategy::ModelDriven(*ncandidates),
         };
         let metrics = eval_queries(&index, &gt, &test_queries, search_strategy, true)?;
