@@ -4,23 +4,20 @@ compaction_strategy:
 levels:
   model:
     layers:
-    - type: linear
-      value: 256
-    - type: relu
+      - type: linear
+        value: 128
+      - type: relu
     train_params:
       threshold_samples: 1000
       batch_size: 256
       epochs: 3
       max_iters: 10
       retrain_strategy: no_retrain
-    retrain_params:
-      threshold_samples: 1000
-      batch_size: 256
-      epochs: 3
-      max_iters: 10
-      retrain_strategy: no_retrain
-  bucket_size: 200
-buffer_size: 200
+    weights_path: null
+    quantize: false
+    seed: 0
+  bucket_size: 5000
+buffer_size: 5000
 input_shape: 768
 arity: 3
 device: cpu

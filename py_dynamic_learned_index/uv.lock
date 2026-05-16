@@ -595,7 +595,7 @@ name = "py-dynamic-learned-index"
 version = "0.1.13"
 source = { editable = "." }
 
-[package.dev-dependencies]
+[package.optional-dependencies]
 dev = [
     { name = "maturin", extra = ["patchelf"] },
     { name = "numpy", version = "2.0.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.10'" },
@@ -607,14 +607,12 @@ dev = [
 ]
 
 [package.metadata]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "maturin", extras = ["patchelf"], specifier = ">=1.11.5" },
-    { name = "numpy", specifier = ">=2.0.2" },
-    { name = "ruff" },
-    { name = "torch", specifier = "==2.6.0" },
-    { name = "ziglang", specifier = ">=0.15.1" },
+requires-dist = [
+    { name = "maturin", extras = ["patchelf"], marker = "extra == 'dev'", specifier = ">=1.11.5" },
+    { name = "numpy", marker = "extra == 'dev'", specifier = ">=2.0.2" },
+    { name = "ruff", marker = "extra == 'dev'" },
+    { name = "torch", marker = "extra == 'dev'", specifier = "==2.6.0" },
+    { name = "ziglang", marker = "extra == 'dev'", specifier = ">=0.15.1" },
 ]
 
 [[package]]

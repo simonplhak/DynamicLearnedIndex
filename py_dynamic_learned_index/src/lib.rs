@@ -288,7 +288,6 @@ fn parse_search_kwargs(py_kwargs: Option<&Bound<'_, PyDict>>, k: usize) -> PyRes
                 })
                 .map(|(_, value)| match value.extract::<String>() {
                     Ok(strategy) => match strategy.as_str() {
-                        "knn" => Ok(dynamic_learned_index::SearchStrategy::Base(n_candidates)),
                         "model" => Ok(dynamic_learned_index::SearchStrategy::ModelDriven(
                             n_candidates,
                         )),

@@ -2,10 +2,11 @@ import io
 import os
 import shutil
 from pathlib import Path
+from typing import Literal, cast
 
 # Note: numpy is a dev dependency, required for running this example
 import numpy as np
-import torch
+import torch  # type: ignore
 
 from py_dynamic_learned_index import (
     DynamicLearnedIndex,
@@ -13,12 +14,10 @@ from py_dynamic_learned_index import (
     log_init,
 )
 
-# import py_dynamic_learned_index as rust
-
 # log_init = rust.log_init
 
 # DTYPE can be "f16" or "f32", default "f16", override with env DLI_DTYPE
-DTYPE = os.getenv("DLI_DTYPE", "f16")
+DTYPE: Literal["f16", "f32"] = cast(Literal['f16', 'f32'], os.getenv("DLI_DTYPE", "f16"))
 
 # Initialize Rust logger to write to a buffer
 log_buffer = io.StringIO()
@@ -113,14 +112,8 @@ print()
 
 # delete
 id_to_delete = 0
-deleted_query, deleted_id = index.delete(id_to_delete)
-
-print(f"""delete:
-      deleted_query is same as inserted query:
-      {(deleted_query == queries[id_to_delete]).all()},
-      {id_to_delete=},
-      {deleted_id=}""")
-print()
+deleted = index.delete(id_to_delete)
+assert deleted
 
 
 # delte non-existing id
@@ -146,7 +139,7 @@ print()
 loaded_index = DynamicLearnedIndexBuilder.from_disk(str(working_dir))
 assert index.n_buckets() == loaded_index.n_buckets()
 assert index.n_levels() == loaded_index.n_levels()
-assert index.occupied() == loaded_index.occupied()
+assert index.occupied() == loaded_index.occupied(), f"occupied mismatch: {index.occupied()} vs {loaded_index.occupied()}"
 assert index.n_empty_buckets() == loaded_index.n_empty_buckets()
 
 print("INDEX STATISTICS FOR LOADED INDEX")

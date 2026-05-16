@@ -117,7 +117,6 @@ impl<F: FloatElement> crate::model::BaseModelBuilder<TchBackend, F> {
     }
 }
 
-// todo reset model after flush
 #[derive(Debug)]
 pub struct Model<F: FloatElement> {
     model: Mutex<Box<dyn nn::Module>>,

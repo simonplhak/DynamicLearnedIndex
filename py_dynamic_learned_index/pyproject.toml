@@ -16,7 +16,7 @@ classifiers = [
 dynamic = ["version"]
 dependencies = []
 
-[dependency-groups]
+[project.optional-dependencies]
 dev = [
     "numpy>=2.0.2",
     "maturin[patchelf]>=1.11.5",
