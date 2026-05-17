@@ -30,7 +30,7 @@ cfg-if = "1.0.4"
 typed-arena = "2.0.2"
 
 [features]
-default = ["mix"]
+default = []
 measure_time = ["measure_time_macro/enabled"]
 pyo3 = ["dep:pyo3"]
 tch = ["dep:tch"]
