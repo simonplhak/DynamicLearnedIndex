@@ -2,6 +2,10 @@
 name = "measure_time_macro"
 version = "0.1.0"
 edition = "2021"
+description = "Utility macro for measuring execution time."
+license = "MIT"
+repository = "https://github.com/simonplhak/DynamicLearnedIndex"
+authors = ["Simon Plhak"]
 
 [lib]
 proc-macro = true

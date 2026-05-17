@@ -2,6 +2,11 @@
 name = "dynamic_learned_index"
 version = "0.1.0"
 edition = "2021"
+description = "Dynamic Learned Index for efficient search in unstructured data."
+license = "MIT"
+repository = "https://github.com/simonplhak/DynamicLearnedIndex"
+authors = ["Simon Plhak"]
+
 
 [dependencies]
 dotenvy = "0.15.7"
